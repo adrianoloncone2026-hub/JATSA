@@ -17,6 +17,14 @@ return [
     'cors' => [
         'origenes' => $lista(Env::obtener('CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173') ?? ''),
     ],
+    'sesion' => [
+        'nombre' => Env::obtener('SESSION_NAME', 'JATSA_SESION'),
+        // Cierre por inactividad de una sesión normal y de una con "Recordarme".
+        'horas_inactividad' => (int) Env::obtener('SESSION_HORAS', '8'),
+        'dias_recordar' => (int) Env::obtener('SESSION_DIAS_RECORDAR', '14'),
+        // true cuando se sirva por HTTPS (la cookie solo viajará cifrada).
+        'segura' => $logico(Env::obtener('SESSION_SECURE', 'false')),
+    ],
     'db' => [
         'host' => Env::obtener('DB_HOST', 'localhost'),
         'puerto' => Env::obtener('DB_PORT', ''),

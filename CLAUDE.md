@@ -53,7 +53,8 @@ C:\Jatsa
 - `backend/src/Shared/` — validación, utilidades y excepciones comunes.
 - `backend/src/Modules/<Modulo>/` — un módulo por área funcional, cada uno con su `Controller`, `Service` y `Repository` (y rutas propias).
 - `backend/storage/logs/` — registros de la aplicación.
-- `backend/tests/` — pruebas del backend.
+- `backend/tests/` — pruebas del backend (`C:\php\php.exe backend/tests/ejecutar.php`, sin dependencias ni base de datos).
+- `backend/storage/sessions/` — archivos de sesión (no se versionan).
 - `database/script/` y `database/notas/` — reservadas y vacías. El script SQL **no** está aquí: está en `docs/` (ver Documentos de referencia).
 - `docs/prototipo/`, `docs/informe-bd/` — reservadas y vacías. `docs/api/` — contrato de la API (se llena módulo a módulo). `docs/orden-implementacion.md` — orden de módulos.
 

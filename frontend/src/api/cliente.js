@@ -19,6 +19,8 @@ export async function solicitar(ruta, { metodo = 'GET', cuerpo, signal } = {}) {
       method: metodo,
       headers: {
         Accept: 'application/json',
+        // El backend exige esta cabecera en toda petición que modifica datos (protección CSRF).
+        'X-Requested-With': 'JATSA',
         ...(cuerpo !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
       body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined,

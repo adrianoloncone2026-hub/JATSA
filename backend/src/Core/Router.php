@@ -12,41 +12,46 @@ use Jatsa\Shared\HttpException;
  */
 final class Router
 {
-    /** @var list<array{metodo: string, regex: string, manejador: callable|array}> */
+    /** @var list<array{metodo: string, regex: string, manejador: callable|array, middleware: list<callable>}> */
     private array $rutas = [];
 
-    public function agregar(string $metodo, string $patron, callable|array $manejador): void
+    /**
+     * @param list<callable> $middleware Se ejecutan en orden antes del manejador, reciben la Request
+     *                                   y lanzan HttpException para cortar la petición.
+     */
+    public function agregar(string $metodo, string $patron, callable|array $manejador, array $middleware = []): void
     {
         $this->rutas[] = [
             'metodo' => strtoupper($metodo),
             'regex' => $this->compilar($patron),
             'manejador' => $manejador,
+            'middleware' => $middleware,
         ];
     }
 
-    public function get(string $patron, callable|array $manejador): void
+    public function get(string $patron, callable|array $manejador, array $middleware = []): void
     {
-        $this->agregar('GET', $patron, $manejador);
+        $this->agregar('GET', $patron, $manejador, $middleware);
     }
 
-    public function post(string $patron, callable|array $manejador): void
+    public function post(string $patron, callable|array $manejador, array $middleware = []): void
     {
-        $this->agregar('POST', $patron, $manejador);
+        $this->agregar('POST', $patron, $manejador, $middleware);
     }
 
-    public function put(string $patron, callable|array $manejador): void
+    public function put(string $patron, callable|array $manejador, array $middleware = []): void
     {
-        $this->agregar('PUT', $patron, $manejador);
+        $this->agregar('PUT', $patron, $manejador, $middleware);
     }
 
-    public function patch(string $patron, callable|array $manejador): void
+    public function patch(string $patron, callable|array $manejador, array $middleware = []): void
     {
-        $this->agregar('PATCH', $patron, $manejador);
+        $this->agregar('PATCH', $patron, $manejador, $middleware);
     }
 
-    public function delete(string $patron, callable|array $manejador): void
+    public function delete(string $patron, callable|array $manejador, array $middleware = []): void
     {
-        $this->agregar('DELETE', $patron, $manejador);
+        $this->agregar('DELETE', $patron, $manejador, $middleware);
     }
 
     public function despachar(Request $peticion): Response
@@ -64,6 +69,10 @@ final class Router
             }
 
             $parametros = array_filter($coincidencias, 'is_string', ARRAY_FILTER_USE_KEY);
+
+            foreach ($ruta['middleware'] as $middleware) {
+                $middleware($peticion);
+            }
 
             return $this->invocar($ruta['manejador'], $peticion, $parametros);
         }

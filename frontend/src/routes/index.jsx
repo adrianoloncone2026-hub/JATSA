@@ -1,10 +1,12 @@
 import { Link, Route, Routes } from 'react-router-dom'
+import RutaProtegida from '../auth/RutaProtegida.jsx'
 import PantallaPendiente from '../components/PantallaPendiente.jsx'
 import LayoutAdministrador from '../layouts/LayoutAdministrador.jsx'
 import LayoutCliente from '../layouts/LayoutCliente.jsx'
 import LayoutGerente from '../layouts/LayoutGerente.jsx'
 import LayoutPublico from '../layouts/LayoutPublico.jsx'
 import LayoutTransportista from '../layouts/LayoutTransportista.jsx'
+import Ingresar from '../modules/publico/Ingresar.jsx'
 import PruebaConexion from '../modules/publico/PruebaConexion.jsx'
 import { SECCIONES } from './definicion.js'
 
@@ -18,6 +20,7 @@ const LAYOUTS = {
 
 // Pantallas ya reales; el resto de las rutas muestran un marcador.
 const PANTALLAS_REALES = {
+  'publico/ingresar': Ingresar,
   'publico/prueba-conexion': PruebaConexion,
 }
 
@@ -38,14 +41,22 @@ function elementoDe(seccion, pantalla) {
   return <PantallaPendiente titulo={pantalla.titulo} modulo={pantalla.modulo} seccion={seccion.etiqueta} />
 }
 
-// Sin protección por rol: la autenticación llega en el módulo 1.
+// El área pública está abierta; las demás exigen sesión y uno de los roles de la sección.
 export default function RutasApp() {
   return (
     <Routes>
       {SECCIONES.map((seccion) => {
         const Layout = LAYOUTS[seccion.id]
+        const marco =
+          seccion.id === 'publico' ? (
+            <Layout />
+          ) : (
+            <RutaProtegida roles={seccion.roles}>
+              <Layout />
+            </RutaProtegida>
+          )
         return (
-          <Route key={seccion.id} path={seccion.base} element={<Layout />}>
+          <Route key={seccion.id} path={seccion.base} element={marco}>
             {seccion.pantallas.map((pantalla) =>
               pantalla.ruta === '' ? (
                 <Route key="indice" index element={elementoDe(seccion, pantalla)} />

@@ -63,19 +63,78 @@ a {
   font-weight: 600;
 }
 
-.areas-dev {
+.usuario-sesion {
+  margin-left: auto;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
   align-items: center;
-  padding: 0.5rem 0;
-  font-size: 0.8rem;
-  color: #7b8794;
-  border-top: 1px dashed var(--color-borde);
+  gap: 0.75rem;
+  font-size: 0.9rem;
 }
 
-.areas-dev a.activa {
-  font-weight: 700;
+.cargando {
+  padding: 2rem;
+  text-align: center;
+  color: #52606d;
+}
+
+.formulario-acceso {
+  max-width: 26rem;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid var(--color-borde);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.formulario-acceso form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.formulario-acceso label {
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+.formulario-acceso input[type='text'],
+.formulario-acceso input[type='password'] {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 6px;
+  width: 100%;
+}
+
+.campo-con-boton {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.formulario-acceso label.casilla {
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.formulario-acceso form > button[type='submit'] {
+  margin-top: 0.75rem;
+}
+
+.ayuda {
+  font-size: 0.9rem;
+  color: #52606d;
+}
+
+button.secundario {
+  background: #fff;
+  color: var(--color-marca);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .contenido {

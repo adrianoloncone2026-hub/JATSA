@@ -30,6 +30,8 @@ composer.phar
 .phpunit.cache/
 backend/storage/logs/*
 !backend/storage/logs/.gitkeep
+backend/storage/sessions/*
+!backend/storage/sessions/.gitkeep
 backend/storage/cache/*
 !backend/storage/cache/.gitkeep
 
