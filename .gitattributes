@@ -1,0 +1,13 @@
+# Texto: Git normaliza los finales de línea al guardar en el repositorio.
+* text=auto
+
+# El script SQL definitivo se guarda byte a byte, sin ninguna conversión.
+*.sql -text
+
+# Binarios
+*.docx binary
+*.pptx binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.ico binary
