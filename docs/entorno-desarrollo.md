@@ -45,6 +45,14 @@ C:\php\php.exe backend/tests/ejecutar.php
 ```
 Sin dependencias y sin acceso a la base de datos (usan un repositorio simulado). Salen con código 1 si algo falla.
 
+## Pruebas del frontend en el navegador
+```powershell
+# Terminal 1, en frontend/:  npm run dev
+# Terminal 2, desde C:\Jatsa:
+node frontend/tests/e2e/publico.mjs
+```
+Abre Edge sin ventana (sin dependencias nuevas) y **intercepta las llamadas a `/api`** con respuestas fijas, así que no necesita PHP ni base de datos. Cubre las pantallas públicas, incluida la carrera de respuestas lentas del Cotizador. Salen con código 1 si algo falla. Variables opcionales: `FRONTEND_URL` y `EDGE_PATH`.
+
 Respuesta correcta: `{ "data": ... }`. Error: `{ "error": { "codigo": "...", "mensaje": "..." } }`. Los detalles técnicos de un error se guardan en `backend/storage/logs/`.
 
 ## Cómo añadir rutas de un módulo

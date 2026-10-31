@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { cotizar, obtenerAgencias } from '../../api/publico.js'
 import Moneda, { iconoDeDepartamento } from '../../components/Moneda.jsx'
@@ -13,6 +13,15 @@ export default function Cotizador() {
   const [error, setError] = useState('')
   const [calculando, setCalculando] = useState(false)
   const [resultado, setResultado] = useState(null)
+
+  // Cotización en curso. Una respuesta solo se acepta si sigue siendo la solicitud vigente: así una
+  // respuesta lenta de datos anteriores nunca muestra un precio que no corresponde a lo que hay en el formulario.
+  const solicitudVigente = useRef(null)
+  const cancelarCotizacion = useCallback(() => {
+    solicitudVigente.current?.abort()
+    solicitudVigente.current = null
+  }, [])
+  useEffect(() => cancelarCotizacion, [cancelarCotizacion]) // al salir de la pantalla
 
   useEffect(() => {
     const control = new AbortController()
@@ -29,7 +38,10 @@ export default function Cotizador() {
   function cambiar(evento) {
     const { name, value } = evento.target
     setCampos((anteriores) => ({ ...anteriores, [name]: value }))
-    // Un resultado calculado con otros datos podría confundir: se descarta al cambiar cualquier campo.
+    // Un resultado (o una cotización en curso) calculado con otros datos podría confundir:
+    // al cambiar cualquier campo se cancela lo pendiente y se descarta lo mostrado.
+    cancelarCotizacion()
+    setCalculando(false)
     setResultado(null)
     setError('')
   }
@@ -52,14 +64,24 @@ export default function Cotizador() {
       return
     }
     setError('')
+
+    cancelarCotizacion()
+    const control = new AbortController()
+    solicitudVigente.current = control
     setCalculando(true)
     try {
-      setResultado(await cotizar({ ...campos, peso: campos.peso.trim().replace(',', '.') }))
+      const datos = await cotizar({ ...campos, peso: campos.peso.trim().replace(',', '.') }, control.signal)
+      if (solicitudVigente.current !== control) return // respuesta obsoleta: otra solicitud la reemplazó
+      setResultado(datos)
     } catch (fallo) {
+      if (fallo.name === 'AbortError' || solicitudVigente.current !== control) return
       setResultado(null)
       setError(fallo.message)
     } finally {
-      setCalculando(false)
+      if (solicitudVigente.current === control) {
+        solicitudVigente.current = null
+        setCalculando(false)
+      }
     }
   }
 

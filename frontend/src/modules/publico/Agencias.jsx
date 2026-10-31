@@ -33,6 +33,15 @@ export default function Agencias() {
   const pedida = parametros.get('agencia')
   const elegida = visibles.find((a) => a.codigo === pedida) ?? visibles[0] ?? null
 
+  // La dirección debe decir siempre qué ficha se está mostrando: si cambia el filtro (o el código de la
+  // dirección no existe) y la ficha pasa a otra agencia, se actualiza ?agencia= para que no se contradigan.
+  const codigoElegido = elegida?.codigo ?? null
+  useEffect(() => {
+    if (codigoElegido !== null && codigoElegido !== pedida) {
+      setParametros({ agencia: codigoElegido }, { replace: true })
+    }
+  }, [codigoElegido, pedida, setParametros])
+
   function elegir(codigo) {
     setParametros({ agencia: codigo }, { replace: true })
   }

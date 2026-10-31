@@ -16,8 +16,3 @@ export function direccionCompleta(agencia) {
     })
     .join(', ')
 }
-
-// "Agencia Lima Centro" → "Lima Centro"
-export function nombreCorto(agencia) {
-  return agencia.nombre.replace(/^agencia\s+/i, '')
-}

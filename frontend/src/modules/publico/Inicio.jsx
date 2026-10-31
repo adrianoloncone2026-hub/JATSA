@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { obtenerAgencias } from '../../api/publico.js'
 import ilustracion from '../../assets/ilustracion-sur.png'
 import { useAuth } from '../../auth/AuthProvider.jsx'
 import { ROLES, rutaInicioDeRol } from '../../auth/roles.js'
 import Moneda from '../../components/Moneda.jsx'
-import { nombreCorto } from '../../utils/formato.js'
 
 // Código de seguimiento: «EN» + 10 letras o dígitos (restricción CK_ENVIO_CODIGO del script SQL).
 const FORMATO_CODIGO = /^EN[A-Z0-9]{10}$/
+
+// Lema de la portada (diapositiva 2 del prototipo). Es texto editorial fijo, no un catálogo:
+// no depende de la API ni de las agencias que haya registradas.
+const LEMA_LUGARES = 'Moquegua · Arequipa · Lima · Ilo'
 
 // Diapositiva 2 del prototipo: buscador de rastreo y accesos a salidas, cotizador, agencias y reserva.
 export default function Inicio() {
@@ -16,16 +18,6 @@ export default function Inicio() {
   const { usuario } = useAuth()
   const [codigo, setCodigo] = useState('')
   const [error, setError] = useState('')
-  const [lugares, setLugares] = useState([])
-
-  // La lista de lugares sale de las agencias activas; si falla, simplemente no se muestra.
-  useEffect(() => {
-    const control = new AbortController()
-    obtenerAgencias(control.signal)
-      .then((agencias) => setLugares(agencias.map(nombreCorto)))
-      .catch(() => {})
-    return () => control.abort()
-  }, [])
 
   function rastrear(evento) {
     evento.preventDefault()
@@ -57,7 +49,7 @@ export default function Inicio() {
       <section className="hero" aria-labelledby="titulo-inicio">
         <div className="hero-texto">
           <h1 id="titulo-inicio">Envía, rastrea y mira cuándo sale tu encomienda</h1>
-          {lugares.length > 0 && <p className="hero-lugares">{lugares.join(' · ')}</p>}
+          <p className="hero-lugares">{LEMA_LUGARES}</p>
         </div>
         <img className="hero-ilustracion" src={ilustracion} alt="" />
       </section>
