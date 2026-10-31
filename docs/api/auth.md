@@ -32,6 +32,14 @@ Requiere sesión. `200 { "data": { "usuario": {...} } }`.
 | 401 | `no_autenticado` | No hay sesión o caducó |
 | 401 | `sesion_invalida` | La cuenta ya no existe o fue desactivada; se cierra la sesión |
 
+## Cerrar sesión en la interfaz
+La interfaz solo muestra la sesión como cerrada cuando `POST /api/auth/salir` responde correctamente. Si la petición falla (sin conexión, error del servidor), se conserva el usuario, se muestra un aviso y se puede reintentar; `salir` es idempotente. **Limitación conocida:** si el usuario cierra el navegador sin haber podido confirmar el cierre, la sesión del servidor sigue válida hasta caducar por inactividad (8 h, o 14 días con «Recordarme»).
+
+## Limitaciones conocidas y pendientes de seguridad
+- **Sin protección contra fuerza bruta.** No hay límite de intentos fallidos ni bloqueo temporal: **no está implementado**. Es aceptable en desarrollo local, pero es un **requisito previo a exponer la aplicación a Internet**. Requiere definir la regla (intentos, ventana, bloqueo) y dónde guardar el contador, sin alterar el esquema de la base de datos.
+- `password_needs_rehash` no se aplica (exigiría un UPDATE sobre `Usuario`).
+- El inicio de sesión exitoso contra una cuenta real de `JATSA_Encomiendas` está pendiente de validar: los hashes de muestra del script no tienen contraseña conocida.
+
 ## Proteger rutas de otros módulos
 ```php
 use Jatsa\Middleware\RequiereRol;

@@ -10,18 +10,23 @@ export default function LayoutBase({ idSeccion }) {
   const { usuario, salir } = useAuth()
   const navegar = useNavigate()
   const [saliendo, setSaliendo] = useState(false)
+  const [errorSalida, setErrorSalida] = useState('')
 
   // Con sesión abierta no tiene sentido ofrecer "Ingresar" ni "Crear cuenta".
   const ocultos = usuario ? ['/ingresar', '/crear-cuenta'] : []
   const enlaces = enlacesMenu(idSeccion).filter((enlace) => !ocultos.includes(enlace.to))
 
   async function cerrarSesion() {
+    setErrorSalida('')
     setSaliendo(true)
     try {
       await salir()
+      navegar('/', { replace: true })
+    } catch (error) {
+      // El servidor no confirmó el cierre: la sesión sigue abierta y así se le dice al usuario.
+      setErrorSalida(`No se pudo cerrar la sesión. ${error.message} Sigues con la sesión abierta.`)
     } finally {
       setSaliendo(false)
-      navegar('/', { replace: true })
     }
   }
 
@@ -44,6 +49,11 @@ export default function LayoutBase({ idSeccion }) {
             </div>
           )}
         </div>
+        {errorSalida && (
+          <div className="resultado error" role="alert">
+            {errorSalida}
+          </div>
+        )}
         <nav className="menu" aria-label={`Menú de ${seccion.etiqueta}`}>
           {enlaces.map((enlace) => (
             <NavLink key={enlace.to} to={enlace.to} end>
