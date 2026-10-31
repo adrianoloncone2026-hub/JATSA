@@ -6,6 +6,10 @@ import LayoutCliente from '../layouts/LayoutCliente.jsx'
 import LayoutGerente from '../layouts/LayoutGerente.jsx'
 import LayoutPublico from '../layouts/LayoutPublico.jsx'
 import LayoutTransportista from '../layouts/LayoutTransportista.jsx'
+import EnvioRegistrado from '../modules/administrador/EnvioRegistrado.jsx'
+import FormalizarEnvio from '../modules/administrador/FormalizarEnvio.jsx'
+import ReservaVentanilla from '../modules/administrador/ReservaVentanilla.jsx'
+import Ventanilla from '../modules/administrador/Ventanilla.jsx'
 import Agencias from '../modules/publico/Agencias.jsx'
 import MiPanel from '../modules/cliente/MiPanel.jsx'
 import MisReservas from '../modules/cliente/MisReservas.jsx'
@@ -29,6 +33,10 @@ const LAYOUTS = {
 
 // Pantallas ya reales; el resto de las rutas muestran un marcador.
 const PANTALLAS_REALES = {
+  'administrador/': Ventanilla,
+  'administrador/sin-reserva': ReservaVentanilla,
+  'administrador/formalizar-envio/:codigo': FormalizarEnvio,
+  'administrador/envio/:codigo': EnvioRegistrado,
   'cliente/': MiPanel,
   'cliente/nueva-reserva': NuevaReserva,
   'cliente/reserva-registrada/:codigo': ReservaRegistrada,

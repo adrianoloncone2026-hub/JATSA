@@ -964,7 +964,7 @@ final class ReservasFalso implements RepositorioReservas
         $this->sembrar('R000000005', 4, 50, 'MOQ001', 'ILO001', 'Medicinas', 'PENDIENTE', '2026-10-30 10:00:00', null);
     }
 
-    private function sembrar(string $codigo, int $remitente, int $destinatario, string $origen, string $destino, string $contenido, string $estado, string $fechaHora, ?string $seguimiento): void
+    public function sembrar(string $codigo, int $remitente, int $destinatario, string $origen, string $destino, string $contenido, string $estado, string $fechaHora, ?string $seguimiento): void
     {
         $this->reservas[$codigo] = ['idRemitente' => $remitente, 'idDestinatario' => $destinatario, 'origen' => $origen, 'destino' => $destino,
             'contenido' => $contenido, 'estado' => $estado, 'fechaHora' => $fechaHora, 'seguimiento' => $seguimiento, 'canal' => 'WEB'];
@@ -999,7 +999,7 @@ final class ReservasFalso implements RepositorioReservas
     }
 
     /** Instante límite: ahora − 72 h. Vence si fechaHora <= límite (en el instante exacto ya vence). */
-    private function limite(?DateTimeImmutable $referencia): string
+    public function limite(?DateTimeImmutable $referencia): string
     {
         return ($referencia ?? $this->ahora)->modify('-' . RepositorioReservas::HORAS_DE_VIGENCIA . ' hours')->format('Y-m-d H:i:s');
     }
@@ -1014,6 +1014,53 @@ final class ReservasFalso implements RepositorioReservas
             }
         }
         return $n;
+    }
+
+    /** Ids de sucursal de las agencias simuladas (los mismos de la base de muestra). */
+    public const IDS_SUCURSAL = ['LIM001' => 1, 'AQP001' => 2, 'MOQ001' => 3, 'ILO001' => 4];
+
+    public function listarPendientesDeSucursal(int $idSucursal, ?DateTimeImmutable $referencia = null): array
+    {
+        $lista = [];
+        foreach ($this->reservas as $codigo => $r) {
+            if (self::IDS_SUCURSAL[$r['origen']] === $idSucursal && $r['estado'] === 'PENDIENTE' && $r['fechaHora'] > $this->limite($referencia)) {
+                $lista[] = $this->aArregloDeSucursal($codigo, $r);
+            }
+        }
+        usort($lista, fn ($a, $b) => strcmp($a['fechaHora'], $b['fechaHora']));
+        return $lista;
+    }
+
+    public function buscarDeSucursal(int $idSucursal, string $codigo): ?array
+    {
+        $r = $this->reservas[$codigo] ?? null;
+        return $r !== null && self::IDS_SUCURSAL[$r['origen']] === $idSucursal ? $this->aArregloDeSucursal($codigo, $r) : null;
+    }
+
+    public function crearEnVentanilla(?int $idRemitente, ?array $remitenteNuevo, ?int $idDestinatario, ?array $destinatarioNuevo, string $codigoOrigen, string $codigoDestino, string $contenido): string
+    {
+        foreach ([[&$idRemitente, $remitenteNuevo], [&$idDestinatario, $destinatarioNuevo]] as [&$id, $nuevo]) {
+            if ($id === null) {
+                $id = $this->siguientePersona++;
+                $this->personasCreadas++;
+                $this->personas[$id] = ['tipo' => $nuevo['tipoDocumento'], 'numero' => $nuevo['numeroDocumento'], 'nombre' => $nuevo['nombreCompleto'], 'telefono' => $nuevo['telefono']];
+            }
+        }
+        unset($id);
+        $codigo = sprintf('R%09d', $this->siguienteReserva++);
+        $this->sembrar($codigo, $idRemitente, $idDestinatario, $codigoOrigen, $codigoDestino, $contenido, 'PENDIENTE', $this->ahora->format('Y-m-d H:i:s'), null);
+        $this->reservas[$codigo]['canal'] = 'VENTANILLA';
+        return $codigo;
+    }
+
+    /** Reserva con documentos de remitente y destinatario (vista del personal). */
+    private function aArregloDeSucursal(string $codigo, array $r): array
+    {
+        $base = $this->aArreglo($codigo, $r);
+        $persona = fn (int $id): array => ['tipoDocumento' => $this->personas[$id]['tipo'], 'numeroDocumento' => $this->personas[$id]['numero'], 'nombreCompleto' => $this->personas[$id]['nombre']];
+        $base['remitente'] = $persona($r['idRemitente']);
+        $base['destinatario'] = $persona($r['idDestinatario']);
+        return $base;
     }
 
     public function listarVencibles(?DateTimeImmutable $referencia = null): array
@@ -1441,6 +1488,8 @@ prueba('controlador de tarifas: lee la consulta y es público', function () use 
     afirmar($r['estado'] === 200 && count($r['cuerpo']['data']['tarifas']) === 3, 'responde 200 con 3 tarifas');
     esperarError(fn () => (new CotizadorController($cotizador))->tarifas(new Request('GET', '/x', ['origen' => ['MOQ001'], 'destino' => 'AQP001'], '', []), []), 422, 'datos_invalidos');
 });
+
+require __DIR__ . '/envios.php'; // Módulo 5: ventanilla y envíos
 
 // ── Informe ─────────────────────────────────────────────────────────────────
 ob_end_clean();

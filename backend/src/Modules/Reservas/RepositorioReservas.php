@@ -56,6 +56,36 @@ interface RepositorioReservas
      */
     public function vencerPendientes(?DateTimeImmutable $referencia = null): int;
 
+    // ── Ventanilla (módulo 5): el personal de una agencia ve y crea reservas de SU sucursal de origen ──
+
+    /**
+     * Reservas PENDIENTES cuyo origen es la sucursal y que aún no cumplieron el plazo de vigencia (las que se pueden
+     * formalizar), de la más antigua a la más reciente. Incluyen los datos de remitente y destinatario con su documento
+     * (uso interno del personal: nunca para el público).
+     *
+     * @return list<array<string, mixed>> Claves: codigo, fechaHora, canal, contenido, estado, remitente y destinatario
+     *                                    ({tipoDocumento, numeroDocumento, nombreCompleto}), origen, destino,
+     *                                    codigoSeguimiento, plazoCumplido.
+     */
+    public function listarPendientesDeSucursal(int $idSucursal, ?DateTimeImmutable $referencia = null): array;
+
+    /**
+     * Una reserva de la sucursal de origen (en cualquier estado) con las mismas claves que listarPendientesDeSucursal.
+     * Si no existe o es de otro origen, null.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function buscarDeSucursal(int $idSucursal, string $codigo): ?array;
+
+    /**
+     * Crea una reserva PENDIENTE con canal VENTANILLA desde la sucursal de origen. Remitente y destinatario pueden ser
+     * personas existentes (id) o nuevas (datos); las nuevas se crean en la misma transacción. Devuelve el código.
+     *
+     * @param array{tipoDocumento: string, numeroDocumento: string, nombreCompleto: string, telefono: string}|null $remitenteNuevo
+     * @param array{tipoDocumento: string, numeroDocumento: string, nombreCompleto: string, telefono: string}|null $destinatarioNuevo
+     */
+    public function crearEnVentanilla(?int $idRemitente, ?array $remitenteNuevo, ?int $idDestinatario, ?array $destinatarioNuevo, string $codigoOrigen, string $codigoDestino, string $contenido): string;
+
     /**
      * Código y fecha de las reservas PENDIENTES que ya cumplieron el plazo (lo que vencería un vencerPendientes).
      * Solo lectura.

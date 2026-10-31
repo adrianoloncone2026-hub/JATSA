@@ -59,27 +59,29 @@ final class ReservaRepository implements RepositorioReservas
 
     public function crear(int $idRemitente, ?int $idDestinatario, ?array $destinatarioNuevo, string $codigoOrigen, string $codigoDestino, string $contenido): string
     {
+        return $this->insertarReserva($idRemitente, null, $idDestinatario, $destinatarioNuevo, $codigoOrigen, $codigoDestino, $contenido, 'WEB');
+    }
+
+    public function crearEnVentanilla(?int $idRemitente, ?array $remitenteNuevo, ?int $idDestinatario, ?array $destinatarioNuevo, string $codigoOrigen, string $codigoDestino, string $contenido): string
+    {
+        return $this->insertarReserva($idRemitente, $remitenteNuevo, $idDestinatario, $destinatarioNuevo, $codigoOrigen, $codigoDestino, $contenido, 'VENTANILLA');
+    }
+
+    /**
+     * Persona (si es nueva) + reserva en una sola transacción. El canal es siempre un literal del código
+     * ('WEB' o 'VENTANILLA'), nunca entrada del usuario.
+     *
+     * @param array<string, string>|null $remitenteNuevo
+     * @param array<string, string>|null $destinatarioNuevo
+     */
+    private function insertarReserva(?int $idRemitente, ?array $remitenteNuevo, ?int $idDestinatario, ?array $destinatarioNuevo, string $codigoOrigen, string $codigoDestino, string $contenido, string $canal): string
+    {
         $pdo = Database::conexion();
         $pdo->beginTransaction();
 
         try {
-            if ($idDestinatario === null) {
-                $persona = $pdo->prepare(
-                    'INSERT INTO Persona (tipoDocumento, numeroDocumento, nombreCompleto, telefono)
-                     VALUES (:tipo, :numero, :nombre, :telefono)',
-                );
-                $persona->bindValue(':tipo', $destinatarioNuevo['tipoDocumento'], PDO::PARAM_STR);
-                $persona->bindValue(':numero', $destinatarioNuevo['numeroDocumento'], PDO::PARAM_STR);
-                $persona->bindValue(':nombre', $destinatarioNuevo['nombreCompleto'], PDO::PARAM_STR);
-                $persona->bindValue(':telefono', $destinatarioNuevo['telefono'], PDO::PARAM_STR);
-                $persona->execute();
-
-                $buscada = $pdo->prepare('SELECT idPersona FROM Persona WHERE tipoDocumento = :tipo AND numeroDocumento = :numero');
-                $buscada->bindValue(':tipo', $destinatarioNuevo['tipoDocumento'], PDO::PARAM_STR);
-                $buscada->bindValue(':numero', $destinatarioNuevo['numeroDocumento'], PDO::PARAM_STR);
-                $buscada->execute();
-                $idDestinatario = (int) $buscada->fetchColumn();
-            }
+            $idRemitente ??= $this->insertarPersona($pdo, (array) $remitenteNuevo);
+            $idDestinatario ??= $this->insertarPersona($pdo, (array) $destinatarioNuevo);
 
             // Siguiente código R + 9 dígitos. UPDLOCK + HOLDLOCK serializan a quienes reservan a la vez,
             // de modo que dos reservas simultáneas no obtienen el mismo número.
@@ -94,7 +96,7 @@ final class ReservaRepository implements RepositorioReservas
                  VALUES (:codigo, :remitente, :destinatario,
                          (SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :origen AND activa = 1),
                          (SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :destino AND activa = 1),
-                         'WEB', :contenido)",
+                         '" . ($canal === 'VENTANILLA' ? 'VENTANILLA' : 'WEB') . "', :contenido)",
             );
             $reserva->bindValue(':codigo', $codigo, PDO::PARAM_STR);
             $reserva->bindValue(':remitente', $idRemitente, PDO::PARAM_INT);
@@ -113,6 +115,104 @@ final class ReservaRepository implements RepositorioReservas
             }
             throw $this->traducir($excepcion);
         }
+    }
+
+    /**
+     * Inserta una persona nueva y devuelve su id. Va dentro de la transacción de quien la llama.
+     *
+     * @param array<string, string> $persona tipoDocumento, numeroDocumento, nombreCompleto, telefono
+     */
+    private function insertarPersona(PDO $pdo, array $persona): int
+    {
+        $alta = $pdo->prepare(
+            'INSERT INTO Persona (tipoDocumento, numeroDocumento, nombreCompleto, telefono)
+             VALUES (:tipo, :numero, :nombre, :telefono)',
+        );
+        $alta->bindValue(':tipo', $persona['tipoDocumento'], PDO::PARAM_STR);
+        $alta->bindValue(':numero', $persona['numeroDocumento'], PDO::PARAM_STR);
+        $alta->bindValue(':nombre', $persona['nombreCompleto'], PDO::PARAM_STR);
+        $alta->bindValue(':telefono', $persona['telefono'], PDO::PARAM_STR);
+        $alta->execute();
+
+        $buscada = $pdo->prepare('SELECT idPersona FROM Persona WHERE tipoDocumento = :tipo AND numeroDocumento = :numero');
+        $buscada->bindValue(':tipo', $persona['tipoDocumento'], PDO::PARAM_STR);
+        $buscada->bindValue(':numero', $persona['numeroDocumento'], PDO::PARAM_STR);
+        $buscada->execute();
+
+        return (int) $buscada->fetchColumn();
+    }
+
+    public function listarPendientesDeSucursal(int $idSucursal, ?DateTimeImmutable $referencia = null): array
+    {
+        $sql = self::consultaDeSucursal() . " AND r.estadoReserva = 'PENDIENTE' AND r.fechaHoraReserva > " . self::limite($referencia)
+            . ' ORDER BY r.fechaHoraReserva, r.idReserva';
+        $sentencia = Database::conexion()->prepare($sql);
+        $sentencia->bindValue(':sucursal', $idSucursal, PDO::PARAM_INT);
+        self::enlazarReferencia($sentencia, $referencia);
+        $sentencia->execute();
+
+        return array_map(fn (array $fila): array => $this->aReservaDeSucursal($fila), $sentencia->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    public function buscarDeSucursal(int $idSucursal, string $codigo): ?array
+    {
+        $sentencia = Database::conexion()->prepare(self::consultaDeSucursal() . ' AND r.codigoReserva = :codigo');
+        $sentencia->bindValue(':sucursal', $idSucursal, PDO::PARAM_INT);
+        $sentencia->bindValue(':codigo', $codigo, PDO::PARAM_STR);
+        $sentencia->execute();
+        $fila = $sentencia->fetch(PDO::FETCH_ASSOC);
+
+        return $fila === false ? null : $this->aReservaDeSucursal($fila);
+    }
+
+    private const CONSULTA_DE_SUCURSAL = <<<'SQL'
+        SELECT r.codigoReserva, r.fechaHoraReserva, r.canal, r.descripcion, r.estadoReserva,
+               pr.tipoDocumento AS remitenteTipo, pr.numeroDocumento AS remitenteNumero, pr.nombreCompleto AS remitenteNombre,
+               pd.tipoDocumento AS destinatarioTipo, pd.numeroDocumento AS destinatarioNumero, pd.nombreCompleto AS destinatarioNombre,
+               so.codigoSucursal AS origenCodigo, so.nombre AS origenNombre, so.direccion AS origenDireccion, so.departamento AS origenDepartamento,
+               sd.codigoSucursal AS destinoCodigo, sd.nombre AS destinoNombre, sd.direccion AS destinoDireccion, sd.departamento AS destinoDepartamento,
+               e.codigoSeguimiento,
+               CASE WHEN r.estadoReserva = 'PENDIENTE'
+                     AND r.fechaHoraReserva <= DATEADD(HOUR, -%HORAS%, SYSDATETIME()) THEN 1 ELSE 0 END AS plazoCumplido
+        FROM Reserva AS r
+        INNER JOIN Persona AS pr ON pr.idPersona = r.idPersonaRemitente
+        INNER JOIN Persona AS pd ON pd.idPersona = r.idPersonaDestinatario
+        INNER JOIN Sucursal AS so ON so.idSucursal = r.idSucursalOrigen
+        INNER JOIN Sucursal AS sd ON sd.idSucursal = r.idSucursalDestino
+        LEFT JOIN Envio AS e ON e.idReserva = r.idReserva
+        WHERE r.idSucursalOrigen = :sucursal
+        SQL;
+
+    private static function consultaDeSucursal(): string
+    {
+        return str_replace('%HORAS%', (string) self::HORAS_DE_VIGENCIA, self::CONSULTA_DE_SUCURSAL);
+    }
+
+    /**
+     * @param array<string, mixed> $fila
+     * @return array<string, mixed>
+     */
+    private function aReservaDeSucursal(array $fila): array
+    {
+        $persona = static fn (string $prefijo): array => [
+            'tipoDocumento' => (string) $fila[$prefijo . 'Tipo'],
+            'numeroDocumento' => (string) $fila[$prefijo . 'Numero'],
+            'nombreCompleto' => (string) $fila[$prefijo . 'Nombre'],
+        ];
+
+        return [
+            'codigo' => (string) $fila['codigoReserva'],
+            'fechaHora' => (string) $fila['fechaHoraReserva'],
+            'canal' => (string) $fila['canal'],
+            'contenido' => (string) $fila['descripcion'],
+            'estado' => (string) $fila['estadoReserva'],
+            'remitente' => $persona('remitente'),
+            'destinatario' => $persona('destinatario'),
+            'origen' => ['codigo' => (string) $fila['origenCodigo'], 'nombre' => (string) $fila['origenNombre'], 'direccion' => (string) $fila['origenDireccion'], 'departamento' => (string) $fila['origenDepartamento']],
+            'destino' => ['codigo' => (string) $fila['destinoCodigo'], 'nombre' => (string) $fila['destinoNombre'], 'direccion' => (string) $fila['destinoDireccion'], 'departamento' => (string) $fila['destinoDepartamento']],
+            'codigoSeguimiento' => $fila['codigoSeguimiento'] !== null ? (string) $fila['codigoSeguimiento'] : null,
+            'plazoCumplido' => (int) $fila['plazoCumplido'] === 1,
+        ];
     }
 
     public function listarDeRemitente(int $idPersona, ?string $estado): array

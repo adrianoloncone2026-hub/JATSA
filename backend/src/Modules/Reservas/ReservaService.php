@@ -3,8 +3,6 @@ declare(strict_types=1);
 
 namespace Jatsa\Modules\Reservas;
 
-use DateInterval;
-use DateTimeImmutable;
 use Jatsa\Modules\Publico\AgenciaRepository;
 use Jatsa\Modules\Publico\CotizadorService;
 use Jatsa\Modules\Publico\RepositorioAgencias;
@@ -257,19 +255,9 @@ final class ReservaService
             'destino' => $reserva['destino'],
             'codigoSeguimiento' => $reserva['codigoSeguimiento'],
             // Solo una reserva PENDIENTE tiene fecha límite; si ya la cumplió y aún no se marcó VENCIDA, lo indica.
-            'venceEl' => $reserva['estado'] === 'PENDIENTE' ? self::fechaLimite((string) $reserva['fechaHora']) : null,
+            'venceEl' => $reserva['estado'] === 'PENDIENTE' ? Vigencia::fechaLimite((string) $reserva['fechaHora']) : null,
             'plazoCumplido' => $reserva['estado'] === 'PENDIENTE' && $reserva['plazoCumplido'],
         ];
-    }
-
-    /** fechaHoraReserva + horas de vigencia, en el mismo formato y reloj en que se guardó (sin conversiones de zona). */
-    private static function fechaLimite(string $fechaHora): string
-    {
-        $inicio = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', substr($fechaHora, 0, 19));
-
-        return $inicio === false
-            ? $fechaHora
-            : $inicio->add(new DateInterval('PT' . RepositorioReservas::HORAS_DE_VIGENCIA . 'H'))->format('Y-m-d H:i:s');
     }
 
     private static function errorDeDocumento(string $tipo, string $numero): ?string

@@ -11,6 +11,14 @@ export function errorDocumento(tipo, numero) {
   return 'Elige DNI o RUC.'
 }
 
+// Documentos que el personal puede registrar en ventanilla: DNI, RUC, CE y PAS.
+export function errorDocumentoPersonal(tipo, numero) {
+  const limpio = sinSeparadores(numero)
+  if (tipo === 'DNI' || tipo === 'RUC') return errorDocumento(tipo, numero)
+  if (tipo === 'CE' || tipo === 'PAS') return /^[A-Za-z0-9]{6,12}$/.test(limpio) ? '' : 'El documento tiene de 6 a 12 letras o dígitos.'
+  return 'Elige DNI, RUC, CE o PAS.'
+}
+
 export function errorTelefono(numero) {
   return /^\d{9}$/.test(sinSeparadores(numero)) ? '' : 'El teléfono tiene 9 dígitos.'
 }

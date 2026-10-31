@@ -62,6 +62,8 @@ schtasks /Create /SC HOURLY /TN "JATSA vencer reservas" /TR "C:\php\php.exe C:\J
 ```
 o con `cron` en Linux: `0 * * * * php /ruta/backend/bin/vencer-reservas.php --ejecutar`. Con una ejecución horaria, una reserva puede quedar hasta una hora como `PENDIENTE` con `plazoCumplido: true`; la capa 1 evita que se use mientras tanto. **No se instaló ninguna tarea programada**, y el comando solo escribe en estado `PENDIENTE` y con el plazo cumplido (nunca toca otros estados). Permisos: la cuenta de la aplicación ya tiene `UPDATE` sobre `Reserva`; no hace falta ninguno adicional.
 
+> La ventanilla del Administrador (reservas de su agencia, «Cliente sin reserva» y formalizar) está en `envios.md`.
+
 ## GET `/api/reservas/destinatario?tipoDocumento=DNI&numeroDocumento=70234561`
 Autocompleta el formulario: `{ "existe": true, "nombreCompleto": "…", "esUsted": false }` o `{ "existe": false }`. **Devuelve solo el nombre**, nunca teléfono, correo ni otros datos. `esUsted` avisa si el documento es el del propio remitente. `422` si el documento no es válido.
 
