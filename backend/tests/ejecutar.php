@@ -24,6 +24,10 @@ use Jatsa\Modules\Cuenta\CuentaController;
 use Jatsa\Modules\Cuenta\CuentaRepository;
 use Jatsa\Modules\Cuenta\CuentaService;
 use Jatsa\Modules\Cuenta\RepositorioCuentas;
+use Jatsa\Modules\Reservas\RepositorioReservas;
+use Jatsa\Modules\Reservas\ReservaController;
+use Jatsa\Modules\Reservas\ReservaService;
+use Jatsa\Modules\Reservas\VencimientoService;
 use Jatsa\Modules\Publico\AgenciasController;
 use Jatsa\Modules\Publico\CotizadorController;
 use Jatsa\Modules\Publico\CotizadorService;
@@ -925,6 +929,518 @@ prueba('repositorio de cuentas: traduce las claves duplicadas a 409 y deja pasar
 });
 
 $limpiar();
+
+// ── Módulo 4: reservas del cliente (repositorios simulados, sin base de datos) ───────────────
+/** Repositorio de reservas en memoria con las mismas personas de muestra y agencias simuladas. */
+final class ReservasFalso implements RepositorioReservas
+{
+    /** @var array<int, array{tipo: string, numero: string, nombre: string, telefono: string}> */
+    public array $personas = [
+        4 => ['tipo' => 'DNI', 'numero' => '71889345', 'nombre' => 'María Elena Rojas Ccori', 'telefono' => '987654323'],
+        5 => ['tipo' => 'RUC', 'numero' => '20123456789', 'nombre' => 'Comercial Sur S.A.C.', 'telefono' => '987654324'],
+        50 => ['tipo' => 'DNI', 'numero' => '70234561', 'nombre' => 'Luis Alberto Flores Condori', 'telefono' => '987654322'],
+        51 => ['tipo' => 'DNI', 'numero' => '45781236', 'nombre' => 'Rosa María Quispe Mamani', 'telefono' => '987654321'],
+    ];
+    /** idUsuario => idPersona */
+    public array $usuarios = [1 => 51, 4 => 4, 5 => 5];
+    /** @var array<string, array<string, mixed>> codigo => reserva (con idRemitente) */
+    public array $reservas = [];
+    public int $siguienteReserva = 6;
+    public int $siguientePersona = 100;
+    public int $personasCreadas = 0;
+    public bool $cancelarFalla = false;
+    /** Reloj simulado: «ahora» de la base de datos para el plazo de vigencia. */
+    public DateTimeImmutable $ahora;
+    private AgenciasFalso $agencias;
+
+    public function __construct()
+    {
+        $this->agencias = new AgenciasFalso();
+        $this->ahora = new DateTimeImmutable('2026-10-31 09:15:00');
+        $this->sembrar('R000000001', 4, 50, 'MOQ001', 'AQP001', 'Documentos y ropa', 'FORMALIZADA', '2026-10-10 09:15:00', 'EN7K4Q2M9X1B');
+        $this->sembrar('R000000002', 5, 51, 'AQP001', 'LIM001', 'Repuestos de motor', 'FORMALIZADA', '2026-10-11 08:40:00', 'ENB3F8L0Q2ZD');
+        $this->sembrar('R000000003', 4, 50, 'MOQ001', 'AQP001', 'Libros', 'CANCELADA', '2026-10-12 10:00:00', null);
+        $this->sembrar('R000000004', 4, 50, 'ILO001', 'MOQ001', 'Cartas', 'VENCIDA', '2026-10-13 10:00:00', null);
+        $this->sembrar('R000000005', 4, 50, 'MOQ001', 'ILO001', 'Medicinas', 'PENDIENTE', '2026-10-30 10:00:00', null);
+    }
+
+    private function sembrar(string $codigo, int $remitente, int $destinatario, string $origen, string $destino, string $contenido, string $estado, string $fechaHora, ?string $seguimiento): void
+    {
+        $this->reservas[$codigo] = ['idRemitente' => $remitente, 'idDestinatario' => $destinatario, 'origen' => $origen, 'destino' => $destino,
+            'contenido' => $contenido, 'estado' => $estado, 'fechaHora' => $fechaHora, 'seguimiento' => $seguimiento, 'canal' => 'WEB'];
+    }
+
+    public function idPersonaDeUsuario(int $idUsuario): ?int
+    {
+        return $this->usuarios[$idUsuario] ?? null;
+    }
+
+    public function buscarPersonaPorDocumento(string $tipoDocumento, string $numeroDocumento): ?array
+    {
+        foreach ($this->personas as $id => $p) {
+            if ($p['tipo'] === $tipoDocumento && $p['numero'] === $numeroDocumento) {
+                return ['idPersona' => $id, 'nombreCompleto' => $p['nombre']];
+            }
+        }
+        return null;
+    }
+
+    public function crear(int $idRemitente, ?int $idDestinatario, ?array $destinatarioNuevo, string $codigoOrigen, string $codigoDestino, string $contenido): string
+    {
+        if ($idDestinatario === null) {
+            $idDestinatario = $this->siguientePersona++;
+            $this->personasCreadas++;
+            $this->personas[$idDestinatario] = ['tipo' => $destinatarioNuevo['tipoDocumento'], 'numero' => $destinatarioNuevo['numeroDocumento'],
+                'nombre' => $destinatarioNuevo['nombreCompleto'], 'telefono' => $destinatarioNuevo['telefono']];
+        }
+        $codigo = sprintf('R%09d', $this->siguienteReserva++);
+        $this->sembrar($codigo, $idRemitente, $idDestinatario, $codigoOrigen, $codigoDestino, $contenido, 'PENDIENTE', $this->ahora->format('Y-m-d H:i:s'), null);
+        return $codigo;
+    }
+
+    /** Instante límite: ahora − 72 h. Vence si fechaHora <= límite (en el instante exacto ya vence). */
+    private function limite(?DateTimeImmutable $referencia): string
+    {
+        return ($referencia ?? $this->ahora)->modify('-' . RepositorioReservas::HORAS_DE_VIGENCIA . ' hours')->format('Y-m-d H:i:s');
+    }
+
+    public function vencerPendientes(?DateTimeImmutable $referencia = null): int
+    {
+        $n = 0;
+        foreach ($this->reservas as $codigo => $r) {
+            if ($r['estado'] === 'PENDIENTE' && $r['fechaHora'] <= $this->limite($referencia)) {
+                $this->reservas[$codigo]['estado'] = 'VENCIDA';
+                $n++;
+            }
+        }
+        return $n;
+    }
+
+    public function listarVencibles(?DateTimeImmutable $referencia = null): array
+    {
+        $lista = [];
+        foreach ($this->reservas as $codigo => $r) {
+            if ($r['estado'] === 'PENDIENTE' && $r['fechaHora'] <= $this->limite($referencia)) {
+                $lista[] = ['codigo' => $codigo, 'fechaHora' => $r['fechaHora']];
+            }
+        }
+        return $lista;
+    }
+
+    public function listarDeRemitente(int $idPersona, ?string $estado): array
+    {
+        $lista = [];
+        foreach ($this->reservas as $codigo => $r) {
+            if ($r['idRemitente'] === $idPersona && ($estado === null || $r['estado'] === $estado)) {
+                $lista[] = $this->aArreglo($codigo, $r);
+            }
+        }
+        usort($lista, fn ($a, $b) => strcmp($b['fechaHora'], $a['fechaHora']));
+        return $lista;
+    }
+
+    public function buscarDeRemitente(int $idPersona, string $codigo): ?array
+    {
+        $r = $this->reservas[$codigo] ?? null;
+        return $r !== null && $r['idRemitente'] === $idPersona ? $this->aArreglo($codigo, $r) : null;
+    }
+
+    public function cancelar(int $idPersona, string $codigo, ?DateTimeImmutable $referencia = null): bool
+    {
+        $r = $this->reservas[$codigo] ?? null;
+        if ($this->cancelarFalla || $r === null || $r['idRemitente'] !== $idPersona || $r['estado'] !== 'PENDIENTE' || $r['fechaHora'] <= $this->limite($referencia)) {
+            return false;
+        }
+        $this->reservas[$codigo]['estado'] = 'CANCELADA';
+        return true;
+    }
+
+    private function aArreglo(string $codigo, array $r): array
+    {
+        $o = $this->agencias->buscarActivaPorCodigo($r['origen']);
+        $d = $this->agencias->buscarActivaPorCodigo($r['destino']);
+        return ['codigo' => $codigo, 'fechaHora' => $r['fechaHora'], 'canal' => $r['canal'], 'contenido' => $r['contenido'], 'estado' => $r['estado'],
+            'destinatario' => $this->personas[$r['idDestinatario']]['nombre'],
+            'origen' => ['codigo' => $o['codigo'], 'nombre' => $o['nombre'], 'direccion' => $o['direccion'], 'departamento' => $o['departamento']],
+            'destino' => ['codigo' => $d['codigo'], 'nombre' => $d['nombre'], 'direccion' => $d['direccion'], 'departamento' => $d['departamento']],
+            'codigoSeguimiento' => $r['seguimiento'],
+            'plazoCumplido' => $r['estado'] === 'PENDIENTE' && $r['fechaHora'] <= $this->limite(null)];
+    }
+}
+
+/** @return array{0: ReservasFalso, 1: ReservaService} */
+function escenarioReservas(): array
+{
+    $repo = new ReservasFalso();
+    $agencias = new AgenciasFalso();
+    // Mismo cotizador que /api/tarifas: la fecha de «hoy» es la de las pruebas del módulo 2.
+    return [$repo, new ReservaService($repo, $agencias, new CotizadorService($agencias, new RutasFalso(), fn () => '2026-10-31'))];
+}
+
+function reservaValida(array $cambios = []): array
+{
+    return $cambios + ['tipoDocumento' => 'DNI', 'numeroDocumento' => '70234561', 'sucursalOrigen' => 'MOQ001', 'sucursalDestino' => 'AQP001', 'contenido' => 'Documentos y ropa'];
+}
+
+function camposDeReserva(callable $accion): array
+{
+    return camposConError($accion); // 422 datos_invalidos → claves de los campos con error
+}
+
+prueba('reservas: crear con un destinatario que ya existe → PENDIENTE por canal WEB', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $r = $servicio->crear(4, reservaValida(['numeroDocumento' => '702-345 61']));
+    afirmar($r['codigo'] === 'R000000006' && $r['estado'] === 'PENDIENTE' && $r['canal'] === 'WEB', 'código, estado y canal');
+    afirmar($r['destinatario'] === 'Luis Alberto Flores Condori' && $r['contenido'] === 'Documentos y ropa', 'destinatario y contenido');
+    afirmar($r['origen'] === ['codigo' => 'MOQ001', 'nombre' => 'Agencia Moquegua', 'direccion' => 'Jr. Ancash 325', 'departamento' => 'Moquegua'], 'origen con su dirección y departamento');
+    afirmar($r['destino']['codigo'] === 'AQP001' && $r['fecha'] === '2026-10-31' && $r['codigoSeguimiento'] === null, 'destino, fecha y sin envío todavía');
+    afirmar($repo->personasCreadas === 0, 'no crea una persona nueva');
+    afirmar($servicio->crear(4, reservaValida())['codigo'] === 'R000000007', 'el siguiente código sube de uno en uno');
+});
+
+prueba('reservas: el remitente es siempre la persona de la sesión (no se acepta otro en el cuerpo)', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $servicio->crear(5, reservaValida(['idPersonaRemitente' => 4, 'remitente' => 4, 'canal' => 'VENTANILLA', 'estado' => 'FORMALIZADA']));
+    $creada = $repo->reservas['R000000006'];
+    afirmar($creada['idRemitente'] === 5 && $creada['canal'] === 'WEB' && $creada['estado'] === 'PENDIENTE', 'remitente, canal y estado los fija el servidor');
+});
+
+prueba('reservas: destinatario nuevo → se crea su persona con nombre y teléfono normalizados', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $r = $servicio->crear(4, reservaValida(['numeroDocumento' => '48484848', 'nombreDestinatario' => "  Ana   Torres\tDíaz ", 'telefonoDestinatario' => '911 222-333']));
+    afirmar($repo->personasCreadas === 1, 'una persona nueva');
+    $nueva = $repo->personas[$repo->siguientePersona - 1];
+    afirmar($nueva === ['tipo' => 'DNI', 'numero' => '48484848', 'nombre' => 'Ana Torres Díaz', 'telefono' => '911222333'], 'datos normalizados');
+    afirmar($r['destinatario'] === 'Ana Torres Díaz', 'la reserva apunta a ella');
+    $ruc = $servicio->crear(4, reservaValida(['tipoDocumento' => 'ruc', 'numeroDocumento' => '20999888777', 'nombreDestinatario' => 'Transportes S.A.C.', 'telefonoDestinatario' => '900111222']));
+    afirmar($ruc['destinatario'] === 'Transportes S.A.C.', 'también con RUC');
+});
+
+prueba('reservas: destinatario nuevo sin datos → 422 por campo y no se crea nada', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $campos = camposDeReserva(fn () => $servicio->crear(4, reservaValida(['numeroDocumento' => '48484848'])));
+    sort($campos);
+    afirmar($campos === ['nombreDestinatario', 'telefonoDestinatario'], 'campos: ' . implode(',', $campos));
+    camposDeReserva(fn () => $servicio->crear(4, reservaValida(['numeroDocumento' => '48484848', 'nombreDestinatario' => 'Ana', 'telefonoDestinatario' => '123'])));
+    afirmar($repo->personasCreadas === 0 && count($repo->reservas) === 5, 'sin escrituras');
+});
+
+prueba('reservas: a un destinatario existente no se le cambian sus datos aunque se manden otros', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $antes = $repo->personas[50];
+    $servicio->crear(4, reservaValida(['nombreDestinatario' => 'OTRO NOMBRE', 'telefonoDestinatario' => '999999999']));
+    afirmar($repo->personas[50] === $antes && $repo->personasCreadas === 0, 'la persona existente queda igual');
+});
+
+prueba('reservas: no se puede enviar a uno mismo', function () {
+    [, $servicio] = escenarioReservas();
+    $campos = camposDeReserva(fn () => $servicio->crear(4, reservaValida(['numeroDocumento' => '71889345'])));
+    afirmar($campos === ['numeroDocumento'], 'el remitente no puede ser el destinatario');
+    $campos = camposDeReserva(fn () => $servicio->crear(5, reservaValida(['tipoDocumento' => 'RUC', 'numeroDocumento' => '20123456789'])));
+    afirmar($campos === ['numeroDocumento'], 'tampoco el empresario a su propio RUC');
+});
+
+prueba('reservas: valida documento, sucursales y contenido, y devuelve todos los errores a la vez', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $campos = camposDeReserva(fn () => $servicio->crear(4, ['tipoDocumento' => 'CE', 'numeroDocumento' => '12', 'sucursalOrigen' => '', 'sucursalDestino' => 'xx', 'contenido' => '   ']));
+    sort($campos);
+    afirmar($campos === ['contenido', 'numeroDocumento', 'sucursalDestino', 'sucursalOrigen'], 'campos: ' . implode(',', $campos));
+    $debeFallar = [
+        ['DNI de 7 dígitos', ['numeroDocumento' => '1234567'], 'numeroDocumento'],
+        ['RUC de 10 dígitos', ['tipoDocumento' => 'RUC', 'numeroDocumento' => '2012345678'], 'numeroDocumento'],
+        ['origen dada de baja', ['sucursalOrigen' => 'TAC001'], 'sucursalOrigen'],
+        ['destino inexistente', ['sucursalDestino' => 'ZZZ999'], 'sucursalDestino'],
+        ['origen = destino', ['sucursalDestino' => 'MOQ001'], 'sucursalDestino'],
+        ['contenido de 201 caracteres', ['contenido' => str_repeat('ñ', 201)], 'contenido'],
+    ];
+    foreach ($debeFallar as [$descripcion, $cambios, $campo]) {
+        $c = camposDeReserva(fn () => $servicio->crear(4, reservaValida($cambios)));
+        afirmar(in_array($campo, $c, true), "$descripcion: debía marcar $campo y marcó " . implode(',', $c));
+    }
+    afirmar(count($repo->reservas) === 5, 'ningún intento inválido creó una reserva');
+    $servicio->crear(4, reservaValida(['contenido' => str_repeat('ñ', 200), 'sucursalOrigen' => ' moq001 ']));
+});
+
+prueba('reservas: valores que no son texto no rompen el servicio (422)', function () {
+    [, $servicio] = escenarioReservas();
+    $campos = camposDeReserva(fn () => $servicio->crear(4, ['tipoDocumento' => ['DNI'], 'numeroDocumento' => 123, 'sucursalOrigen' => null, 'sucursalDestino' => [], 'contenido' => true]));
+    afirmar(in_array('numeroDocumento', $campos, true) && in_array('contenido', $campos, true), 'marca los campos');
+});
+
+prueba('reservas: listar solo muestra las del propio cliente y filtra por estado', function () {
+    [, $servicio] = escenarioReservas();
+    $todas = $servicio->listar(4);
+    afirmar(array_column($todas, 'codigo') === ['R000000005', 'R000000004', 'R000000003', 'R000000001'], 'las 4 de María, de la más reciente a la más antigua: ' . implode(',', array_column($todas, 'codigo')));
+    afirmar(array_column($servicio->listar(4, 'pendiente'), 'codigo') === ['R000000005'], 'solo pendientes (sin distinguir mayúsculas)');
+    afirmar(array_column($servicio->listar(4, 'CANCELADA'), 'codigo') === ['R000000003'], 'canceladas');
+    afirmar(array_column($servicio->listar(4, 'VENCIDA'), 'codigo') === ['R000000004'], 'vencidas');
+    afirmar($servicio->listar(4, 'FORMALIZADA')[0]['codigoSeguimiento'] === 'EN7K4Q2M9X1B', 'la formalizada trae su código de seguimiento');
+    afirmar(array_column($servicio->listar(5), 'codigo') === ['R000000002'], 'el empresario ve solo la suya');
+    afirmar($servicio->listar(1) === [], 'quien no ha reservado ve una lista vacía');
+    $e = esperarError(fn () => $servicio->listar(4, 'ANULADA'), 422, 'datos_invalidos');
+    afirmar(isset($e->campos['estado']), 'un estado inválido señala el campo estado');
+});
+
+prueba('reservas: ver una reserva solo si es propia; de otra persona o inexistente da el mismo 404', function () {
+    [, $servicio] = escenarioReservas();
+    afirmar($servicio->ver(4, 'R000000005')['estado'] === 'PENDIENTE', 'propia');
+    afirmar($servicio->ver(4, ' r000000005 ')['codigo'] === 'R000000005', 'normaliza el código');
+    $ajena = esperarError(fn () => $servicio->ver(4, 'R000000002'), 404, 'reserva_no_encontrada');
+    $inexistente = esperarError(fn () => $servicio->ver(4, 'R000000999'), 404, 'reserva_no_encontrada');
+    afirmar($ajena->getMessage() === $inexistente->getMessage(), 'no revela si el código existe');
+    foreach (['', 'abc', "R000000005'--", 'R12', '../x'] as $malo) {
+        esperarError(fn () => $servicio->ver(4, $malo), 404, 'reserva_no_encontrada');
+    }
+});
+
+prueba('reservas: cancelar una pendiente la pasa a CANCELADA y no se puede repetir', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $r = $servicio->cancelar(4, 'R000000005');
+    afirmar($r['estado'] === 'CANCELADA' && $repo->reservas['R000000005']['estado'] === 'CANCELADA', 'cancelada');
+    esperarError(fn () => $servicio->cancelar(4, 'R000000005'), 409, 'reserva_no_cancelable');
+});
+
+prueba('reservas: no se cancelan las formalizadas, canceladas ni vencidas, ni las de otra persona', function () {
+    [$repo, $servicio] = escenarioReservas();
+    foreach (['R000000001', 'R000000003', 'R000000004'] as $codigo) {
+        esperarError(fn () => $servicio->cancelar(4, $codigo), 409, 'reserva_no_cancelable');
+    }
+    esperarError(fn () => $servicio->cancelar(5, 'R000000005'), 404, 'reserva_no_encontrada'); // es de María, no del empresario
+    afirmar($repo->reservas['R000000005']['estado'] === 'PENDIENTE' && $repo->reservas['R000000001']['estado'] === 'FORMALIZADA', 'nada cambió');
+});
+
+prueba('reservas: si la cancelación no cambia nada (otra operación se adelantó) → 409', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $repo->cancelarFalla = true;
+    esperarError(fn () => $servicio->cancelar(4, 'R000000005'), 409, 'reserva_no_cancelable');
+});
+
+/** Rutas con vigencia: la tarifa MOQ001→AQP001 caduca el 2026-10-30 (como si Rutas.vigenciaHasta lo indicara). */
+final class RutasConCaducidad implements RepositorioRutas
+{
+    public function __construct(private readonly RutasFalso $base, private readonly string $caducaEl)
+    {
+    }
+
+    public function vigentes(string $codigoOrigen, string $codigoDestino, string $fechaIso): array
+    {
+        return $fechaIso > $this->caducaEl ? [] : $this->base->vigentes($codigoOrigen, $codigoDestino, $fechaIso);
+    }
+}
+
+prueba('reservas: ruta SIN ninguna tarifa vigente → 422 en sucursalDestino y no se crea nada', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $campos = camposDeReserva(fn () => $servicio->crear(4, reservaValida(['sucursalOrigen' => 'ILO001', 'sucursalDestino' => 'AQP001'])));
+    afirmar($campos === ['sucursalDestino'], 'solo el destino queda marcado: ' . implode(',', $campos));
+    afirmar(count($repo->reservas) === 5 && $repo->personasCreadas === 0, 'no se escribió reserva ni persona');
+});
+
+prueba('reservas: la ruta inversa no hereda la tarifa (direccionalidad) y el mensaje lo explica', function () {
+    [$repo, $servicio] = escenarioReservas();
+    afirmar($servicio->crear(4, reservaValida())['codigo'] === 'R000000006', 'MOQ001→AQP001 sí tiene tarifa');
+    try {
+        $servicio->crear(4, reservaValida(['sucursalOrigen' => 'AQP001', 'sucursalDestino' => 'MOQ001']));
+        afirmar(false, 'AQP001→MOQ001 debía rechazarse');
+    } catch (HttpException $e) {
+        afirmar($e->estado === 422 && str_contains((string) ($e->campos['sucursalDestino'] ?? ''), 'No hay tarifas vigentes'), 'mensaje claro en el campo');
+    }
+});
+
+prueba('reservas: con al menos UNA tarifa (de cualquier tipo) se acepta; solo CARGA o solo SOBRE bastan', function () {
+    [$repo, $servicio] = escenarioReservas();
+    afirmar($servicio->crear(4, reservaValida(['sucursalOrigen' => 'LIM001', 'sucursalDestino' => 'ILO001']))['estado'] === 'PENDIENTE', 'solo CARGA');
+    afirmar($servicio->crear(4, reservaValida(['sucursalOrigen' => 'ILO001', 'sucursalDestino' => 'MOQ001']))['estado'] === 'PENDIENTE', 'solo SOBRE');
+});
+
+prueba('reservas: una tarifa caducada no cuenta (la vigencia sale de la fecha de la operación)', function () {
+    $repo = new ReservasFalso();
+    $agencias = new AgenciasFalso();
+    $vencida = new ReservaService($repo, $agencias, new CotizadorService($agencias, new RutasConCaducidad(new RutasFalso(), '2026-10-30'), fn () => '2026-10-31'));
+    $vigente = new ReservaService($repo, $agencias, new CotizadorService($agencias, new RutasConCaducidad(new RutasFalso(), '2026-10-30'), fn () => '2026-10-30'));
+    afirmar(camposDeReserva(fn () => $vencida->crear(4, reservaValida())) === ['sucursalDestino'], 'caducó ayer: rechazada');
+    afirmar($vigente->crear(4, reservaValida())['estado'] === 'PENDIENTE', 'el último día de vigencia todavía vale');
+});
+
+prueba('reservas: la validación de tarifa coincide con /api/tarifas y con el cotizador (misma fuente)', function () {
+    [, $servicio] = escenarioReservas();
+    $agencias = new AgenciasFalso();
+    $cot = new CotizadorService($agencias, new RutasFalso(), fn () => '2026-10-31');
+    foreach ([['MOQ001', 'AQP001'], ['AQP001', 'MOQ001'], ['ILO001', 'AQP001'], ['LIM001', 'ILO001']] as [$o, $d]) {
+        $hay = array_filter($cot->tarifas($o, $d)['tarifas'], fn ($t) => $t['disponible'] === true) !== [];
+        $acepta = true;
+        try {
+            $servicio->crear(4, reservaValida(['sucursalOrigen' => $o, 'sucursalDestino' => $d]));
+        } catch (HttpException) {
+            $acepta = false;
+        }
+        afirmar($hay === $acepta, "{$o}->{$d}: tarifas=" . ($hay ? 'sí' : 'no') . ' reserva=' . ($acepta ? 'sí' : 'no'));
+    }
+    afirmar($cot->cotizar('MOQ001', 'AQP001', '0.5') !== [], 'el cotizador del módulo 2 sigue funcionando');
+});
+
+prueba('vencimiento: límites de 71:59:59, 72:00:00 y posteriores (en el instante exacto ya vence)', function () {
+    $repo = new ReservasFalso();
+    $repo->reservas = [];
+    $servicio = new VencimientoService($repo);
+    $base = new DateTimeImmutable('2026-10-28 09:00:00');
+    $casos = ['R000000010' => '2026-10-31 08:59:59', 'R000000011' => '2026-10-31 09:00:00', 'R000000012' => '2026-10-31 09:00:01', 'R000000013' => '2026-11-05 00:00:00'];
+    foreach (['R000000010', 'R000000011', 'R000000012', 'R000000013'] as $i => $codigo) {
+        $repo->reservas[$codigo] = ['idRemitente' => 4, 'idDestinatario' => 50, 'origen' => 'MOQ001', 'destino' => 'AQP001', 'contenido' => 'x',
+            'estado' => 'PENDIENTE', 'fechaHora' => ['2026-10-28 09:00:01', '2026-10-28 09:00:00', '2026-10-28 08:59:59', '2026-10-27 00:00:00'][$i], 'seguimiento' => null, 'canal' => 'WEB'];
+    }
+    $ref = new DateTimeImmutable('2026-10-31 09:00:00');
+    // reservada 09:00:01 (71:59:59 antes de la referencia) NO vence; 09:00:00 (72:00:00) SÍ; 08:59:59 (72:00:01) SÍ; muy anterior SÍ.
+    $codigos = array_column($servicio->vencibles($ref), 'codigo');
+    afirmar($codigos === ['R000000013', 'R000000012', 'R000000011'] || $codigos === ['R000000011', 'R000000012', 'R000000013'] || (count($codigos) === 3 && !in_array('R000000010', $codigos, true)), 'vencibles: ' . implode(',', $codigos));
+    afirmar($servicio->vencer($ref) === 3, 'vencen 3');
+    afirmar($repo->reservas['R000000010']['estado'] === 'PENDIENTE', '71:59:59 sigue PENDIENTE');
+    afirmar($repo->reservas['R000000011']['estado'] === 'VENCIDA', '72:00:00 ya VENCIDA');
+    afirmar($repo->reservas['R000000012']['estado'] === 'VENCIDA' && $repo->reservas['R000000013']['estado'] === 'VENCIDA', 'posteriores VENCIDAS');
+    afirmar($servicio->vencer($ref) === 0, 'repetirlo no cambia nada (idempotente)');
+});
+
+prueba('vencimiento: FORMALIZADA, CANCELADA y VENCIDA no cambian por esta regla', function () {
+    $repo = new ReservasFalso(); // R1 FORMALIZADA, R2 FORMALIZADA, R3 CANCELADA, R4 VENCIDA, R5 PENDIENTE reciente
+    $antes = array_map(fn ($r) => $r['estado'], $repo->reservas);
+    $n = (new VencimientoService($repo))->vencer(new DateTimeImmutable('2027-01-01 00:00:00'));
+    afirmar($n === 1, 'solo la pendiente: ' . $n);
+    foreach (['R000000001', 'R000000002', 'R000000003', 'R000000004'] as $c) {
+        afirmar($repo->reservas[$c]['estado'] === $antes[$c], "$c intacta");
+    }
+    afirmar($repo->reservas['R000000005']['estado'] === 'VENCIDA', 'la pendiente venció');
+});
+
+prueba('vencimiento: una reserva que cumplió el plazo no se cancela, aunque aún no se haya marcado VENCIDA', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $repo->ahora = new DateTimeImmutable('2026-11-02 10:00:00'); // R5: 2026-10-30 10:00 → 72:00:00 exactos
+    esperarError(fn () => $servicio->cancelar(4, 'R000000005'), 409, 'reserva_vencida');
+    afirmar($repo->reservas['R000000005']['estado'] === 'PENDIENTE', 'no se tocó');
+    $r = $servicio->ver(4, 'R000000005');
+    afirmar($r['estado'] === 'PENDIENTE' && $r['plazoCumplido'] === true, 'la API avisa que el plazo se cumplió');
+    $repo->ahora = new DateTimeImmutable('2026-11-02 09:59:59');
+    afirmar($servicio->cancelar(4, 'R000000005')['estado'] === 'CANCELADA', 'un segundo antes aún se puede cancelar');
+});
+
+prueba('vencimiento: carrera cancelar ↔ vencer: gana la primera y la otra no pisa el estado', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $venc = new VencimientoService($repo);
+    $ref = new DateTimeImmutable('2027-01-01 00:00:00');
+    afirmar($servicio->cancelar(4, 'R000000005')['estado'] === 'CANCELADA', 'cancelación primero');
+    afirmar($venc->vencer($ref) === 0 && $repo->reservas['R000000005']['estado'] === 'CANCELADA', 'el vencimiento no pisa una CANCELADA');
+    [$repo2, $servicio2] = escenarioReservas();
+    $v2 = new VencimientoService($repo2);
+    $repo2->ahora = new DateTimeImmutable('2026-11-05 00:00:00');
+    afirmar($v2->vencer() === 1, 'vencimiento primero');
+    esperarError(fn () => $servicio2->cancelar(4, 'R000000005'), 409, 'reserva_no_cancelable');
+    afirmar($repo2->reservas['R000000005']['estado'] === 'VENCIDA', 'la cancelación no pisa una VENCIDA');
+});
+
+prueba('vencimiento: la respuesta de una pendiente trae venceEl = reserva + 72 h', function () {
+    [, $servicio] = escenarioReservas();
+    $r = $servicio->ver(4, 'R000000005');
+    afirmar($r['venceEl'] === '2026-11-02 10:00:00', 'venceEl: ' . ($r['venceEl'] ?? 'null'));
+    afirmar($servicio->ver(4, 'R000000001')['venceEl'] === null, 'las no pendientes no tienen fecha límite');
+});
+
+prueba('reservas: consultar destinatario devuelve solo el nombre (nunca teléfono ni correo)', function () {
+    [, $servicio] = escenarioReservas();
+    $r = $servicio->consultarDestinatario(4, 'dni', '702 345 61');
+    afirmar($r === ['existe' => true, 'nombreCompleto' => 'Luis Alberto Flores Condori', 'esUsted' => false], 'existe');
+    afirmar(!str_contains(json_encode($r), '987654322'), 'no filtra el teléfono');
+    afirmar($servicio->consultarDestinatario(4, 'DNI', '71889345')['esUsted'] === true, 'avisa si es el propio remitente');
+    afirmar($servicio->consultarDestinatario(4, 'DNI', '48484848') === ['existe' => false], 'no existe');
+    $e = esperarError(fn () => $servicio->consultarDestinatario(4, 'DNI', '123'), 422, 'datos_invalidos');
+    afirmar(isset($e->campos['numeroDocumento']), 'documento inválido');
+    esperarError(fn () => $servicio->consultarDestinatario(4, 'CE', '12345678'), 422, 'datos_invalidos');
+});
+
+prueba('controlador de reservas: crear, listar, ver, cancelar y consultar usan la sesión', function () use ($limpiar) {
+    $limpiar();
+    [$auth, , , $servicioAuth] = escenarioCuenta();
+    [$repo, $servicio] = escenarioReservas();
+    $c = new ReservaController($servicio);
+    esperarError(fn () => $c->listar(peticion('GET', '/api/reservas'), []), 401, 'no_autenticado');
+
+    sesionDe($auth, $servicioAuth, 4);
+    $creada = leer($c->crear(peticion('POST', '/api/reservas', json_encode(reservaValida())), []));
+    afirmar($creada['estado'] === 201 && $creada['cuerpo']['data']['reserva']['codigo'] === 'R000000006', '201 con la reserva');
+    $lista = leer($c->listar(new Request('GET', '/api/reservas', ['estado' => 'PENDIENTE'], '', []), []));
+    afirmar(array_column($lista['cuerpo']['data']['reservas'], 'codigo') === ['R000000006', 'R000000005'], 'lista con filtro');
+    $ver = leer($c->ver(peticion('GET', '/x'), ['codigo' => 'R000000006']));
+    afirmar($ver['cuerpo']['data']['reserva']['estado'] === 'PENDIENTE', 'ver');
+    $can = leer($c->cancelar(peticion('POST', '/x'), ['codigo' => 'R000000006']));
+    afirmar($can['cuerpo']['data']['reserva']['estado'] === 'CANCELADA', 'cancelar');
+    $dest = leer($c->consultarDestinatario(new Request('GET', '/x', ['tipoDocumento' => 'DNI', 'numeroDocumento' => '70234561'], '', []), []));
+    afirmar($dest['cuerpo']['data']['nombreCompleto'] === 'Luis Alberto Flores Condori', 'consultar destinatario');
+    // Un filtro que llega como arreglo (estado[]=…) se ignora: lista sin filtrar, no falla.
+    $sinFiltro = leer($c->listar(new Request('GET', '/x', ['estado' => ['PENDIENTE']], '', []), []));
+    afirmar($sinFiltro['estado'] === 200 && count($sinFiltro['cuerpo']['data']['reservas']) === 5, 'sin filtro: las 5 reservas de María');
+});
+
+prueba('controlador de reservas: el cuerpo no puede cambiar de quién es la reserva', function () use ($limpiar) {
+    $limpiar();
+    [$auth, , , $servicioAuth] = escenarioCuenta();
+    [$repo, $servicio] = escenarioReservas();
+    $c = new ReservaController($servicio);
+    sesionDe($auth, $servicioAuth, 5); // empresario
+    $c->crear(peticion('POST', '/x', json_encode(reservaValida(['numeroDocumento' => '70234561', 'idPersonaRemitente' => 4]))), []);
+    afirmar($repo->reservas['R000000006']['idRemitente'] === 5, 'queda a nombre del empresario de la sesión');
+    esperarError(fn () => $c->crear(peticion('POST', '/x', '{roto'), []), 400, 'json_invalido');
+});
+
+prueba('permisos de /api/reservas: cliente y empresario pasan; gerente 403; sin sesión 401', function () use ($limpiar) {
+    $limpiar();
+    [$auth, , , $servicioAuth] = escenarioCuenta();
+    $guardia = new RequiereRol([Roles::CLIENTE, Roles::EMPRESARIO], new RequiereSesion($servicioAuth)); // igual que en rutas.php
+    esperarError(fn () => $guardia(peticion('GET', '/api/reservas')), 401, 'no_autenticado');
+    sesionDe($auth, $servicioAuth, 4);
+    $guardia(peticion('GET', '/api/reservas'));
+    $limpiar();
+    sesionDe($auth, $servicioAuth, 5);
+    $guardia(peticion('GET', '/api/reservas'));
+    $limpiar();
+    sesionDe($auth, $servicioAuth, 1);
+    esperarError(fn () => $guardia(peticion('GET', '/api/reservas')), 403, 'acceso_denegado');
+});
+
+prueba('rutas de reservas: todas exigen sesión y /destinatario va antes que /{codigo}', function () use ($limpiar) {
+    $limpiar();
+    $router = new Router();
+    (require dirname(__DIR__) . '/src/Modules/Reservas/rutas.php')($router);
+    foreach ([['GET', '/api/reservas'], ['POST', '/api/reservas'], ['GET', '/api/reservas/R000000001'], ['POST', '/api/reservas/R000000001/cancelar'], ['GET', '/api/reservas/destinatario']] as [$metodo, $ruta]) {
+        esperarError(fn () => $router->despachar(peticion($metodo, $ruta)), 401, 'no_autenticado');
+    }
+    esperarError(fn () => $router->despachar(peticion('DELETE', '/api/reservas/R000000001')), 405, 'metodo_no_permitido');
+    $rutas = (new ReflectionProperty(Router::class, 'rutas'))->getValue($router);
+    $posicion = static function (string $fragmento) use ($rutas): int {
+        foreach ($rutas as $i => $r) {
+            if ($r['metodo'] === 'GET' && str_contains($r['regex'], $fragmento)) {
+                return $i;
+            }
+        }
+        return -1;
+    };
+    afirmar($posicion('destinatario') >= 0 && $posicion('destinatario') < $posicion('codigo'), '/destinatario se registra antes que /{codigo}');
+});
+
+prueba('tarifas de una ruta sin peso (para el precio referencial de Nueva reserva)', function () use ($cotizador) {
+    $r = $cotizador->tarifas('MOQ001', 'AQP001');
+    afirmar($r['origen']['nombre'] === 'Agencia Moquegua' && $r['destino']['codigo'] === 'AQP001', 'origen y destino');
+    $t = array_column($r['tarifas'], null, 'tipo');
+    afirmar(array_keys($t) === ['SOBRE', 'PAQUETE', 'CARGA'], 'los tres tipos');
+    afirmar($t['SOBRE']['precioPorBulto'] === '9.15' && $t['PAQUETE']['precioPorBulto'] === '14.60' && $t['CARGA']['disponible'] === false, 'precios de la diapositiva 12');
+    afirmar(!array_key_exists('cotizacion', $r) && !array_key_exists('pesoKg', $r), 'no lleva peso ni cotización');
+    afirmar(array_column($cotizador->tarifas('AQP001', 'MOQ001')['tarifas'], 'disponible') === [false, false, false], 'la ruta inversa no tiene tarifas');
+    esperarError(fn () => $cotizador->tarifas('MOQ001', 'MOQ001'), 422, 'datos_invalidos');
+    esperarError(fn () => $cotizador->tarifas('', 'AQP001'), 422, 'datos_invalidos');
+    esperarError(fn () => $cotizador->tarifas('MOQ001', 'TAC001'), 404, 'sucursal_no_encontrada');
+});
+
+prueba('controlador de tarifas: lee la consulta y es público', function () use ($cotizador) {
+    $r = leer((new CotizadorController($cotizador))->tarifas(new Request('GET', '/api/tarifas', ['origen' => 'moq001', 'destino' => 'AQP001'], '', []), []));
+    afirmar($r['estado'] === 200 && count($r['cuerpo']['data']['tarifas']) === 3, 'responde 200 con 3 tarifas');
+    esperarError(fn () => (new CotizadorController($cotizador))->tarifas(new Request('GET', '/x', ['origen' => ['MOQ001'], 'destino' => 'AQP001'], '', []), []), 422, 'datos_invalidos');
+});
 
 // ── Informe ─────────────────────────────────────────────────────────────────
 ob_end_clean();

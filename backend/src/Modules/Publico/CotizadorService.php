@@ -34,18 +34,7 @@ final class CotizadorService
      */
     public function cotizar(string $origen, string $destino, string $peso): array
     {
-        $origen = strtoupper(trim($origen));
-        $destino = strtoupper(trim($destino));
-
-        if ($origen === '' || preg_match('/^[A-Z]{3}[0-9]{3}$/', $origen) !== 1) {
-            throw new HttpException(422, 'datos_invalidos', 'Elige la sucursal de origen.');
-        }
-        if ($destino === '' || preg_match('/^[A-Z]{3}[0-9]{3}$/', $destino) !== 1) {
-            throw new HttpException(422, 'datos_invalidos', 'Elige la sucursal de destino.');
-        }
-        if ($origen === $destino) {
-            throw new HttpException(422, 'datos_invalidos', 'El origen y el destino deben ser distintos.');
-        }
+        [$origen, $destino] = self::codigosValidos($origen, $destino);
 
         $centesimas = $this->pesoEnCentesimas($peso);
         $tipoAplicable = Tarifas::tipoPorPeso($centesimas);
@@ -57,21 +46,8 @@ final class CotizadorService
             );
         }
 
-        $sucursalOrigen = $this->agencias->buscarActivaPorCodigo($origen);
-        $sucursalDestino = $this->agencias->buscarActivaPorCodigo($destino);
-        if ($sucursalOrigen === null || $sucursalDestino === null) {
-            throw new HttpException(404, 'sucursal_no_encontrada', 'No se encontró una de las sucursales elegidas.');
-        }
-
-        $vigentes = [];
-        foreach ($this->rutas->vigentes($origen, $destino, ($this->hoy)()) as $ruta) {
-            $vigentes[(string) $ruta['tipoEnvio']] = $ruta;
-        }
-
-        $tarifas = [];
-        foreach (Tarifas::LIMITES_KG as $tipo => $maximoKg) {
-            $tarifas[] = self::tarifa($tipo, $maximoKg, $vigentes[$tipo] ?? null);
-        }
+        [$sucursalOrigen, $sucursalDestino] = $this->sucursalesActivas($origen, $destino);
+        $tarifas = $this->tarifasDeRuta($origen, $destino);
 
         $cotizacion = null;
         foreach ($tarifas as $tarifa) {
@@ -88,6 +64,80 @@ final class CotizadorService
             'cotizacion' => $cotizacion,
             'tarifas' => $tarifas,
         ];
+    }
+
+    /**
+     * Tarifas vigentes de una ruta (origen → destino) para los tres tipos de envío, sin necesidad de peso.
+     * Sirve para el precio referencial de «Nueva reserva».
+     *
+     * @return array{origen: array{codigo: string, nombre: string}, destino: array{codigo: string, nombre: string}, tarifas: list<array<string, mixed>>}
+     */
+    public function tarifas(string $origen, string $destino): array
+    {
+        [$origen, $destino] = self::codigosValidos($origen, $destino);
+        [$sucursalOrigen, $sucursalDestino] = $this->sucursalesActivas($origen, $destino);
+
+        return [
+            'origen' => ['codigo' => $origen, 'nombre' => $sucursalOrigen['nombre']],
+            'destino' => ['codigo' => $destino, 'nombre' => $sucursalDestino['nombre']],
+            'tarifas' => $this->tarifasDeRuta($origen, $destino),
+        ];
+    }
+
+    /**
+     * Códigos de sucursal con formato correcto y distintos entre sí, en mayúsculas.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private static function codigosValidos(string $origen, string $destino): array
+    {
+        $origen = strtoupper(trim($origen));
+        $destino = strtoupper(trim($destino));
+
+        if ($origen === '' || preg_match('/^[A-Z]{3}[0-9]{3}$/', $origen) !== 1) {
+            throw new HttpException(422, 'datos_invalidos', 'Elige la sucursal de origen.');
+        }
+        if ($destino === '' || preg_match('/^[A-Z]{3}[0-9]{3}$/', $destino) !== 1) {
+            throw new HttpException(422, 'datos_invalidos', 'Elige la sucursal de destino.');
+        }
+        if ($origen === $destino) {
+            throw new HttpException(422, 'datos_invalidos', 'El origen y el destino deben ser distintos.');
+        }
+
+        return [$origen, $destino];
+    }
+
+    /**
+     * Las dos sucursales, si existen y están activas; si no, 404.
+     *
+     * @return array{0: array<string, mixed>, 1: array<string, mixed>}
+     */
+    private function sucursalesActivas(string $origen, string $destino): array
+    {
+        $sucursalOrigen = $this->agencias->buscarActivaPorCodigo($origen);
+        $sucursalDestino = $this->agencias->buscarActivaPorCodigo($destino);
+
+        if ($sucursalOrigen === null || $sucursalDestino === null) {
+            throw new HttpException(404, 'sucursal_no_encontrada', 'No se encontró una de las sucursales elegidas.');
+        }
+
+        return [$sucursalOrigen, $sucursalDestino];
+    }
+
+    /** @return list<array<string, mixed>> Una tarifa por tipo (SOBRE, PAQUETE, CARGA), disponible o no. */
+    private function tarifasDeRuta(string $origen, string $destino): array
+    {
+        $vigentes = [];
+        foreach ($this->rutas->vigentes($origen, $destino, ($this->hoy)()) as $ruta) {
+            $vigentes[(string) $ruta['tipoEnvio']] = $ruta;
+        }
+
+        $tarifas = [];
+        foreach (Tarifas::LIMITES_KG as $tipo => $maximoKg) {
+            $tarifas[] = self::tarifa($tipo, $maximoKg, $vigentes[$tipo] ?? null);
+        }
+
+        return $tarifas;
     }
 
     /** "8.8" o "8,80" → 880. Hasta 2 decimales, mayor que 0 y dentro del tamaño de Bulto.pesoKg. */

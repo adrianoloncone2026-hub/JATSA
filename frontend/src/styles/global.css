@@ -855,6 +855,317 @@ a.identidad:hover .identidad-nombre {
   gap: 0.75rem;
 }
 
+/* ── Reservas ──────────────────────────────────────────────────────────── */
+.insignia-pendiente {
+  background: #b4d1ea;
+  border-color: #b4d1ea;
+}
+
+.insignia-formalizada {
+  background: var(--celeste);
+}
+
+.insignia-cancelada {
+  background: #eceff3;
+  border-color: #d3d9e2;
+  color: var(--gris);
+}
+
+.insignia-vencida {
+  background: #fff7cc;
+  border-color: var(--amarillo);
+}
+
+input[readonly] {
+  background: #f2f4f8;
+  color: var(--texto);
+}
+
+.nueva-reserva-contenido {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.formulario-reserva {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.fila-destinatario {
+  display: grid;
+  grid-template-columns: 9rem 1fr 1.2fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.estado-destinatario {
+  align-self: end;
+  min-height: 2.5rem;
+  display: flex;
+  align-items: center;
+}
+
+.destinatario-existe {
+  display: inline-block;
+  padding: 0.55rem 0.8rem;
+  border-radius: 6px;
+  background: #b4d1ea;
+  color: var(--marino);
+  font-weight: 700;
+}
+
+.destinatario-buscando,
+.destinatario-aviso {
+  font-size: 0.9rem;
+  color: var(--gris);
+}
+
+.campo-canal {
+  max-width: 11rem;
+}
+
+.panel-precio {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: #fff;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  padding: 1.25rem;
+}
+
+.panel-precio h2 {
+  margin: 0.25rem 0 0;
+  font-size: 1.05rem;
+}
+
+.tabla-compacta {
+  margin-top: 0;
+}
+
+.confirmacion {
+  max-width: 42rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: center;
+  padding: 2rem 1.5rem;
+}
+
+.sello {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 6rem;
+  height: 6rem;
+  border-radius: 50%;
+  background: #b4d1ea;
+  color: var(--marino);
+  font-size: 3rem;
+}
+
+.confirmacion h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.codigo-reserva {
+  margin: 0;
+  font-size: 2.6rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--azul);
+}
+
+.mensaje-confirmacion {
+  max-width: 30rem;
+  margin: 0.5rem 0;
+}
+
+.acciones-confirmacion {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.barra-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.filtro {
+  padding: 0.65rem 1.4rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--celeste);
+  color: var(--marino);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.filtro.activo {
+  background: var(--marino);
+  color: #fff;
+}
+
+.tabla-envoltorio {
+  overflow-x: auto;
+}
+
+.tabla-reservas {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 4px;
+  font-size: 0.9rem;
+}
+
+.tabla-reservas th,
+.tabla-reservas td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.tabla-reservas thead th {
+  color: var(--gris);
+  font-size: 0.8rem;
+}
+
+.tabla-reservas tbody tr {
+  background: #f4f8fc;
+}
+
+.tabla-reservas tbody th {
+  font-weight: 700;
+}
+
+.tabla-reservas tbody th a {
+  color: var(--texto);
+  text-decoration: none;
+}
+
+.tabla-reservas tbody th a:hover {
+  text-decoration: underline;
+}
+
+.celda-accion .boton {
+  min-width: 9.5rem;
+  padding: 0.5rem 0.9rem;
+}
+
+.confirmar-cancelacion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.confirmar-cancelacion .boton {
+  min-width: 0;
+}
+
+.estado-vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.estado-vacio p {
+  margin: 0;
+}
+
+.panel-resumen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 1rem;
+  align-items: stretch;
+  margin-bottom: 1.5rem;
+}
+
+.indicadores {
+  display: flex;
+  gap: 1rem;
+}
+
+.indicador {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem 1.25rem;
+  background: var(--celeste);
+  border-radius: 10px;
+}
+
+.indicador strong {
+  font-size: 2rem;
+  color: var(--marino);
+}
+
+.indicador span {
+  color: var(--gris);
+  font-size: 0.9rem;
+}
+
+.acciones-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  gap: 0.75rem;
+}
+
+.acciones-panel .boton-marino {
+  flex: 1 1 100%;
+}
+
+.acciones-panel .boton-claro {
+  flex: 1 1 10rem;
+}
+
+.tarjeta-reserva {
+  max-width: 32rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.tarjeta-reserva h3 {
+  margin: 0.25rem 0 0;
+  font-size: 1.15rem;
+}
+
+.tarjeta-reserva p {
+  margin: 0;
+  color: var(--gris);
+}
+
+.acciones-tarjeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
 /* ── Móvil y tableta ───────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .tarjetas-acceso {
@@ -864,7 +1175,9 @@ a.identidad:hover .identidad-nombre {
   .agencias-contenido,
   .cotizador,
   .mi-cuenta,
-  .formulario-cuenta {
+  .formulario-cuenta,
+  .nueva-reserva-contenido,
+  .panel-resumen {
     grid-template-columns: 1fr;
   }
 
@@ -887,12 +1200,63 @@ a.identidad:hover .identidad-nombre {
   }
 }
 
+/* En pantallas pequeñas, cada reserva pasa de fila de tabla a tarjeta con sus etiquetas. */
+@media (max-width: 700px) {
+  .tabla-reservas thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .tabla-reservas,
+  .tabla-reservas tbody,
+  .tabla-reservas tr,
+  .tabla-reservas th,
+  .tabla-reservas td {
+    display: block;
+  }
+
+  .tabla-reservas tbody tr {
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.25rem;
+    border-radius: 10px;
+  }
+
+  .tabla-reservas tbody th {
+    font-size: 1rem;
+  }
+
+  .tabla-reservas td[data-etiqueta] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .tabla-reservas td[data-etiqueta]::before {
+    content: attr(data-etiqueta);
+    color: var(--gris);
+    font-size: 0.8rem;
+  }
+
+  .celda-accion .boton {
+    flex: 1;
+  }
+}
+
 @media (max-width: 560px) {
   .tarjetas-acceso,
   .formulario-cotizador,
   .fila-doble,
-  .fila-documento {
+  .fila-documento,
+  .fila-destinatario {
     grid-template-columns: 1fr;
+  }
+
+  .estado-destinatario {
+    min-height: 0;
   }
 
   .rastreo-fila {
