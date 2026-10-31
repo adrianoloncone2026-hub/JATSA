@@ -15,7 +15,13 @@ export default function Ingresar() {
   const { usuario, ingresar, cargando } = useAuth()
   const ubicacion = useLocation()
 
-  const [campos, setCampos] = useState({ usuario: '', contrasena: '', recordarme: false })
+  // Al venir de «Crear cuenta» se avisa y se deja escrito el usuario recién creado.
+  const cuentaCreada = ubicacion.state?.cuentaCreada === true
+  const [campos, setCampos] = useState({
+    usuario: cuentaCreada && typeof ubicacion.state?.usuario === 'string' ? ubicacion.state.usuario : '',
+    contrasena: '',
+    recordarme: false,
+  })
   const [verContrasena, setVerContrasena] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
@@ -55,6 +61,12 @@ export default function Ingresar() {
       </p>
       <h1>Ingresar</h1>
       <p>Usa el usuario y la contraseña de tu cuenta. El sistema te lleva a tu panel según tu rol.</p>
+
+      {cuentaCreada && !error && (
+        <div className="resultado ok" role="status">
+          Cuenta creada. Ingresa con tu usuario y tu contraseña.
+        </div>
+      )}
 
       {error && (
         <div className="resultado error" role="alert">

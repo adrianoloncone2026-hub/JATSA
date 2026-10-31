@@ -1,39 +1,40 @@
-import { useState } from 'react'
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 import logo from '../assets/logo-jatsa.png'
 import { useAuth } from '../auth/AuthProvider.jsx'
-import { rutaInicioDeRol } from '../auth/roles.js'
+import { ROLES, rutaInicioDeRol } from '../auth/roles.js'
+import { useCerrarSesion } from '../auth/useCerrarSesion.js'
 import { enlacesMenu, seccionPorId } from '../routes/definicion.js'
+import { iniciales } from '../utils/formato.js'
 
 const RUTAS_DE_ACCESO = ['/ingresar', '/crear-cuenta']
 
 // Marco común de todos los layouts: cabecera con logo, menú y acciones, y el contenido de la pantalla.
 // En el área pública, «Crear cuenta» e «Ingresar» van como botones a la derecha (como en el prototipo);
-// con sesión abierta se muestran el usuario y «Salir».
+// con sesión abierta se muestran el usuario y «Salir». Cliente y empresario entran a «Mi cuenta» desde su nombre.
 export default function LayoutBase({ idSeccion }) {
   const seccion = seccionPorId(idSeccion)
-  const { usuario, salir } = useAuth()
-  const navegar = useNavigate()
-  const [saliendo, setSaliendo] = useState(false)
-  const [errorSalida, setErrorSalida] = useState('')
+  const { usuario } = useAuth()
+  const { cerrarSesion, saliendo, errorSalida } = useCerrarSesion()
 
   const todos = enlacesMenu(idSeccion)
   const enlaces = idSeccion === 'publico' ? todos.filter((e) => !RUTAS_DE_ACCESO.includes(e.to)) : todos
   const accesos = idSeccion === 'publico' && !usuario ? todos.filter((e) => RUTAS_DE_ACCESO.includes(e.to)) : []
+  const tieneMiCuenta = usuario && (usuario.rol === ROLES.CLIENTE || usuario.rol === ROLES.EMPRESARIO)
 
-  async function cerrarSesion() {
-    setErrorSalida('')
-    setSaliendo(true)
-    try {
-      await salir()
-      navegar('/', { replace: true })
-    } catch (error) {
-      // El servidor no confirmó el cierre: la sesión sigue abierta y así se le dice al usuario.
-      setErrorSalida(`No se pudo cerrar la sesión. ${error.message} Sigues con la sesión abierta.`)
-    } finally {
-      setSaliendo(false)
-    }
-  }
+  const identidad = usuario && (
+    <>
+      <span className="avatar avatar-chico" aria-hidden="true">
+        {iniciales(usuario.nombreCompleto)}
+      </span>
+      <span className="identidad-texto">
+        <span className="identidad-nombre">{usuario.nombreCompleto}</span>
+        <span className="identidad-rol">
+          {usuario.rol}
+          {usuario.sucursal && ` · ${usuario.sucursal.codigo}`}
+        </span>
+      </span>
+    </>
+  )
 
   return (
     <div className={`layout layout-${idSeccion}`}>
@@ -62,10 +63,13 @@ export default function LayoutBase({ idSeccion }) {
             ))}
             {usuario && (
               <div className="usuario-sesion">
-                <span>
-                  {usuario.nombreCompleto} · <strong>{usuario.rol}</strong>
-                  {usuario.sucursal && ` · ${usuario.sucursal.codigo}`}
-                </span>
+                {tieneMiCuenta ? (
+                  <Link to="/cliente/cuenta" className="identidad" aria-label={`Mi cuenta, ${usuario.nombreCompleto}`}>
+                    {identidad}
+                  </Link>
+                ) : (
+                  <span className="identidad">{identidad}</span>
+                )}
                 {idSeccion === 'publico' && (
                   <Link to={rutaInicioDeRol(usuario.rol)} className="boton boton-claro">
                     Mi panel

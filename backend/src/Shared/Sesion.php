@@ -19,7 +19,7 @@ final class Sesion
      *
      * @param array<string, mixed> $usuario Datos públicos del usuario (sin hash de contraseña).
      */
-    public static function abrir(array $usuario, bool $recordar): void
+    public static function abrir(array $usuario, bool $recordar, string $huella = ''): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
             $_SESSION = [];
@@ -32,8 +32,27 @@ final class Sesion
         session_regenerate_id(true);
 
         $_SESSION['usuario'] = $usuario;
+        $_SESSION['huella'] = $huella;
         $_SESSION['recordar'] = $recordar;
         $_SESSION['expira'] = time() + self::duracionInactividad($recordar);
+    }
+
+    /** Huella de la contraseña con la que se abrió la sesión (cadena vacía si no hay). */
+    public static function huella(): string
+    {
+        return self::iniciarSiExiste() ? (string) ($_SESSION['huella'] ?? '') : '';
+    }
+
+    /**
+     * Tras cambiar la contraseña: la sesión actual adopta la huella nueva (sigue válida) y se rota su
+     * identificador. Las demás sesiones de la cuenta conservan la huella vieja y dejan de valer.
+     */
+    public static function renovarHuella(string $huella): void
+    {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION['huella'] = $huella;
+            session_regenerate_id(true);
+        }
     }
 
     /**

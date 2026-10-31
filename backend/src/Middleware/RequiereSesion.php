@@ -28,7 +28,8 @@ final class RequiereSesion
             throw new HttpException(401, 'no_autenticado', 'Debes iniciar sesión.');
         }
 
-        $vigente = ($this->auth ?? new AuthService())->vigente((int) $guardado['id']);
+        // La huella de la sesión debe coincidir con la de la contraseña actual (ver Shared\Credencial).
+        $vigente = ($this->auth ?? new AuthService())->vigente((int) $guardado['id'], Sesion::huella());
 
         if ($vigente === null) {
             Sesion::cerrar();

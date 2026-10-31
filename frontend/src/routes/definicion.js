@@ -35,7 +35,13 @@ export const SECCIONES = [
       { ruta: 'reservas', titulo: 'Mis reservas', modulo: 4, menu: true },
       { ruta: 'historial', titulo: 'Historial', modulo: 9, menu: true },
       { ruta: 'pagos', titulo: 'Mis pagos', modulo: 6, menu: true },
-      { ruta: 'cuenta', titulo: 'Mi cuenta', modulo: 3, menu: true },
+      // «Mi cuenta» no va en el menú: se entra desde el nombre del usuario en la cabecera (diapositiva 17).
+      { ruta: 'cuenta', titulo: 'Mi cuenta', modulo: 3, menu: false },
+    ],
+    // Enlaces al área pública que el prototipo muestra también en el menú del cliente.
+    enlacesExtra: [
+      { to: '/salidas', texto: 'Salidas' },
+      { to: '/rastreo', texto: 'Rastrear' },
     ],
   },
   {
@@ -90,7 +96,10 @@ export function rutaCompleta(seccion, pantalla) {
 // Enlaces del menú de una sección (solo pantallas marcadas con menu: true).
 export function enlacesMenu(idSeccion) {
   const seccion = seccionPorId(idSeccion)
-  return seccion.pantallas
-    .filter((pantalla) => pantalla.menu)
-    .map((pantalla) => ({ to: rutaCompleta(seccion, pantalla), texto: pantalla.titulo }))
+  return [
+    ...seccion.pantallas
+      .filter((pantalla) => pantalla.menu)
+      .map((pantalla) => ({ to: rutaCompleta(seccion, pantalla), texto: pantalla.titulo })),
+    ...(seccion.enlacesExtra ?? []),
+  ]
 }

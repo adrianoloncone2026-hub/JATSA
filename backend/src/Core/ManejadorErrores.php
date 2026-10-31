@@ -34,7 +34,7 @@ final class ManejadorErrores
     public static function aRespuesta(Throwable $excepcion): Response
     {
         if ($excepcion instanceof HttpException) {
-            return Response::error($excepcion->codigo, $excepcion->getMessage(), $excepcion->estado, $excepcion->cabeceras);
+            return Response::error($excepcion->codigo, $excepcion->getMessage(), $excepcion->estado, $excepcion->cabeceras, $excepcion->campos);
         }
 
         Registro::error('Error no controlado', $excepcion);

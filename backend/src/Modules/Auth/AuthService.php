@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Jatsa\Modules\Auth;
 
+use Jatsa\Shared\Credencial;
 use Jatsa\Shared\HttpException;
 
 /**
@@ -31,6 +32,16 @@ final class AuthService
      */
     public function ingresar(string $nombreUsuario, string $contrasena): array
     {
+        return $this->ingresarConHuella($nombreUsuario, $contrasena)['usuario'];
+    }
+
+    /**
+     * Igual que ingresar(), y además devuelve la huella de la credencial para guardarla en la sesión.
+     *
+     * @return array{usuario: array<string, mixed>, huella: string}
+     */
+    public function ingresarConHuella(string $nombreUsuario, string $contrasena): array
+    {
         $nombreUsuario = trim($nombreUsuario);
 
         if ($nombreUsuario === '' || $contrasena === '') {
@@ -57,19 +68,25 @@ final class AuthService
             );
         }
 
-        return self::datosPublicos($registro);
+        return ['usuario' => self::datosPublicos($registro), 'huella' => Credencial::huella($registro['hashContrasena'])];
     }
 
     /**
      * Datos actuales de una cuenta activa, o null si ya no existe o está desactivada.
+     * Si se indica la huella con la que se abrió la sesión, también debe seguir siendo la de la
+     * contraseña actual: así, cambiar la contraseña cierra las demás sesiones de la cuenta.
      *
      * @return array<string, mixed>|null
      */
-    public function vigente(int $idUsuario): ?array
+    public function vigente(int $idUsuario, ?string $huella = null): ?array
     {
         $registro = $this->usuarios->buscarPorId($idUsuario);
 
         if ($registro === null || !$registro['activo']) {
+            return null;
+        }
+
+        if ($huella !== null && !hash_equals(Credencial::huella($registro['hashContrasena']), $huella)) {
             return null;
         }
 

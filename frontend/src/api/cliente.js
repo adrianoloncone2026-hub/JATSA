@@ -3,11 +3,12 @@
 const BASE = (import.meta.env.VITE_API_URL ?? '/api').replace(/\/$/, '')
 
 export class ErrorApi extends Error {
-  constructor(estado, codigo, mensaje) {
+  constructor(estado, codigo, mensaje, campos = {}) {
     super(mensaje)
     this.name = 'ErrorApi'
     this.estado = estado // 0 = sin conexión con el servidor
     this.codigo = codigo
+    this.campos = campos // { nombreDelCampo: 'mensaje' } en los errores de validación de formularios
   }
 }
 
@@ -52,6 +53,7 @@ export async function solicitar(ruta, { metodo = 'GET', cuerpo, signal } = {}) {
       respuesta.status,
       contenido?.error?.codigo ?? 'error',
       contenido?.error?.mensaje ?? 'Ocurrió un error inesperado.',
+      contenido?.error?.campos ?? {},
     )
   }
 
