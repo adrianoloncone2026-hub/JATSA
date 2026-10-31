@@ -2,10 +2,20 @@
 declare(strict_types=1);
 
 /*
- * ESCRITURA ACOTADA A REGISTROS pm5 (solo se usa con autorización expresa del propietario; ver validar-pm5.ps1).
- *   crear-personal             INSERT de la persona y la cuenta pm5_admin (ADMINISTRADOR de MOQ001). Clave en env JATSA_PM5_PW.
- *   fecha <codigo> "<fecha>"   UPDATE de fechaHoraReserva, solo de reservas PENDIENTES cuyo remitente es una persona pm5.
- *   limpiar                    DELETE de Bulto → Envio → Reserva → Usuario → Persona, solo de lo creado por pm5.
+ * ESCRITURA ACOTADA A LO CREADO POR ESTA EJECUCIÓN pm5 (solo con autorización expresa; ver validar-pm5.ps1).
+ *
+ * El orquestador lleva un MANIFIESTO (JSON) con lo que él mismo creó en esta ejecución:
+ *   identAntes {Persona, Usuario, Reserva, Envio}  IDENT_CURRENT de la instantánea inicial: lo creado después tiene id mayor
+ *   documentos  [...]  documentos de las personas que creó
+ *   usuarios    [...]  nombres de las cuentas que creó
+ *   reservas    [...]  códigos de las reservas que creó
+ *   envios      [...]  códigos de seguimiento de los envíos que creó
+ *
+ *   crear-personal <manifiesto>             INSERT de pm5_admin (ADMINISTRADOR de MOQ001); aborta si ya existe algo. Clave en env JATSA_PM5_PW.
+ *   fecha <manifiesto> <codigo> "<fecha>"   UPDATE de fechaHoraReserva de UNA reserva del manifiesto (PENDIENTE y con id posterior a la instantánea).
+ *   limpiar <manifiesto>                    DELETE exacto de lo registrado. Verifica ANTES que lo que existe coincide con el manifiesto
+ *                                           (cantidades, ids posteriores a la instantánea, sin filas ajenas ni dependencias) y, al borrar,
+ *                                           que cada DELETE afecte exactamente lo esperado; si algo diverge, no borra nada y pide revisión.
  * Cualquier otra operación se rechaza. No imprime contraseñas.
  */
 $raiz = dirname(__DIR__, 2);
@@ -14,18 +24,57 @@ require $raiz . '/src/autoload.php';
 use Jatsa\Core\Config;
 use Jatsa\Core\Database;
 
-const DOCUMENTOS_PM5 = ['90000051', '90000052', '90000053', '90000054'];
+function abortar(string $mensaje, int $codigo = 4): never
+{
+    fwrite(STDERR, "DETENIDO: $mensaje\n");
+    exit($codigo);
+}
+
+/** @return list<string> */
+function textos(mixed $valores, string $patron): array
+{
+    $lista = is_array($valores) ? array_values($valores) : [];
+    foreach ($lista as $v) {
+        if (!is_string($v) || preg_match($patron, $v) !== 1) {
+            abortar('El manifiesto contiene un valor con formato inesperado.', 2);
+        }
+    }
+
+    return $lista;
+}
+
+function enLista(array $valores): string
+{
+    return "'" . implode("','", $valores) . "'"; // valores ya validados con una expresión estricta, nunca entrada libre
+}
 
 Config::cargar($raiz);
-$pdo = Database::conexion();
 $op = $argv[1] ?? '';
-$lista = "'" . implode("','", DOCUMENTOS_PM5) . "'"; // constantes del script, no entrada del usuario
+$ruta = (string) ($argv[2] ?? '');
+$manifiesto = is_file($ruta) ? json_decode((string) file_get_contents($ruta), true) : null;
+if (!is_array($manifiesto) || !isset($manifiesto['identAntes']) || !is_array($manifiesto['identAntes'])) {
+    abortar('Falta el manifiesto (o es inválido).', 2);
+}
+$ident = array_map('intval', $manifiesto['identAntes']);
+foreach (['Persona', 'Usuario', 'Reserva', 'Envio'] as $t) {
+    if (!isset($ident[$t])) {
+        abortar("El manifiesto no trae IDENT_CURRENT de $t.", 2);
+    }
+}
+$documentos = textos($manifiesto['documentos'] ?? [], '/^9000005[1-4]$/');
+$usuarios = textos($manifiesto['usuarios'] ?? [], '/^pm5_(cliente|admin)$/');
+$reservas = textos($manifiesto['reservas'] ?? [], '/^R\d{9}$/');
+$envios = textos($manifiesto['envios'] ?? [], '/^EN[A-Z0-9]{10}$/');
+$pdo = Database::conexion();
 
 if ($op === 'crear-personal') {
     $clave = (string) getenv('JATSA_PM5_PW');
     if (strlen($clave) < 12) {
-        fwrite(STDERR, "Falta JATSA_PM5_PW.\n");
-        exit(2);
+        abortar('Falta JATSA_PM5_PW.', 2);
+    }
+    $existe = (int) $pdo->query("SELECT (SELECT COUNT(*) FROM Persona WHERE numeroDocumento = '90000052') + (SELECT COUNT(*) FROM Usuario WHERE nombreUsuario = 'pm5_admin')")->fetchColumn();
+    if ($existe !== 0) {
+        abortar('Ya existe una persona o cuenta pm5_admin: no se crea nada.', 3);
     }
     $pdo->beginTransaction();
     $pdo->exec("INSERT INTO Persona (tipoDocumento, numeroDocumento, nombreCompleto, telefono) VALUES ('DNI', '90000052', N'Prueba Cinco Admin', '900000052')");
@@ -42,51 +91,96 @@ if ($op === 'crear-personal') {
 }
 
 if ($op === 'fecha') {
-    $codigo = (string) ($argv[2] ?? '');
-    $fecha = (string) ($argv[3] ?? '');
-    if (!preg_match('/^R\d{9}$/', $codigo) || !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $fecha)) {
-        fwrite(STDERR, "Argumentos inválidos.\n");
-        exit(2);
+    $codigo = (string) ($argv[3] ?? '');
+    $fecha = (string) ($argv[4] ?? '');
+    if (!in_array($codigo, $reservas, true) || !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $fecha)) {
+        abortar('La reserva no está en el manifiesto o la fecha es inválida.', 2);
     }
     $s = $pdo->prepare(
-        "UPDATE r SET r.fechaHoraReserva = :f
-         FROM Reserva AS r INNER JOIN Persona AS p ON p.idPersona = r.idPersonaRemitente
-         WHERE r.codigoReserva = :c AND r.estadoReserva = 'PENDIENTE' AND p.numeroDocumento IN ($lista)",
+        "UPDATE Reserva SET fechaHoraReserva = :f
+         WHERE codigoReserva = :c AND idReserva > :ident AND estadoReserva = 'PENDIENTE'",
     );
     $s->bindValue(':f', $fecha);
     $s->bindValue(':c', $codigo);
+    $s->bindValue(':ident', $ident['Reserva'], PDO::PARAM_INT);
     $s->execute();
     echo "$codigo -> $fecha; filas afectadas: " . $s->rowCount() . "\n";
     exit($s->rowCount() === 1 ? 0 : 3);
 }
 
 if ($op === 'limpiar') {
-    $personas = $pdo->query("SELECT idPersona FROM Persona WHERE numeroDocumento IN ($lista)")->fetchAll(PDO::FETCH_COLUMN);
-    $ids = implode(',', array_map('intval', $personas)) ?: '0';
-    $reservas = $pdo->query("SELECT idReserva, codigoReserva FROM Reserva WHERE idPersonaRemitente IN ($ids) OR idPersonaDestinatario IN ($ids)")->fetchAll(PDO::FETCH_ASSOC);
-    $idsReserva = implode(',', array_map(static fn ($r) => (int) $r['idReserva'], $reservas)) ?: '0';
-    $envios = $pdo->query("SELECT idEnvio, codigoSeguimiento FROM Envio WHERE idReserva IN ($idsReserva)")->fetchAll(PDO::FETCH_ASSOC);
-    $idsEnvio = implode(',', array_map(static fn ($e) => (int) $e['idEnvio'], $envios)) ?: '0';
-    echo 'personas: ' . json_encode($personas) . ' reservas: ' . json_encode(array_column($reservas, 'codigoReserva')) . ' envios: ' . json_encode(array_column($envios, 'codigoSeguimiento')) . "\n";
+    $uno = static fn (string $sql): int => (int) $pdo->query($sql)->fetchColumn();
+    $filas = static fn (string $sql): array => $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN);
 
-    // Dependencias que NO son de esta prueba: pagos o viajes sobre estos envíos, o reservas ajenas que usen personas pm5.
-    $pagos = (int) $pdo->query("SELECT COUNT(*) FROM Pago WHERE idEnvio IN ($idsEnvio)")->fetchColumn();
-    $viajes = (int) $pdo->query("SELECT COUNT(*) FROM Envio_Viaje WHERE idEnvio IN ($idsEnvio)")->fetchColumn();
-    echo "dependencias: pagos=$pagos viajes=$viajes\n";
-    if ($pagos !== 0 || $viajes !== 0) {
-        fwrite(STDERR, "Hay dependencias: no se borra nada.\n");
-        exit(4);
+    // 1) Personas: las del manifiesto, y solo si son posteriores a la instantánea.
+    $idsPersona = $documentos === [] ? [] : array_map('intval', $filas("SELECT idPersona FROM Persona WHERE numeroDocumento IN (" . enLista($documentos) . ") AND idPersona > {$ident['Persona']}"));
+    if (count($idsPersona) !== count($documentos)) {
+        abortar('Las personas existentes no coinciden con el manifiesto (cantidad o ids anteriores a la prueba).');
     }
+    $listaPersonas = $idsPersona === [] ? '0' : implode(',', $idsPersona);
+
+    // 2) Reservas: exactamente las del manifiesto, posteriores a la instantánea; y ninguna otra que use esas personas.
+    $idsReserva = $reservas === [] ? [] : array_map('intval', $filas("SELECT idReserva FROM Reserva WHERE codigoReserva IN (" . enLista($reservas) . ") AND idReserva > {$ident['Reserva']}"));
+    if (count($idsReserva) !== count($reservas)) {
+        abortar('Las reservas existentes no coinciden con el manifiesto.');
+    }
+    $listaReservas = $idsReserva === [] ? '0' : implode(',', $idsReserva);
+    $ajenas = $uno("SELECT COUNT(*) FROM Reserva WHERE (idPersonaRemitente IN ($listaPersonas) OR idPersonaDestinatario IN ($listaPersonas)) AND idReserva NOT IN ($listaReservas)");
+    $conPersonasAjenas = $uno("SELECT COUNT(*) FROM Reserva WHERE idReserva IN ($listaReservas) AND idPersonaRemitente NOT IN ($listaPersonas)");
+    if ($ajenas !== 0 || $conPersonasAjenas !== 0) {
+        abortar("Hay reservas ajenas a esta ejecución ligadas a las personas de prueba ($ajenas) o reservas del manifiesto de otro remitente ($conPersonasAjenas).");
+    }
+
+    // 3) Envíos: exactamente los del manifiesto, de esas reservas y posteriores a la instantánea.
+    $existentes = $filas("SELECT codigoSeguimiento FROM Envio WHERE idReserva IN ($listaReservas)");
+    sort($existentes);
+    $esperados = $envios;
+    sort($esperados);
+    if ($existentes !== $esperados) {
+        abortar('Los envíos existentes de esas reservas no coinciden con los registrados: existentes=' . json_encode($existentes) . ' registrados=' . json_encode($esperados));
+    }
+    $idsEnvio = $envios === [] ? [] : array_map('intval', $filas("SELECT idEnvio FROM Envio WHERE codigoSeguimiento IN (" . enLista($envios) . ") AND idEnvio > {$ident['Envio']}"));
+    if (count($idsEnvio) !== count($envios)) {
+        abortar('Hay envíos del manifiesto con id anterior a la prueba.');
+    }
+    $listaEnvios = $idsEnvio === [] ? '0' : implode(',', $idsEnvio);
+
+    // 4) Dependencias que no son de esta prueba.
+    $pagos = $uno("SELECT COUNT(*) FROM Pago WHERE idEnvio IN ($listaEnvios)");
+    $viajes = $uno("SELECT COUNT(*) FROM Envio_Viaje WHERE idEnvio IN ($listaEnvios)");
+    if ($pagos !== 0 || $viajes !== 0) {
+        abortar("Hay dependencias (pagos=$pagos, viajes=$viajes).");
+    }
+
+    // 5) Cuentas: las del manifiesto, ligadas a esas personas y posteriores a la instantánea.
+    $idsUsuario = $usuarios === [] ? [] : array_map('intval', $filas("SELECT idUsuario FROM Usuario WHERE nombreUsuario IN (" . enLista($usuarios) . ") AND idUsuario > {$ident['Usuario']} AND idPersona IN ($listaPersonas)"));
+    if (count($idsUsuario) !== count($usuarios)) {
+        abortar('Las cuentas existentes no coinciden con el manifiesto.');
+    }
+    $listaUsuarios = $idsUsuario === [] ? '0' : implode(',', $idsUsuario);
+
+    $bultos = $uno("SELECT COUNT(*) FROM Bulto WHERE idEnvio IN ($listaEnvios)");
+    echo 'Se borrará exactamente: ' . json_encode(['Bulto' => $bultos, 'Envio' => count($idsEnvio), 'Reserva' => count($idsReserva), 'Usuario' => count($idsUsuario), 'Persona' => count($idsPersona)]) . "\n";
+    echo 'reservas: ' . json_encode($reservas) . ' envios: ' . json_encode($envios) . "\n";
+
+    // 6) Borrado exacto en una transacción: cada DELETE debe afectar justo lo verificado; si no, se deshace todo.
     $pdo->beginTransaction();
-    $b = $pdo->exec("DELETE FROM Bulto WHERE idEnvio IN ($idsEnvio)");
-    $e = $pdo->exec("DELETE FROM Envio WHERE idEnvio IN ($idsEnvio)");
-    $r = $pdo->exec("DELETE FROM Reserva WHERE idReserva IN ($idsReserva)");
-    $u = $pdo->exec("DELETE FROM Usuario WHERE nombreUsuario IN ('pm5_cliente', 'pm5_admin') AND idPersona IN ($ids)");
-    $p = $pdo->exec("DELETE FROM Persona WHERE idPersona IN ($ids) AND numeroDocumento IN ($lista)");
+    $hecho = [
+        'Bulto' => [$pdo->exec("DELETE FROM Bulto WHERE idEnvio IN ($listaEnvios)"), $bultos],
+        'Envio' => [$pdo->exec("DELETE FROM Envio WHERE idEnvio IN ($listaEnvios)"), count($idsEnvio)],
+        'Reserva' => [$pdo->exec("DELETE FROM Reserva WHERE idReserva IN ($listaReservas)"), count($idsReserva)],
+        'Usuario' => [$pdo->exec("DELETE FROM Usuario WHERE idUsuario IN ($listaUsuarios)"), count($idsUsuario)],
+        'Persona' => [$pdo->exec("DELETE FROM Persona WHERE idPersona IN ($listaPersonas)"), count($idsPersona)],
+    ];
+    foreach ($hecho as $tabla => [$real, $esperado]) {
+        if ($real !== $esperado) {
+            $pdo->rollBack();
+            abortar("DELETE de $tabla afectó $real filas y se esperaban $esperado: se deshizo todo.");
+        }
+    }
     $pdo->commit();
-    echo "borradas: Bulto=$b Envio=$e Reserva=$r Usuario=$u Persona=$p\n";
+    echo 'borradas: ' . json_encode(array_map(static fn ($p) => $p[0], $hecho)) . "\n";
     exit(0);
 }
 
-fwrite(STDERR, "Operación no permitida.\n");
-exit(2);
+abortar('Operación no permitida.', 2);
