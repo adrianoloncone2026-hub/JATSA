@@ -33,6 +33,15 @@ El navegador llama a `http://localhost:5173/api/...`; Vite reenvía `/api` a `ht
 |---|---|---|
 | GET | `/api/salud` | Estado de la API. No usa la base de datos. |
 | GET | `/api/salud/bd` | Abre la conexión a SQL Server (sin ejecutar SQL). Responde 503 si no está configurada. |
+| POST | `/api/auth/ingresar` | Inicia sesión. Ver `docs/api/auth.md`. |
+| POST | `/api/auth/salir` | Cierra la sesión. |
+| GET | `/api/auth/yo` | Usuario de la sesión actual. |
+
+## Pruebas del backend
+```powershell
+C:\php\php.exe backend/tests/ejecutar.php
+```
+Sin dependencias y sin acceso a la base de datos (usan un repositorio simulado). Salen con código 1 si algo falla.
 
 Respuesta correcta: `{ "data": ... }`. Error: `{ "error": { "codigo": "...", "mensaje": "..." } }`. Los detalles técnicos de un error se guardan en `backend/storage/logs/`.
 

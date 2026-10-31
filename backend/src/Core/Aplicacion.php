@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Jatsa\Core;
 
 use Jatsa\Middleware\Cors;
+use Jatsa\Middleware\Csrf;
 use Throwable;
 
 /**
@@ -30,6 +31,8 @@ final class Aplicacion
                 $previa->enviar();
                 return;
             }
+
+            Csrf::verificar($peticion);
 
             $router = new Router();
             $this->registrarRutas($router);

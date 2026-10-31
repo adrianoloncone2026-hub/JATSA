@@ -35,7 +35,7 @@ final class Cors
 
             if ($peticion->metodo === 'OPTIONS') {
                 header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-                header('Access-Control-Allow-Headers: Content-Type, Authorization, Accept');
+                header('Access-Control-Allow-Headers: Content-Type, Authorization, Accept, X-Requested-With');
                 header('Access-Control-Max-Age: 600');
             }
         }
