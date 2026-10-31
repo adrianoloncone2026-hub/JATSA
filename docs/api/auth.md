@@ -38,7 +38,7 @@ La interfaz solo muestra la sesión como cerrada cuando `POST /api/auth/salir` r
 ## Limitaciones conocidas y pendientes de seguridad
 - **Sin protección contra fuerza bruta.** No hay límite de intentos fallidos ni bloqueo temporal: **no está implementado**. Es aceptable en desarrollo local, pero es un **requisito previo a exponer la aplicación a Internet**. Requiere definir la regla (intentos, ventana, bloqueo) y dónde guardar el contador, sin alterar el esquema de la base de datos.
 - `password_needs_rehash` no se aplica (exigiría un UPDATE sobre `Usuario`).
-- El inicio de sesión exitoso contra una cuenta real de `JATSA_Encomiendas` está pendiente de validar: los hashes de muestra del script no tienen contraseña conocida.
+- Los hashes de muestra del script no tienen contraseña conocida, así que ningún usuario de muestra puede iniciar sesión. El flujo exitoso se validó contra `JATSA_Encomiendas` con tres cuentas de prueba temporales (autorizadas y eliminadas al terminar; la base quedó con sus 5 personas y 5 usuarios originales). Para usar el sistema hará falta cargar cuentas con contraseña real.
 
 ## Proteger rutas de otros módulos
 ```php
