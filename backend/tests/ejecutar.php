@@ -27,6 +27,7 @@ use Jatsa\Modules\Cuenta\RepositorioCuentas;
 use Jatsa\Modules\Reservas\RepositorioReservas;
 use Jatsa\Modules\Reservas\ReservaController;
 use Jatsa\Modules\Reservas\ReservaService;
+use Jatsa\Modules\Reservas\VencimientoService;
 use Jatsa\Modules\Publico\AgenciasController;
 use Jatsa\Modules\Publico\CotizadorController;
 use Jatsa\Modules\Publico\CotizadorService;
@@ -948,16 +949,19 @@ final class ReservasFalso implements RepositorioReservas
     public int $siguientePersona = 100;
     public int $personasCreadas = 0;
     public bool $cancelarFalla = false;
+    /** Reloj simulado: «ahora» de la base de datos para el plazo de vigencia. */
+    public DateTimeImmutable $ahora;
     private AgenciasFalso $agencias;
 
     public function __construct()
     {
         $this->agencias = new AgenciasFalso();
+        $this->ahora = new DateTimeImmutable('2026-10-31 09:15:00');
         $this->sembrar('R000000001', 4, 50, 'MOQ001', 'AQP001', 'Documentos y ropa', 'FORMALIZADA', '2026-10-10 09:15:00', 'EN7K4Q2M9X1B');
         $this->sembrar('R000000002', 5, 51, 'AQP001', 'LIM001', 'Repuestos de motor', 'FORMALIZADA', '2026-10-11 08:40:00', 'ENB3F8L0Q2ZD');
         $this->sembrar('R000000003', 4, 50, 'MOQ001', 'AQP001', 'Libros', 'CANCELADA', '2026-10-12 10:00:00', null);
         $this->sembrar('R000000004', 4, 50, 'ILO001', 'MOQ001', 'Cartas', 'VENCIDA', '2026-10-13 10:00:00', null);
-        $this->sembrar('R000000005', 4, 50, 'MOQ001', 'ILO001', 'Medicinas', 'PENDIENTE', '2026-10-14 10:00:00', null);
+        $this->sembrar('R000000005', 4, 50, 'MOQ001', 'ILO001', 'Medicinas', 'PENDIENTE', '2026-10-30 10:00:00', null);
     }
 
     private function sembrar(string $codigo, int $remitente, int $destinatario, string $origen, string $destino, string $contenido, string $estado, string $fechaHora, ?string $seguimiento): void
@@ -990,8 +994,37 @@ final class ReservasFalso implements RepositorioReservas
                 'nombre' => $destinatarioNuevo['nombreCompleto'], 'telefono' => $destinatarioNuevo['telefono']];
         }
         $codigo = sprintf('R%09d', $this->siguienteReserva++);
-        $this->sembrar($codigo, $idRemitente, $idDestinatario, $codigoOrigen, $codigoDestino, $contenido, 'PENDIENTE', '2026-10-31 09:15:00', null);
+        $this->sembrar($codigo, $idRemitente, $idDestinatario, $codigoOrigen, $codigoDestino, $contenido, 'PENDIENTE', $this->ahora->format('Y-m-d H:i:s'), null);
         return $codigo;
+    }
+
+    /** Instante límite: ahora − 72 h. Vence si fechaHora <= límite (en el instante exacto ya vence). */
+    private function limite(?DateTimeImmutable $referencia): string
+    {
+        return ($referencia ?? $this->ahora)->modify('-' . RepositorioReservas::HORAS_DE_VIGENCIA . ' hours')->format('Y-m-d H:i:s');
+    }
+
+    public function vencerPendientes(?DateTimeImmutable $referencia = null): int
+    {
+        $n = 0;
+        foreach ($this->reservas as $codigo => $r) {
+            if ($r['estado'] === 'PENDIENTE' && $r['fechaHora'] <= $this->limite($referencia)) {
+                $this->reservas[$codigo]['estado'] = 'VENCIDA';
+                $n++;
+            }
+        }
+        return $n;
+    }
+
+    public function listarVencibles(?DateTimeImmutable $referencia = null): array
+    {
+        $lista = [];
+        foreach ($this->reservas as $codigo => $r) {
+            if ($r['estado'] === 'PENDIENTE' && $r['fechaHora'] <= $this->limite($referencia)) {
+                $lista[] = ['codigo' => $codigo, 'fechaHora' => $r['fechaHora']];
+            }
+        }
+        return $lista;
     }
 
     public function listarDeRemitente(int $idPersona, ?string $estado): array
@@ -1012,10 +1045,10 @@ final class ReservasFalso implements RepositorioReservas
         return $r !== null && $r['idRemitente'] === $idPersona ? $this->aArreglo($codigo, $r) : null;
     }
 
-    public function cancelar(int $idPersona, string $codigo): bool
+    public function cancelar(int $idPersona, string $codigo, ?DateTimeImmutable $referencia = null): bool
     {
         $r = $this->reservas[$codigo] ?? null;
-        if ($this->cancelarFalla || $r === null || $r['idRemitente'] !== $idPersona || $r['estado'] !== 'PENDIENTE') {
+        if ($this->cancelarFalla || $r === null || $r['idRemitente'] !== $idPersona || $r['estado'] !== 'PENDIENTE' || $r['fechaHora'] <= $this->limite($referencia)) {
             return false;
         }
         $this->reservas[$codigo]['estado'] = 'CANCELADA';
@@ -1030,7 +1063,8 @@ final class ReservasFalso implements RepositorioReservas
             'destinatario' => $this->personas[$r['idDestinatario']]['nombre'],
             'origen' => ['codigo' => $o['codigo'], 'nombre' => $o['nombre'], 'direccion' => $o['direccion'], 'departamento' => $o['departamento']],
             'destino' => ['codigo' => $d['codigo'], 'nombre' => $d['nombre'], 'direccion' => $d['direccion'], 'departamento' => $d['departamento']],
-            'codigoSeguimiento' => $r['seguimiento']];
+            'codigoSeguimiento' => $r['seguimiento'],
+            'plazoCumplido' => $r['estado'] === 'PENDIENTE' && $r['fechaHora'] <= $this->limite(null)];
     }
 }
 
@@ -1038,7 +1072,9 @@ final class ReservasFalso implements RepositorioReservas
 function escenarioReservas(): array
 {
     $repo = new ReservasFalso();
-    return [$repo, new ReservaService($repo, new AgenciasFalso())];
+    $agencias = new AgenciasFalso();
+    // Mismo cotizador que /api/tarifas: la fecha de «hoy» es la de las pruebas del módulo 2.
+    return [$repo, new ReservaService($repo, $agencias, new CotizadorService($agencias, new RutasFalso(), fn () => '2026-10-31'))];
 }
 
 function reservaValida(array $cambios = []): array
@@ -1177,6 +1213,133 @@ prueba('reservas: si la cancelación no cambia nada (otra operación se adelant�
     [$repo, $servicio] = escenarioReservas();
     $repo->cancelarFalla = true;
     esperarError(fn () => $servicio->cancelar(4, 'R000000005'), 409, 'reserva_no_cancelable');
+});
+
+/** Rutas con vigencia: la tarifa MOQ001→AQP001 caduca el 2026-10-30 (como si Rutas.vigenciaHasta lo indicara). */
+final class RutasConCaducidad implements RepositorioRutas
+{
+    public function __construct(private readonly RutasFalso $base, private readonly string $caducaEl)
+    {
+    }
+
+    public function vigentes(string $codigoOrigen, string $codigoDestino, string $fechaIso): array
+    {
+        return $fechaIso > $this->caducaEl ? [] : $this->base->vigentes($codigoOrigen, $codigoDestino, $fechaIso);
+    }
+}
+
+prueba('reservas: ruta SIN ninguna tarifa vigente → 422 en sucursalDestino y no se crea nada', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $campos = camposDeReserva(fn () => $servicio->crear(4, reservaValida(['sucursalOrigen' => 'ILO001', 'sucursalDestino' => 'AQP001'])));
+    afirmar($campos === ['sucursalDestino'], 'solo el destino queda marcado: ' . implode(',', $campos));
+    afirmar(count($repo->reservas) === 5 && $repo->personasCreadas === 0, 'no se escribió reserva ni persona');
+});
+
+prueba('reservas: la ruta inversa no hereda la tarifa (direccionalidad) y el mensaje lo explica', function () {
+    [$repo, $servicio] = escenarioReservas();
+    afirmar($servicio->crear(4, reservaValida())['codigo'] === 'R000000006', 'MOQ001→AQP001 sí tiene tarifa');
+    try {
+        $servicio->crear(4, reservaValida(['sucursalOrigen' => 'AQP001', 'sucursalDestino' => 'MOQ001']));
+        afirmar(false, 'AQP001→MOQ001 debía rechazarse');
+    } catch (HttpException $e) {
+        afirmar($e->estado === 422 && str_contains((string) ($e->campos['sucursalDestino'] ?? ''), 'No hay tarifas vigentes'), 'mensaje claro en el campo');
+    }
+});
+
+prueba('reservas: con al menos UNA tarifa (de cualquier tipo) se acepta; solo CARGA o solo SOBRE bastan', function () {
+    [$repo, $servicio] = escenarioReservas();
+    afirmar($servicio->crear(4, reservaValida(['sucursalOrigen' => 'LIM001', 'sucursalDestino' => 'ILO001']))['estado'] === 'PENDIENTE', 'solo CARGA');
+    afirmar($servicio->crear(4, reservaValida(['sucursalOrigen' => 'ILO001', 'sucursalDestino' => 'MOQ001']))['estado'] === 'PENDIENTE', 'solo SOBRE');
+});
+
+prueba('reservas: una tarifa caducada no cuenta (la vigencia sale de la fecha de la operación)', function () {
+    $repo = new ReservasFalso();
+    $agencias = new AgenciasFalso();
+    $vencida = new ReservaService($repo, $agencias, new CotizadorService($agencias, new RutasConCaducidad(new RutasFalso(), '2026-10-30'), fn () => '2026-10-31'));
+    $vigente = new ReservaService($repo, $agencias, new CotizadorService($agencias, new RutasConCaducidad(new RutasFalso(), '2026-10-30'), fn () => '2026-10-30'));
+    afirmar(camposDeReserva(fn () => $vencida->crear(4, reservaValida())) === ['sucursalDestino'], 'caducó ayer: rechazada');
+    afirmar($vigente->crear(4, reservaValida())['estado'] === 'PENDIENTE', 'el último día de vigencia todavía vale');
+});
+
+prueba('reservas: la validación de tarifa coincide con /api/tarifas y con el cotizador (misma fuente)', function () {
+    [, $servicio] = escenarioReservas();
+    $agencias = new AgenciasFalso();
+    $cot = new CotizadorService($agencias, new RutasFalso(), fn () => '2026-10-31');
+    foreach ([['MOQ001', 'AQP001'], ['AQP001', 'MOQ001'], ['ILO001', 'AQP001'], ['LIM001', 'ILO001']] as [$o, $d]) {
+        $hay = array_filter($cot->tarifas($o, $d)['tarifas'], fn ($t) => $t['disponible'] === true) !== [];
+        $acepta = true;
+        try {
+            $servicio->crear(4, reservaValida(['sucursalOrigen' => $o, 'sucursalDestino' => $d]));
+        } catch (HttpException) {
+            $acepta = false;
+        }
+        afirmar($hay === $acepta, "{$o}->{$d}: tarifas=" . ($hay ? 'sí' : 'no') . ' reserva=' . ($acepta ? 'sí' : 'no'));
+    }
+    afirmar($cot->cotizar('MOQ001', 'AQP001', '0.5') !== [], 'el cotizador del módulo 2 sigue funcionando');
+});
+
+prueba('vencimiento: límites de 71:59:59, 72:00:00 y posteriores (en el instante exacto ya vence)', function () {
+    $repo = new ReservasFalso();
+    $repo->reservas = [];
+    $servicio = new VencimientoService($repo);
+    $base = new DateTimeImmutable('2026-10-28 09:00:00');
+    $casos = ['R000000010' => '2026-10-31 08:59:59', 'R000000011' => '2026-10-31 09:00:00', 'R000000012' => '2026-10-31 09:00:01', 'R000000013' => '2026-11-05 00:00:00'];
+    foreach (['R000000010', 'R000000011', 'R000000012', 'R000000013'] as $i => $codigo) {
+        $repo->reservas[$codigo] = ['idRemitente' => 4, 'idDestinatario' => 50, 'origen' => 'MOQ001', 'destino' => 'AQP001', 'contenido' => 'x',
+            'estado' => 'PENDIENTE', 'fechaHora' => ['2026-10-28 09:00:01', '2026-10-28 09:00:00', '2026-10-28 08:59:59', '2026-10-27 00:00:00'][$i], 'seguimiento' => null, 'canal' => 'WEB'];
+    }
+    $ref = new DateTimeImmutable('2026-10-31 09:00:00');
+    // reservada 09:00:01 (71:59:59 antes de la referencia) NO vence; 09:00:00 (72:00:00) SÍ; 08:59:59 (72:00:01) SÍ; muy anterior SÍ.
+    $codigos = array_column($servicio->vencibles($ref), 'codigo');
+    afirmar($codigos === ['R000000013', 'R000000012', 'R000000011'] || $codigos === ['R000000011', 'R000000012', 'R000000013'] || (count($codigos) === 3 && !in_array('R000000010', $codigos, true)), 'vencibles: ' . implode(',', $codigos));
+    afirmar($servicio->vencer($ref) === 3, 'vencen 3');
+    afirmar($repo->reservas['R000000010']['estado'] === 'PENDIENTE', '71:59:59 sigue PENDIENTE');
+    afirmar($repo->reservas['R000000011']['estado'] === 'VENCIDA', '72:00:00 ya VENCIDA');
+    afirmar($repo->reservas['R000000012']['estado'] === 'VENCIDA' && $repo->reservas['R000000013']['estado'] === 'VENCIDA', 'posteriores VENCIDAS');
+    afirmar($servicio->vencer($ref) === 0, 'repetirlo no cambia nada (idempotente)');
+});
+
+prueba('vencimiento: FORMALIZADA, CANCELADA y VENCIDA no cambian por esta regla', function () {
+    $repo = new ReservasFalso(); // R1 FORMALIZADA, R2 FORMALIZADA, R3 CANCELADA, R4 VENCIDA, R5 PENDIENTE reciente
+    $antes = array_map(fn ($r) => $r['estado'], $repo->reservas);
+    $n = (new VencimientoService($repo))->vencer(new DateTimeImmutable('2027-01-01 00:00:00'));
+    afirmar($n === 1, 'solo la pendiente: ' . $n);
+    foreach (['R000000001', 'R000000002', 'R000000003', 'R000000004'] as $c) {
+        afirmar($repo->reservas[$c]['estado'] === $antes[$c], "$c intacta");
+    }
+    afirmar($repo->reservas['R000000005']['estado'] === 'VENCIDA', 'la pendiente venció');
+});
+
+prueba('vencimiento: una reserva que cumplió el plazo no se cancela, aunque aún no se haya marcado VENCIDA', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $repo->ahora = new DateTimeImmutable('2026-11-02 10:00:00'); // R5: 2026-10-30 10:00 → 72:00:00 exactos
+    esperarError(fn () => $servicio->cancelar(4, 'R000000005'), 409, 'reserva_vencida');
+    afirmar($repo->reservas['R000000005']['estado'] === 'PENDIENTE', 'no se tocó');
+    $r = $servicio->ver(4, 'R000000005');
+    afirmar($r['estado'] === 'PENDIENTE' && $r['plazoCumplido'] === true, 'la API avisa que el plazo se cumplió');
+    $repo->ahora = new DateTimeImmutable('2026-11-02 09:59:59');
+    afirmar($servicio->cancelar(4, 'R000000005')['estado'] === 'CANCELADA', 'un segundo antes aún se puede cancelar');
+});
+
+prueba('vencimiento: carrera cancelar ↔ vencer: gana la primera y la otra no pisa el estado', function () {
+    [$repo, $servicio] = escenarioReservas();
+    $venc = new VencimientoService($repo);
+    $ref = new DateTimeImmutable('2027-01-01 00:00:00');
+    afirmar($servicio->cancelar(4, 'R000000005')['estado'] === 'CANCELADA', 'cancelación primero');
+    afirmar($venc->vencer($ref) === 0 && $repo->reservas['R000000005']['estado'] === 'CANCELADA', 'el vencimiento no pisa una CANCELADA');
+    [$repo2, $servicio2] = escenarioReservas();
+    $v2 = new VencimientoService($repo2);
+    $repo2->ahora = new DateTimeImmutable('2026-11-05 00:00:00');
+    afirmar($v2->vencer() === 1, 'vencimiento primero');
+    esperarError(fn () => $servicio2->cancelar(4, 'R000000005'), 409, 'reserva_no_cancelable');
+    afirmar($repo2->reservas['R000000005']['estado'] === 'VENCIDA', 'la cancelación no pisa una VENCIDA');
+});
+
+prueba('vencimiento: la respuesta de una pendiente trae venceEl = reserva + 72 h', function () {
+    [, $servicio] = escenarioReservas();
+    $r = $servicio->ver(4, 'R000000005');
+    afirmar($r['venceEl'] === '2026-11-02 10:00:00', 'venceEl: ' . ($r['venceEl'] ?? 'null'));
+    afirmar($servicio->ver(4, 'R000000001')['venceEl'] === null, 'las no pendientes no tienen fecha límite');
 });
 
 prueba('reservas: consultar destinatario devuelve solo el nombre (nunca teléfono ni correo)', function () {

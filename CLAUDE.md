@@ -52,6 +52,7 @@ C:\Jatsa
 - `backend/src/Middleware/` — autenticación, autorización por rol, CORS.
 - `backend/src/Shared/` — validación, utilidades y excepciones comunes.
 - `backend/src/Modules/<Modulo>/` — un módulo por área funcional, cada uno con su `Controller`, `Service` y `Repository` (y rutas propias).
+- `backend/bin/` — comandos de consola (PHP CLI), p. ej. `vencer-reservas.php`. Escriben solo con una opción explícita (`--ejecutar`) y no se programan sin autorización.
 - `backend/storage/logs/` — registros de la aplicación.
 - `backend/tests/` — pruebas del backend (`C:\php\php.exe backend/tests/ejecutar.php`, sin dependencias ni base de datos).
 - `backend/storage/sessions/` — archivos de sesión (no se versionan).

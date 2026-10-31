@@ -17,6 +17,7 @@ const SUCURSALES = {
 }
 const tarifa = (tipo, maximo, precio) => ({ tipo, pesoMaximoKg: maximo, disponible: precio !== null, precioPorBulto: precio, tiempoHoras: precio ? 4 : null, precioBase: null, precioPorKm: null, distanciaKm: null })
 const TARIFAS_MOQ_AQP = [tarifa('SOBRE', 1, '9.15'), tarifa('PAQUETE', 30, '14.60'), tarifa('CARGA', 300, null)]
+const AVISO_SIN_TARIFAS = 'No hay tarifas vigentes entre estas sucursales, así que no se puede reservar esta ruta. Elige otro origen o destino.'
 const SIN_TARIFAS = [tarifa('SOBRE', 1, null), tarifa('PAQUETE', 30, null), tarifa('CARGA', 300, null)]
 
 const reserva = (codigo, estadoReserva, fecha, destinatario, origen, destino, contenido = 'Documentos y ropa', codigoSeguimiento = null) => ({
@@ -24,6 +25,7 @@ const reserva = (codigo, estadoReserva, fecha, destinatario, origen, destino, co
   origen: { codigo: origen, nombre: SUCURSALES[origen].nombre, direccion: SUCURSALES[origen].direccion, departamento: SUCURSALES[origen].departamento },
   destino: { codigo: destino, nombre: SUCURSALES[destino].nombre, direccion: SUCURSALES[destino].direccion, departamento: SUCURSALES[destino].departamento },
   codigoSeguimiento,
+  venceEl: estadoReserva === 'PENDIENTE' ? '2026-11-03 09:15:00' : null, plazoCumplido: false,
 })
 const reservasIniciales = () => [
   reserva('R000000006', 'PENDIENTE', '2026-10-31', 'Luis Alberto Flores Condori', 'MOQ001', 'AQP001'),
@@ -176,7 +178,15 @@ try {
   comprobar('Moquegua → Arequipa: precios de la diapositiva 12', await filasTarifas(), 'SOBRE 1 kg S/ 9.15 || PAQUETE 30 kg S/ 14.60 || CARGA 300 kg —')
   await escribir('#sucursalOrigen', 'AQP001'); await escribir('#sucursalDestino', 'MOQ001')
   await esperar(600)
-  comprobar('ruta sin tarifas vigentes: guiones y aviso', [await filasTarifas(), await texto('.panel-precio .mensaje-aviso')], ['SOBRE 1 kg — || PAQUETE 30 kg — || CARGA 300 kg —', 'No hay tarifas vigentes para esta ruta: el precio se confirma en la agencia.'])
+  comprobar('ruta sin tarifas vigentes: guiones y aviso', [await filasTarifas(), await texto('.panel-precio .mensaje-aviso')], ['SOBRE 1 kg — || PAQUETE 30 kg — || CARGA 300 kg —', AVISO_SIN_TARIFAS])
+  const antesSinTarifas = llamadasA('POST', '/api/reservas').length
+  await escribir('#numeroDocumento', '70234561'); await escribir('#contenido', 'Documentos y ropa')
+  comprobar('sin tarifas vigentes el botón «Reservar» queda deshabilitado', await evaluar(`document.querySelector('${ENVIAR}').disabled`), true)
+  await evaluar(`document.querySelector('${ENVIAR}').form.requestSubmit()`); await esperar(300)
+  comprobar('y aunque se fuerce el envío no se llama a la API', llamadasA('POST', '/api/reservas').length, antesSinTarifas)
+  await escribir('#sucursalOrigen', 'MOQ001'); await escribir('#sucursalDestino', 'AQP001'); await esperar(600)
+  comprobar('con una ruta con tarifa vuelve a habilitarse', await evaluar(`document.querySelector('${ENVIAR}').disabled`), false)
+  await escribir('#sucursalOrigen', 'AQP001'); await escribir('#sucursalDestino', 'MOQ001'); await esperar(600)
   await escribir('#sucursalDestino', 'AQP001')
   await esperar(400)
   comprobar('origen = destino: no se piden precios', [await existe('.panel-precio .tabla-tarifas'), await texto('.panel-precio .ayuda')], [false, 'Elige el origen y el destino para ver los precios por tipo de envío.'])
@@ -190,7 +200,7 @@ try {
   await esperar(300)
   await escribir('#sucursalDestino', 'LIM001') // otra ruta, respuesta inmediata
   await esperar(500)
-  comprobar('se muestran las tarifas de la ruta actual', await texto('.panel-precio .mensaje-aviso'), 'No hay tarifas vigentes para esta ruta: el precio se confirma en la agencia.')
+  comprobar('se muestran las tarifas de la ruta actual', await texto('.panel-precio .mensaje-aviso'), AVISO_SIN_TARIFAS)
   await esperar(RETRASO_MS + 300)
   comprobar('la respuesta tardía de la ruta anterior no pisa a la actual', await filasTarifas(), 'SOBRE 1 kg — || PAQUETE 30 kg — || CARGA 300 kg —')
   sim.tarifasLentas = false
@@ -233,14 +243,20 @@ try {
   sim.reservas = reservasIniciales()
   await irA('/cliente/reserva-registrada/R000000006')
   comprobar('pendiente: título, código y mensaje del prototipo', [await texto('h1'), await texto('.codigo-reserva'), await texto('.mensaje-confirmacion')],
-    ['Reserva registrada', 'R000000006', 'Lleva tu paquete a Agencia Moquegua (Jr. Ancash 325) y muestra este código. Si no lo llevas, la reserva vence.'])
+    ['Reserva registrada', 'R000000006', 'Lleva tu paquete a Agencia Moquegua (Jr. Ancash 325) y muestra este código. Si no lo llevas, la reserva vence. Vence el 03/11/2026 09:15 (72 horas desde que la hiciste).'])
   comprobar('botones: Mis reservas, Ir al panel y Horarios', await evaluar(`[...document.querySelectorAll('.acciones-confirmacion a')].map(a => a.innerText + '→' + a.getAttribute('href')).join(' | ')`), 'Mis reservas→/cliente/reservas | Ir al panel→/cliente | Horarios→/salidas')
   await irA('/cliente/reserva-registrada/R000000001')
   comprobar('formalizada: título y código de seguimiento', [await texto('h1'), await texto('.mensaje-confirmacion')], ['Reserva formalizada', 'Tu paquete ya fue registrado en la agencia. Su código de seguimiento es EN7K4Q2M9X1B.'])
   await irA('/cliente/reserva-registrada/R000000003')
   comprobar('cancelada', [await texto('h1'), await texto('.mensaje-confirmacion')], ['Reserva cancelada', 'Cancelaste esta reserva.'])
   await irA('/cliente/reserva-registrada/R000000005')
-  comprobar('vencida', [await texto('h1'), await texto('.mensaje-confirmacion')], ['Reserva vencida', 'Esta reserva venció porque el paquete no llegó a la agencia.'])
+  comprobar('vencida', [await texto('h1'), await texto('.mensaje-confirmacion')], ['Reserva vencida', 'Esta reserva venció: pasaron 72 horas y el paquete no llegó a la agencia.'])
+  sim.reservas.push({ ...reserva('R000000007', 'PENDIENTE', '2026-10-25', 'Luis Alberto Flores Condori', 'MOQ001', 'AQP001'), venceEl: '2026-10-28 09:15:00', plazoCumplido: true })
+  await irA('/cliente/reserva-registrada/R000000007')
+  comprobar('pendiente con el plazo cumplido: se avisa que ya no sirve', await texto('.mensaje-confirmacion'), 'Pasaron las 72 horas de vigencia: esta reserva está por marcarse como vencida y ya no se puede usar ni cancelar.')
+  await irA('/cliente/reservas')
+  comprobar('y en «Mis reservas» no ofrece cancelar', await evaluar(`(() => { const f = [...document.querySelectorAll('.tabla-reservas tbody tr')].find(t => t.innerText.includes('R000000007')); return f.querySelector('.celda-accion').innerText.trim() })()`), 'Plazo cumplido')
+  sim.reservas = sim.reservas.filter((r) => r.codigo !== 'R000000007')
   await irA('/cliente/reserva-registrada/R000000999')
   comprobar('un código que no es de la persona: «No encontramos esa reserva»', [await texto('h1'), await texto('.confirmacion p')], ['No encontramos esa reserva', 'No se encontró la reserva.'])
 

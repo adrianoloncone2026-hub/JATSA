@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Jatsa\Modules\Reservas;
 
+use DateTimeImmutable;
 use Jatsa\Core\Database;
 use Jatsa\Shared\HttpException;
 use PDO;
@@ -22,7 +23,9 @@ final class ReservaRepository implements RepositorioReservas
                d.nombreCompleto AS destinatario,
                so.codigoSucursal AS origenCodigo, so.nombre AS origenNombre, so.direccion AS origenDireccion, so.departamento AS origenDepartamento,
                sd.codigoSucursal AS destinoCodigo, sd.nombre AS destinoNombre, sd.direccion AS destinoDireccion, sd.departamento AS destinoDepartamento,
-               e.codigoSeguimiento
+               e.codigoSeguimiento,
+               CASE WHEN r.estadoReserva = 'PENDIENTE'
+                     AND r.fechaHoraReserva <= DATEADD(HOUR, -%HORAS%, SYSDATETIME()) THEN 1 ELSE 0 END AS plazoCumplido
         FROM Reserva AS r
         INNER JOIN Persona AS d ON d.idPersona = r.idPersonaDestinatario
         INNER JOIN Sucursal AS so ON so.idSucursal = r.idSucursalOrigen
@@ -114,7 +117,7 @@ final class ReservaRepository implements RepositorioReservas
 
     public function listarDeRemitente(int $idPersona, ?string $estado): array
     {
-        $sql = self::CONSULTA . ($estado !== null ? ' AND r.estadoReserva = :estado' : '')
+        $sql = self::consulta() . ($estado !== null ? ' AND r.estadoReserva = :estado' : '')
             . ' ORDER BY r.fechaHoraReserva DESC, r.idReserva DESC';
         $sentencia = Database::conexion()->prepare($sql);
         $sentencia->bindValue(':persona', $idPersona, PDO::PARAM_INT);
@@ -128,7 +131,7 @@ final class ReservaRepository implements RepositorioReservas
 
     public function buscarDeRemitente(int $idPersona, string $codigo): ?array
     {
-        $sentencia = Database::conexion()->prepare(self::CONSULTA . ' AND r.codigoReserva = :codigo');
+        $sentencia = Database::conexion()->prepare(self::consulta() . ' AND r.codigoReserva = :codigo');
         $sentencia->bindValue(':persona', $idPersona, PDO::PARAM_INT);
         $sentencia->bindValue(':codigo', $codigo, PDO::PARAM_STR);
         $sentencia->execute();
@@ -137,17 +140,73 @@ final class ReservaRepository implements RepositorioReservas
         return $fila === false ? null : $this->aReserva($fila);
     }
 
-    public function cancelar(int $idPersona, string $codigo): bool
+    public function cancelar(int $idPersona, string $codigo, ?DateTimeImmutable $referencia = null): bool
     {
+        // Condicionado a que siga PENDIENTE y dentro del plazo: una reserva que ya cumplió las horas de vigencia no
+        // se cancela como pendiente (en el instante límite ya vence). Atómico frente a vencerPendientes().
         $sentencia = Database::conexion()->prepare(
             "UPDATE Reserva SET estadoReserva = 'CANCELADA'
-             WHERE codigoReserva = :codigo AND idPersonaRemitente = :persona AND estadoReserva = 'PENDIENTE'",
+             WHERE codigoReserva = :codigo AND idPersonaRemitente = :persona AND estadoReserva = 'PENDIENTE'
+               AND fechaHoraReserva > " . self::limite($referencia),
         );
         $sentencia->bindValue(':codigo', $codigo, PDO::PARAM_STR);
         $sentencia->bindValue(':persona', $idPersona, PDO::PARAM_INT);
+        self::enlazarReferencia($sentencia, $referencia);
         $sentencia->execute();
 
         return $sentencia->rowCount() > 0;
+    }
+
+    public function vencerPendientes(?DateTimeImmutable $referencia = null): int
+    {
+        $sentencia = Database::conexion()->prepare(
+            "UPDATE Reserva SET estadoReserva = 'VENCIDA'
+             WHERE estadoReserva = 'PENDIENTE' AND fechaHoraReserva <= " . self::limite($referencia),
+        );
+        self::enlazarReferencia($sentencia, $referencia);
+        $sentencia->execute();
+
+        return $sentencia->rowCount();
+    }
+
+    public function listarVencibles(?DateTimeImmutable $referencia = null): array
+    {
+        $sentencia = Database::conexion()->prepare(
+            "SELECT codigoReserva, fechaHoraReserva FROM Reserva
+             WHERE estadoReserva = 'PENDIENTE' AND fechaHoraReserva <= " . self::limite($referencia) . '
+             ORDER BY fechaHoraReserva, idReserva',
+        );
+        self::enlazarReferencia($sentencia, $referencia);
+        $sentencia->execute();
+
+        return array_map(
+            static fn (array $fila): array => ['codigo' => (string) $fila['codigoReserva'], 'fechaHora' => (string) $fila['fechaHoraReserva']],
+            $sentencia->fetchAll(PDO::FETCH_ASSOC),
+        );
+    }
+
+    /** Consulta base con las horas de vigencia (constante) ya sustituidas. */
+    private static function consulta(): string
+    {
+        return str_replace('%HORAS%', (string) self::HORAS_DE_VIGENCIA, self::CONSULTA);
+    }
+
+    /**
+     * Expresión SQL del instante límite: «ahora − vigencia». Con referencia usa ese instante (parámetro :referencia);
+     * sin ella, el reloj de SQL Server. Las horas son una constante, nunca entrada del usuario.
+     */
+    private static function limite(?DateTimeImmutable $referencia): string
+    {
+        $ahora = $referencia === null ? 'SYSDATETIME()' : 'CAST(:referencia AS DATETIME2(0))';
+
+        return 'DATEADD(HOUR, -' . self::HORAS_DE_VIGENCIA . ', ' . $ahora . ')';
+    }
+
+    private static function enlazarReferencia(\PDOStatement $sentencia, ?DateTimeImmutable $referencia): void
+    {
+        if ($referencia !== null) {
+            $sentencia->bindValue(':referencia', $referencia->format('Y-m-d H:i:s'), PDO::PARAM_STR);
+        }
     }
 
     /**
@@ -166,6 +225,7 @@ final class ReservaRepository implements RepositorioReservas
             'origen' => ['codigo' => (string) $fila['origenCodigo'], 'nombre' => (string) $fila['origenNombre'], 'direccion' => (string) $fila['origenDireccion'], 'departamento' => (string) $fila['origenDepartamento']],
             'destino' => ['codigo' => (string) $fila['destinoCodigo'], 'nombre' => (string) $fila['destinoNombre'], 'direccion' => (string) $fila['destinoDireccion'], 'departamento' => (string) $fila['destinoDepartamento']],
             'codigoSeguimiento' => $fila['codigoSeguimiento'] !== null ? (string) $fila['codigoSeguimiento'] : null,
+            'plazoCumplido' => (int) $fila['plazoCumplido'] === 1,
         ];
     }
 

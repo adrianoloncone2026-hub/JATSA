@@ -144,12 +144,13 @@ export default function MisReservas() {
                     <InsigniaEstado estado={reserva.estado} />
                   </td>
                   <td className="celda-accion" data-etiqueta="Acción">
-                    {reserva.estado === 'PENDIENTE' && confirmando !== reserva.codigo && (
+                    {reserva.estado === 'PENDIENTE' && reserva.plazoCumplido && <span className="ayuda">Plazo cumplido</span>}
+                    {reserva.estado === 'PENDIENTE' && !reserva.plazoCumplido && confirmando !== reserva.codigo && (
                       <button type="button" className="boton boton-claro" onClick={() => setConfirmando(reserva.codigo)}>
                         Cancelar reserva
                       </button>
                     )}
-                    {reserva.estado === 'PENDIENTE' && confirmando === reserva.codigo && (
+                    {reserva.estado === 'PENDIENTE' && !reserva.plazoCumplido && confirmando === reserva.codigo && (
                       <div className="confirmar-cancelacion" role="group" aria-label={`Confirmar la cancelación de ${reserva.codigo}`}>
                         <span>¿Cancelar {reserva.codigo}?</span>
                         <button type="button" className="boton boton-marino" onClick={() => cancelar(reserva.codigo)} disabled={cancelando === reserva.codigo}>

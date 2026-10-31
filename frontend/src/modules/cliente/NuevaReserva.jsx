@@ -136,6 +136,7 @@ export default function NuevaReserva() {
     evento.preventDefault()
     setErrorGeneral('')
     const pendientes = validar()
+    if (sinTarifas) pendientes.sucursalDestino = pendientes.sucursalDestino || 'No hay tarifas vigentes entre estas sucursales. Elige otra ruta.'
     setErrores(pendientes)
     if (Object.keys(pendientes).length > 0) {
       enfocarPrimerError(pendientes)
@@ -165,6 +166,9 @@ export default function NuevaReserva() {
       }
     }
   }
+
+  // Ruta confirmada sin ninguna tarifa vigente (de ningún tipo): el servidor también la rechaza.
+  const sinTarifas = tarifas.fase === 'listo' && tarifas.tarifas.every((tarifa) => !tarifa.disponible)
 
   const opcionesSucursal = agencias.lista.map((a) => (
     <option key={a.codigo} value={a.codigo}>
@@ -239,7 +243,7 @@ export default function NuevaReserva() {
           </div>
 
           <div className="acciones-formulario">
-            <button type="submit" className="boton boton-azul" disabled={enviando || agencias.fase !== 'listo'}>
+            <button type="submit" className="boton boton-azul" disabled={enviando || agencias.fase !== 'listo' || sinTarifas} aria-describedby={sinTarifas ? 'aviso-sin-tarifas' : undefined}>
               {enviando ? 'Reservando…' : 'Reservar'}
             </button>
             <Link to="/cliente" className="boton boton-claro">
@@ -284,8 +288,10 @@ export default function NuevaReserva() {
                   ))}
                 </tbody>
               </table>
-              {tarifas.tarifas.every((tarifa) => !tarifa.disponible) && (
-                <p className="mensaje-aviso">No hay tarifas vigentes para esta ruta: el precio se confirma en la agencia.</p>
+              {sinTarifas && (
+                <p id="aviso-sin-tarifas" role="alert" className="mensaje-aviso">
+                  No hay tarifas vigentes entre estas sucursales, así que no se puede reservar esta ruta. Elige otro origen o destino.
+                </p>
               )}
             </>
           )}

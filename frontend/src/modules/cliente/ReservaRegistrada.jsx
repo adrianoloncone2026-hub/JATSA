@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import { obtenerReserva } from '../../api/reservas.js'
 import InsigniaEstado from '../../components/InsigniaEstado.jsx'
 import RutaMonedas from '../../components/RutaMonedas.jsx'
+import { fechaHoraCorta } from '../../utils/formato.js'
 
 const TITULOS = {
   PENDIENTE: 'Reserva registrada',
@@ -13,8 +14,11 @@ const TITULOS = {
 
 function mensajeDe(reserva) {
   switch (reserva.estado) {
-    case 'PENDIENTE':
-      return `Lleva tu paquete a ${reserva.origen.nombre} (${reserva.origen.direccion}) y muestra este código. Si no lo llevas, la reserva vence.`
+    case 'PENDIENTE': {
+      if (reserva.plazoCumplido) return 'Pasaron las 72 horas de vigencia: esta reserva está por marcarse como vencida y ya no se puede usar ni cancelar.'
+      const limite = reserva.venceEl ? ` Vence el ${fechaHoraCorta(reserva.venceEl)} (72 horas desde que la hiciste).` : ''
+      return `Lleva tu paquete a ${reserva.origen.nombre} (${reserva.origen.direccion}) y muestra este código. Si no lo llevas, la reserva vence.${limite}`
+    }
     case 'FORMALIZADA':
       return reserva.codigoSeguimiento
         ? `Tu paquete ya fue registrado en la agencia. Su código de seguimiento es ${reserva.codigoSeguimiento}.`
@@ -22,7 +26,7 @@ function mensajeDe(reserva) {
     case 'CANCELADA':
       return 'Cancelaste esta reserva.'
     default:
-      return 'Esta reserva venció porque el paquete no llegó a la agencia.'
+      return 'Esta reserva venció: pasaron 72 horas y el paquete no llegó a la agencia.'
   }
 }
 

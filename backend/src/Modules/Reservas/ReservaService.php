@@ -3,7 +3,10 @@ declare(strict_types=1);
 
 namespace Jatsa\Modules\Reservas;
 
+use DateInterval;
+use DateTimeImmutable;
 use Jatsa\Modules\Publico\AgenciaRepository;
+use Jatsa\Modules\Publico\CotizadorService;
 use Jatsa\Modules\Publico\RepositorioAgencias;
 use Jatsa\Shared\HttpException;
 
@@ -20,11 +23,17 @@ final class ReservaService
 
     private readonly RepositorioReservas $reservas;
     private readonly RepositorioAgencias $agencias;
+    private readonly CotizadorService $cotizador;
 
-    public function __construct(?RepositorioReservas $reservas = null, ?RepositorioAgencias $agencias = null)
+    /**
+     * El cotizador se usa para comprobar que la ruta tenga alguna tarifa vigente: es el mismo que atiende
+     * /api/tarifas y /api/cotizacion, así la vigencia y la direccionalidad coinciden en los tres sitios.
+     */
+    public function __construct(?RepositorioReservas $reservas = null, ?RepositorioAgencias $agencias = null, ?CotizadorService $cotizador = null)
     {
         $this->reservas = $reservas ?? new ReservaRepository();
         $this->agencias = $agencias ?? new AgenciaRepository();
+        $this->cotizador = $cotizador ?? new CotizadorService($this->agencias);
     }
 
     /**
@@ -82,6 +91,10 @@ final class ReservaService
             $errores['sucursalDestino'] = 'La sucursal de destino no está disponible.';
         } elseif ($origen === $destino) {
             $errores['sucursalDestino'] = 'El origen y el destino deben ser distintos.';
+        } elseif (!isset($errores['sucursalOrigen']) && !$this->rutaTieneTarifaVigente($origen, $destino)) {
+            // Sin ninguna tarifa vigente (de ningún tipo, hoy y en este sentido) el envío no se podría cobrar:
+            // no se promete una reserva que no se puede atender. El tipo concreto se decide al pesar, en la formalización.
+            $errores['sucursalDestino'] = 'No hay tarifas vigentes entre estas sucursales. Elige otra ruta.';
         }
 
         $contenido = self::normalizarEspacios(self::texto($datos, 'contenido'));
@@ -133,11 +146,43 @@ final class ReservaService
         $idPersona = $this->personaDe($idUsuario);
         $reserva = $this->reservaPropia($idPersona, $codigo);
 
-        if ($reserva['estado'] !== 'PENDIENTE' || !$this->reservas->cancelar($idPersona, $reserva['codigo'])) {
+        // Una reserva que ya cumplió el plazo no se cancela como pendiente (aunque aún no se haya marcado VENCIDA).
+        if ($reserva['estado'] === 'PENDIENTE' && $reserva['plazoCumplido']) {
+            throw self::reservaVencida();
+        }
+        if ($reserva['estado'] !== 'PENDIENTE') {
             throw new HttpException(409, 'reserva_no_cancelable', 'Solo se pueden cancelar las reservas pendientes.');
         }
 
+        if (!$this->reservas->cancelar($idPersona, $reserva['codigo'])) {
+            // Otra operación se adelantó entre la lectura y el UPDATE: se vuelve a leer para decir por qué.
+            $actual = $this->reservaPropia($idPersona, $codigo);
+            throw $actual['estado'] === 'VENCIDA' || ($actual['estado'] === 'PENDIENTE' && $actual['plazoCumplido'])
+                ? self::reservaVencida()
+                : new HttpException(409, 'reserva_no_cancelable', 'Solo se pueden cancelar las reservas pendientes.');
+        }
+
         return $this->presentar($this->reservaPropia($idPersona, $codigo));
+    }
+
+    private static function reservaVencida(): HttpException
+    {
+        return new HttpException(
+            409,
+            'reserva_vencida',
+            sprintf('Pasaron las %d horas de vigencia de la reserva: ya no puede cancelarse.', RepositorioReservas::HORAS_DE_VIGENCIA),
+        );
+    }
+
+    private function rutaTieneTarifaVigente(string $origen, string $destino): bool
+    {
+        foreach ($this->cotizador->tarifas($origen, $destino)['tarifas'] as $tarifa) {
+            if ($tarifa['disponible'] === true) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -211,7 +256,20 @@ final class ReservaService
             'origen' => $reserva['origen'],
             'destino' => $reserva['destino'],
             'codigoSeguimiento' => $reserva['codigoSeguimiento'],
+            // Solo una reserva PENDIENTE tiene fecha límite; si ya la cumplió y aún no se marcó VENCIDA, lo indica.
+            'venceEl' => $reserva['estado'] === 'PENDIENTE' ? self::fechaLimite((string) $reserva['fechaHora']) : null,
+            'plazoCumplido' => $reserva['estado'] === 'PENDIENTE' && $reserva['plazoCumplido'],
         ];
+    }
+
+    /** fechaHoraReserva + horas de vigencia, en el mismo formato y reloj en que se guardó (sin conversiones de zona). */
+    private static function fechaLimite(string $fechaHora): string
+    {
+        $inicio = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', substr($fechaHora, 0, 19));
+
+        return $inicio === false
+            ? $fechaHora
+            : $inicio->add(new DateInterval('PT' . RepositorioReservas::HORAS_DE_VIGENCIA . 'H'))->format('Y-m-d H:i:s');
     }
 
     private static function errorDeDocumento(string $tipo, string $numero): ?string
