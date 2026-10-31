@@ -74,7 +74,10 @@ export default function EnvioRegistrado() {
           {envio.cantidadBultos} {envio.cantidadBultos === 1 ? 'bulto' : 'bultos'} · {envio.pesoTotalKg} kg · S/ {envio.importe} · {envio.tipoEntrega === 'DOMICILIO' ? `entrega a domicilio (${envio.direccionEntrega})` : 'entrega en agencia'}
         </p>
         <p className="ayuda">
-          Reserva {envio.reserva.codigo} formalizada · registrado el {fechaHoraCorta(envio.fechaHoraRegistro)} · aún sin cobrar
+          Reserva {envio.reserva.codigo} formalizada · registrado el {fechaHoraCorta(envio.fechaHoraRegistro)}
+        </p>
+        <p className="mensaje-aviso" role="status">
+          Envío guardado · pago pendiente. El cobro todavía no se registró: se hará en Caja. La modalidad «paga en destino» tampoco queda registrada aún.
         </p>
         <div className="acciones-confirmacion">
           <button type="button" className="boton boton-azul" onClick={() => window.print()}>

@@ -320,6 +320,7 @@ export default function FormalizarEnvio() {
           </p>
         </div>
 
+        <p className="ayuda">Ambos botones guardan el envío con el pago pendiente: el cobro no se registra aquí, se hará en Caja.</p>
         <div className="acciones-formulario">
           <button type="button" className="boton boton-azul" onClick={() => guardar(true)} disabled={guardando || bultos.length === 0 || cotizacion.fase === 'cargando' || cotizacion.datos?.valido === false}>
             {guardando ? 'Guardando…' : 'Guardar y cobrar ahora'}
