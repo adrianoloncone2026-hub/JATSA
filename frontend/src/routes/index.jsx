@@ -6,7 +6,10 @@ import LayoutCliente from '../layouts/LayoutCliente.jsx'
 import LayoutGerente from '../layouts/LayoutGerente.jsx'
 import LayoutPublico from '../layouts/LayoutPublico.jsx'
 import LayoutTransportista from '../layouts/LayoutTransportista.jsx'
+import Agencias from '../modules/publico/Agencias.jsx'
+import Cotizador from '../modules/publico/Cotizador.jsx'
 import Ingresar from '../modules/publico/Ingresar.jsx'
+import Inicio from '../modules/publico/Inicio.jsx'
 import PruebaConexion from '../modules/publico/PruebaConexion.jsx'
 import { SECCIONES } from './definicion.js'
 
@@ -20,6 +23,9 @@ const LAYOUTS = {
 
 // Pantallas ya reales; el resto de las rutas muestran un marcador.
 const PANTALLAS_REALES = {
+  'publico/': Inicio,
+  'publico/agencias': Agencias,
+  'publico/cotizador': Cotizador,
   'publico/ingresar': Ingresar,
   'publico/prueba-conexion': PruebaConexion,
 }

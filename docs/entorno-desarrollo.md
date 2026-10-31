@@ -33,6 +33,8 @@ El navegador llama a `http://localhost:5173/api/...`; Vite reenvía `/api` a `ht
 |---|---|---|
 | GET | `/api/salud` | Estado de la API. No usa la base de datos. |
 | GET | `/api/salud/bd` | Abre la conexión a SQL Server (sin ejecutar SQL). Responde 503 si no está configurada. |
+| GET | `/api/agencias` | Agencias activas con teléfonos. Ver `docs/api/publico.md`. |
+| GET | `/api/cotizacion` | Cotizador público (origen, destino, peso). |
 | POST | `/api/auth/ingresar` | Inicia sesión. Ver `docs/api/auth.md`. |
 | POST | `/api/auth/salir` | Cierra la sesión. |
 | GET | `/api/auth/yo` | Usuario de la sesión actual. |

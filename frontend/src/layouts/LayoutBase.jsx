@@ -1,10 +1,15 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import logo from '../assets/logo-jatsa.png'
 import { useAuth } from '../auth/AuthProvider.jsx'
 import { rutaInicioDeRol } from '../auth/roles.js'
 import { enlacesMenu, seccionPorId } from '../routes/definicion.js'
 
-// Marco común de todos los layouts: cabecera con el nombre del área, menú, usuario y contenido.
+const RUTAS_DE_ACCESO = ['/ingresar', '/crear-cuenta']
+
+// Marco común de todos los layouts: cabecera con logo, menú y acciones, y el contenido de la pantalla.
+// En el área pública, «Crear cuenta» e «Ingresar» van como botones a la derecha (como en el prototipo);
+// con sesión abierta se muestran el usuario y «Salir».
 export default function LayoutBase({ idSeccion }) {
   const seccion = seccionPorId(idSeccion)
   const { usuario, salir } = useAuth()
@@ -12,9 +17,9 @@ export default function LayoutBase({ idSeccion }) {
   const [saliendo, setSaliendo] = useState(false)
   const [errorSalida, setErrorSalida] = useState('')
 
-  // Con sesión abierta no tiene sentido ofrecer "Ingresar" ni "Crear cuenta".
-  const ocultos = usuario ? ['/ingresar', '/crear-cuenta'] : []
-  const enlaces = enlacesMenu(idSeccion).filter((enlace) => !ocultos.includes(enlace.to))
+  const todos = enlacesMenu(idSeccion)
+  const enlaces = idSeccion === 'publico' ? todos.filter((e) => !RUTAS_DE_ACCESO.includes(e.to)) : todos
+  const accesos = idSeccion === 'publico' && !usuario ? todos.filter((e) => RUTAS_DE_ACCESO.includes(e.to)) : []
 
   async function cerrarSesion() {
     setErrorSalida('')
@@ -34,33 +39,50 @@ export default function LayoutBase({ idSeccion }) {
     <div className={`layout layout-${idSeccion}`}>
       <header className="cabecera">
         <div className="cabecera-fila">
-          <span className="marca">JATSA</span>
-          <span className="area">{seccion.etiqueta}</span>
-          {usuario && (
-            <div className="usuario-sesion">
-              <span>
-                {usuario.nombreCompleto} · <strong>{usuario.rol}</strong>
-                {usuario.sucursal && ` · ${usuario.sucursal.codigo}`}
-              </span>
-              {idSeccion === 'publico' && <Link to={rutaInicioDeRol(usuario.rol)}>Mi panel</Link>}
-              <button type="button" className="secundario" onClick={cerrarSesion} disabled={saliendo}>
-                Salir
-              </button>
-            </div>
-          )}
+          <Link to="/" className="logo" aria-label="JATSA Cargo, ir al inicio">
+            <img src={logo} alt="" width={56} height={56} />
+          </Link>
+          {idSeccion !== 'publico' && <span className="area">{seccion.etiqueta}</span>}
+          <nav className="menu" aria-label={`Menú de ${seccion.etiqueta}`}>
+            {enlaces.map((enlace) => (
+              <NavLink key={enlace.to} to={enlace.to} end>
+                {enlace.texto}
+              </NavLink>
+            ))}
+          </nav>
+          <div className="acciones-cabecera">
+            {accesos.map((enlace) => (
+              <Link
+                key={enlace.to}
+                to={enlace.to}
+                className={enlace.to === '/ingresar' ? 'boton boton-azul' : 'boton boton-claro'}
+              >
+                {enlace.texto}
+              </Link>
+            ))}
+            {usuario && (
+              <div className="usuario-sesion">
+                <span>
+                  {usuario.nombreCompleto} · <strong>{usuario.rol}</strong>
+                  {usuario.sucursal && ` · ${usuario.sucursal.codigo}`}
+                </span>
+                {idSeccion === 'publico' && (
+                  <Link to={rutaInicioDeRol(usuario.rol)} className="boton boton-claro">
+                    Mi panel
+                  </Link>
+                )}
+                <button type="button" className="boton boton-claro" onClick={cerrarSesion} disabled={saliendo}>
+                  Salir
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         {errorSalida && (
-          <div className="resultado error" role="alert">
+          <div className="resultado error aviso-cabecera" role="alert">
             {errorSalida}
           </div>
         )}
-        <nav className="menu" aria-label={`Menú de ${seccion.etiqueta}`}>
-          {enlaces.map((enlace) => (
-            <NavLink key={enlace.to} to={enlace.to} end>
-              {enlace.texto}
-            </NavLink>
-          ))}
-        </nav>
       </header>
       <main className="contenido">
         <Outlet />

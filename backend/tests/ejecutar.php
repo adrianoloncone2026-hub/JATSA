@@ -19,7 +19,13 @@ use Jatsa\Modules\Auth\AuthService;
 use Jatsa\Modules\Auth\RepositorioUsuarios;
 use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Roles;
+use Jatsa\Modules\Publico\AgenciasController;
+use Jatsa\Modules\Publico\CotizadorController;
+use Jatsa\Modules\Publico\CotizadorService;
+use Jatsa\Modules\Publico\RepositorioAgencias;
+use Jatsa\Modules\Publico\RepositorioRutas;
 use Jatsa\Shared\Sesion;
+use Jatsa\Shared\Tarifas;
 
 $raiz = dirname(__DIR__);
 require $raiz . '/src/autoload.php';
@@ -326,6 +332,166 @@ prueba('controlador: salir es idempotente', function () use ($limpiar, $servicio
 });
 
 $limpiar();
+
+// ── Módulo 2: tarifas, cotizador y agencias (repositorios simulados, sin base de datos) ──────
+final class AgenciasFalso implements RepositorioAgencias
+{
+    /** @var list<array<string, mixed>> */
+    public array $lista;
+
+    public function __construct()
+    {
+        $this->lista = [
+            ['codigo' => 'AQP001', 'nombre' => 'Agencia Arequipa Centro', 'departamento' => 'Arequipa', 'provincia' => 'Arequipa', 'distrito' => 'Cercado', 'direccion' => 'Av. Ejército 512', 'telefonos' => ['054201450', '054201451']],
+            ['codigo' => 'ILO001', 'nombre' => 'Agencia Ilo', 'departamento' => 'Moquegua', 'provincia' => 'Ilo', 'distrito' => 'Ilo', 'direccion' => 'Av. Costanera 120', 'telefonos' => ['053481560']],
+            ['codigo' => 'LIM001', 'nombre' => 'Agencia Lima Centro', 'departamento' => 'Lima', 'provincia' => 'Lima', 'distrito' => 'Cercado de Lima', 'direccion' => 'Av. Grau 450', 'telefonos' => ['014251230']],
+            ['codigo' => 'MOQ001', 'nombre' => 'Agencia Moquegua', 'departamento' => 'Moquegua', 'provincia' => 'Mariscal Nieto', 'distrito' => 'Moquegua', 'direccion' => 'Jr. Ancash 325', 'telefonos' => ['053461120']],
+        ];
+    }
+
+    public function listarActivas(): array
+    {
+        return $this->lista;
+    }
+
+    public function buscarActivaPorCodigo(string $codigo): ?array
+    {
+        foreach ($this->lista as $a) {
+            if ($a['codigo'] === $codigo) {
+                return $a;
+            }
+        }
+        return null;
+    }
+}
+
+final class RutasFalso implements RepositorioRutas
+{
+    public ?string $fechaRecibida = null;
+
+    public function vigentes(string $codigoOrigen, string $codigoDestino, string $fechaIso): array
+    {
+        $this->fechaRecibida = $fechaIso;
+        $tabla = [
+            'MOQ001>AQP001' => [
+                ['tipoEnvio' => 'SOBRE', 'precioBase' => '8.00', 'precioPorKm' => '0.005', 'distanciaKm' => '230.0', 'tiempoHoras' => 4],
+                ['tipoEnvio' => 'PAQUETE', 'precioBase' => '10.00', 'precioPorKm' => '0.020', 'distanciaKm' => '230.0', 'tiempoHoras' => 4],
+            ],
+            'AQP001>LIM001' => [['tipoEnvio' => 'PAQUETE', 'precioBase' => '10.00', 'precioPorKm' => '0.020', 'distanciaKm' => '1010.0', 'tiempoHoras' => 18]],
+            'LIM001>ILO001' => [['tipoEnvio' => 'CARGA', 'precioBase' => '40.00', 'precioPorKm' => '0.080', 'distanciaKm' => '1200.0', 'tiempoHoras' => 24]],
+            'ILO001>MOQ001' => [['tipoEnvio' => 'SOBRE', 'precioBase' => '8.00', 'precioPorKm' => '0.005', 'distanciaKm' => '100.0', 'tiempoHoras' => 2]],
+        ];
+        return $tabla[$codigoOrigen . '>' . $codigoDestino] ?? [];
+    }
+}
+
+$rutasFalso = new RutasFalso();
+$cotizador = new CotizadorService(new AgenciasFalso(), $rutasFalso, fn () => '2026-10-31');
+
+prueba('tarifas: costo del bulto con los valores del informe y del prototipo', function () {
+    $casos = [
+        ['8.00', '0.005', '230.0', 915],     // SOBRE MOQ→AQP  S/ 9.15  (diapositiva 7)
+        ['10.00', '0.020', '230.0', 1460],   // PAQUETE MOQ→AQP S/ 14.60 (diapositiva 7)
+        ['10.00', '0.020', '1010.0', 3020],  // PAQUETE AQP→LIM S/ 30.20
+        ['40.00', '0.080', '1200.0', 13600], // CARGA LIM→ILO   S/ 136.00
+        ['8.00', '0.005', '100.0', 850],     // SOBRE ILO→MOQ   S/ 8.50
+        ['8.00', '0.005', '1010.0', 1305],   // informe, tabla 19: SOBRE 1010 km S/ 13.05
+        ['40.00', '0.080', '1010.0', 12080], // informe, tabla 19: CARGA 1010 km S/ 120.80
+    ];
+    foreach ($casos as [$base, $km, $dist, $esperado]) {
+        $obtenido = Tarifas::costoBultoCentimos($base, $km, $dist);
+        afirmar($obtenido === $esperado, "($base, $km, $dist) → esperaba $esperado y fue $obtenido");
+    }
+    afirmar(Tarifas::costoBultoCentimos(10, 0.02, 230) === 1460, 'también acepta números');
+});
+
+prueba('tarifas: redondeo medio hacia arriba como DECIMAL', function () {
+    afirmar(Tarifas::costoBultoCentimos('0.00', '0.005', '1.0') === 1, '0.5 céntimo debe subir a 1');
+    afirmar(Tarifas::costoBultoCentimos('0.00', '0.005', '0.9') === 0, '0.45 céntimo debe bajar a 0');
+});
+
+prueba('tarifas: tipo por peso en los límites (1, 30 y 300 kg)', function () {
+    $casos = [[1, 'SOBRE'], [100, 'SOBRE'], [101, 'PAQUETE'], [3000, 'PAQUETE'], [3001, 'CARGA'], [30000, 'CARGA'], [30001, null]];
+    foreach ($casos as [$centesimas, $esperado]) {
+        afirmar(Tarifas::tipoPorPeso($centesimas) === $esperado, "peso $centesimas centésimas");
+    }
+});
+
+prueba('tarifas: formato de soles', function () {
+    afirmar(Tarifas::formatoSoles(1460) === '14.60' && Tarifas::formatoSoles(5) === '0.05' && Tarifas::formatoSoles(100) === '1.00', 'formato');
+});
+
+prueba('cotizador: MOQ001 → AQP001 con 8.80 kg reproduce la diapositiva 7', function () use ($cotizador) {
+    $r = $cotizador->cotizar('MOQ001', 'AQP001', '8.80');
+    afirmar($r['tipo'] === 'PAQUETE' && $r['cotizacion']['precioPorBulto'] === '14.60', 'tipo o precio');
+    afirmar($r['cotizacion']['tiempoHoras'] === 4, 'tiempo');
+    afirmar($r['cotizacion']['precioBase'] === '10.00' && $r['cotizacion']['precioPorKm'] === '0.020' && $r['cotizacion']['distanciaKm'] === '230', 'fórmula');
+    afirmar($r['pesoKg'] === '8.80', 'peso normalizado');
+    afirmar($r['origen']['nombre'] === 'Agencia Moquegua' && $r['destino']['nombre'] === 'Agencia Arequipa Centro', 'nombres');
+    $t = array_column($r['tarifas'], null, 'tipo');
+    afirmar($t['SOBRE']['precioPorBulto'] === '9.15' && $t['SOBRE']['pesoMaximoKg'] === 1, 'SOBRE');
+    afirmar($t['PAQUETE']['pesoMaximoKg'] === 30, 'PAQUETE');
+    afirmar($t['CARGA']['disponible'] === false && $t['CARGA']['precioPorBulto'] === null && $t['CARGA']['tiempoHoras'] === null, 'CARGA sin ruta vigente');
+    afirmar(array_column($r['tarifas'], 'tipo') === ['SOBRE', 'PAQUETE', 'CARGA'], 'orden de tarifas');
+});
+
+prueba('cotizador: el peso decide el tipo (0.40 → SOBRE, 31 → CARGA sin ruta)', function () use ($cotizador) {
+    afirmar($cotizador->cotizar('MOQ001', 'AQP001', '0.40')['cotizacion']['precioPorBulto'] === '9.15', 'sobre');
+    $carga = $cotizador->cotizar('MOQ001', 'AQP001', '31');
+    afirmar($carga['tipo'] === 'CARGA' && $carga['cotizacion']['disponible'] === false, 'CARGA no disponible en esa ruta');
+    $otra = $cotizador->cotizar('LIM001', 'ILO001', '85');
+    afirmar($otra['cotizacion']['precioPorBulto'] === '136.00', 'CARGA de LIM a ILO');
+});
+
+prueba('cotizador: límites del peso (300 sí, 300.01 no)', function () use ($cotizador) {
+    afirmar($cotizador->cotizar('LIM001', 'ILO001', '300')['tipo'] === 'CARGA', '300 kg');
+    esperarError(fn () => $cotizador->cotizar('LIM001', 'ILO001', '300.01'), 422, 'peso_excedido');
+    afirmar($cotizador->cotizar('MOQ001', 'AQP001', '1')['tipo'] === 'SOBRE', '1 kg');
+    afirmar($cotizador->cotizar('MOQ001', 'AQP001', '1.01')['tipo'] === 'PAQUETE', '1.01 kg');
+    afirmar($cotizador->cotizar('MOQ001', 'AQP001', '30')['tipo'] === 'PAQUETE', '30 kg');
+    afirmar($cotizador->cotizar('MOQ001', 'AQP001', '30.01')['tipo'] === 'CARGA', '30.01 kg');
+});
+
+prueba('cotizador: pesos inválidos → 422', function () use ($cotizador) {
+    foreach (['', 'abc', '-5', '0', '0.00', '1.234', '1e3', '8,8,8', ' ', '1234567', "8.8\n9"] as $peso) {
+        esperarError(fn () => $cotizador->cotizar('MOQ001', 'AQP001', $peso), 422, 'datos_invalidos');
+    }
+});
+
+prueba('cotizador: acepta coma decimal y espacios', function () use ($cotizador) {
+    afirmar($cotizador->cotizar('MOQ001', 'AQP001', ' 8,80 ')['pesoKg'] === '8.80', 'coma decimal');
+});
+
+prueba('cotizador: sucursales inválidas', function () use ($cotizador) {
+    esperarError(fn () => $cotizador->cotizar('MOQ001', 'MOQ001', '5'), 422, 'datos_invalidos');
+    esperarError(fn () => $cotizador->cotizar('', 'AQP001', '5'), 422, 'datos_invalidos');
+    $e = esperarError(fn () => $cotizador->cotizar('MOQ001', 'xx', '5'), 422, 'datos_invalidos');
+    afirmar(str_contains($e->getMessage(), 'destino'), 'el mensaje debe hablar del destino');
+    esperarError(fn () => $cotizador->cotizar('MOQ001', 'TAC001', '5'), 404, 'sucursal_no_encontrada'); // inactiva
+    esperarError(fn () => $cotizador->cotizar('MOQ001', 'ZZZ999', '5'), 404, 'sucursal_no_encontrada');
+});
+
+prueba('cotizador: normaliza mayúsculas y la ruta es direccional', function () use ($cotizador, $rutasFalso) {
+    afirmar($cotizador->cotizar(' moq001 ', 'aqp001', '5')['cotizacion']['precioPorBulto'] === '14.60', 'minúsculas');
+    $inversa = $cotizador->cotizar('AQP001', 'MOQ001', '5');
+    afirmar($inversa['cotizacion']['disponible'] === false && !in_array(true, array_column($inversa['tarifas'], 'disponible'), true), 'AQP→MOQ no tiene tarifas');
+    afirmar($rutasFalso->fechaRecibida === '2026-10-31', 'la vigencia se consulta con la fecha de hoy');
+});
+
+prueba('controlador de cotización: lee la consulta, ignora tipos raros y responde 200', function () use ($cotizador) {
+    $c = new CotizadorController($cotizador);
+    $ok = leer($c->cotizar(new Request('GET', '/api/cotizacion', ['origen' => 'MOQ001', 'destino' => 'AQP001', 'peso' => '8.80'], '', []), []));
+    afirmar($ok['estado'] === 200 && $ok['cuerpo']['data']['cotizacion']['precioPorBulto'] === '14.60', 'respuesta correcta');
+    esperarError(fn () => $c->cotizar(new Request('GET', '/x', ['origen' => ['MOQ001'], 'destino' => 'AQP001', 'peso' => '8'], '', []), []), 422, 'datos_invalidos');
+});
+
+prueba('controlador de agencias: lista las activas con teléfonos', function () {
+    $r = leer((new AgenciasController(new AgenciasFalso()))->listar(new Request('GET', '/api/agencias', [], '', []), []));
+    $agencias = $r['cuerpo']['data']['agencias'];
+    afirmar($r['estado'] === 200 && count($agencias) === 4, 'cantidad');
+    afirmar($agencias[0]['codigo'] === 'AQP001' && $agencias[0]['telefonos'] === ['054201450', '054201451'], 'teléfonos múltiples');
+    afirmar(!str_contains(json_encode($agencias), 'TAC001'), 'no debe aparecer la sucursal inactiva');
+});
 
 // ── Informe ─────────────────────────────────────────────────────────────────
 ob_end_clean();
