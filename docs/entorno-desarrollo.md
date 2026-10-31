@@ -33,6 +33,8 @@ El navegador llama a `http://localhost:5173/api/...`; Vite reenvía `/api` a `ht
 |---|---|---|
 | GET | `/api/salud` | Estado de la API. No usa la base de datos. |
 | GET | `/api/salud/bd` | Abre la conexión a SQL Server (sin ejecutar SQL). Responde 503 si no está configurada. |
+| GET | `/api/agencias` | Agencias activas con teléfonos. Ver `docs/api/publico.md`. |
+| GET | `/api/cotizacion` | Cotizador público (origen, destino, peso). |
 | POST | `/api/auth/ingresar` | Inicia sesión. Ver `docs/api/auth.md`. |
 | POST | `/api/auth/salir` | Cierra la sesión. |
 | GET | `/api/auth/yo` | Usuario de la sesión actual. |
@@ -42,6 +44,14 @@ El navegador llama a `http://localhost:5173/api/...`; Vite reenvía `/api` a `ht
 C:\php\php.exe backend/tests/ejecutar.php
 ```
 Sin dependencias y sin acceso a la base de datos (usan un repositorio simulado). Salen con código 1 si algo falla.
+
+## Pruebas del frontend en el navegador
+```powershell
+# Terminal 1, en frontend/:  npm run dev
+# Terminal 2, desde C:\Jatsa:
+node frontend/tests/e2e/publico.mjs
+```
+Abre Edge sin ventana (sin dependencias nuevas) y **intercepta las llamadas a `/api`** con respuestas fijas, así que no necesita PHP ni base de datos. Cubre las pantallas públicas, incluida la carrera de respuestas lentas del Cotizador. Salen con código 1 si algo falla. Variables opcionales: `FRONTEND_URL` y `EDGE_PATH`.
 
 Respuesta correcta: `{ "data": ... }`. Error: `{ "error": { "codigo": "...", "mensaje": "..." } }`. Los detalles técnicos de un error se guardan en `backend/storage/logs/`.
 
