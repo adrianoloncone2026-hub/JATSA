@@ -12,6 +12,13 @@ export function iniciales(nombreCompleto) {
   return (palabras[0][0] + (segunda?.[0] ?? '')).toUpperCase()
 }
 
+// "María Elena Rojas Ccori" → "María Elena" (saludo de «Mi panel»). Una empresa conserva su razón social.
+export function saludoDe(nombreCompleto, esEmpresa = false) {
+  const palabras = nombreCompleto.trim().split(/\s+/).filter(Boolean)
+  if (esEmpresa || palabras.length <= 1) return nombreCompleto.trim()
+  return palabras.slice(0, palabras.length >= 4 ? 2 : 1).join(' ')
+}
+
 // "2026-03-01" → "01/03/2026"
 export function fechaCorta(fechaIso) {
   const [anio, mes, dia] = String(fechaIso).slice(0, 10).split('-')

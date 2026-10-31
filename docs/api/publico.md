@@ -47,6 +47,9 @@ Respuesta `200`: los importes son **cadenas** con sus decimales.
 | 422 | `peso_excedido` | Peso mayor que 300 kg |
 | 404 | `sucursal_no_encontrada` | Una de las sucursales no existe o está dada de baja |
 
+## GET `/api/tarifas?origen=MOQ001&destino=AQP001`
+Las mismas tarifas que `/api/cotizacion`, pero **sin peso**: devuelve `{ origen, destino, tarifas }` con una tarifa por tipo (`SOBRE`, `PAQUETE`, `CARGA`), disponible o no. Se usa para el «Precio referencial» de «Nueva reserva» (módulo 4). Mismos errores que la cotización para códigos y sucursales (`422`, `404`).
+
 ## Pendiente de otros módulos
 - **Salidas desde aquí** (ficha de agencia, diapositiva 6) y **Salidas** / **Rastreo**: dependen de viajes y envíos reales; se implementan en el módulo 9. Hoy los botones «Ver salidas» y el buscador de rastreo del inicio llevan a las rutas `/salidas` y `/rastreo?codigo=…`, que siguen siendo marcadores.
 - **Reservar ahora** lleva a `/cliente/nueva-reserva` (módulo 4); sin sesión, la protección de rutas pide ingresar.

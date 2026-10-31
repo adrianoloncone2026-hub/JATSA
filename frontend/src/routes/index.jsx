@@ -7,6 +7,10 @@ import LayoutGerente from '../layouts/LayoutGerente.jsx'
 import LayoutPublico from '../layouts/LayoutPublico.jsx'
 import LayoutTransportista from '../layouts/LayoutTransportista.jsx'
 import Agencias from '../modules/publico/Agencias.jsx'
+import MiPanel from '../modules/cliente/MiPanel.jsx'
+import MisReservas from '../modules/cliente/MisReservas.jsx'
+import NuevaReserva from '../modules/cliente/NuevaReserva.jsx'
+import ReservaRegistrada from '../modules/cliente/ReservaRegistrada.jsx'
 import MiCuenta from '../modules/cuenta/MiCuenta.jsx'
 import Cotizador from '../modules/publico/Cotizador.jsx'
 import CrearCuenta from '../modules/publico/CrearCuenta.jsx'
@@ -25,6 +29,10 @@ const LAYOUTS = {
 
 // Pantallas ya reales; el resto de las rutas muestran un marcador.
 const PANTALLAS_REALES = {
+  'cliente/': MiPanel,
+  'cliente/nueva-reserva': NuevaReserva,
+  'cliente/reserva-registrada/:codigo': ReservaRegistrada,
+  'cliente/reservas': MisReservas,
   'cliente/cuenta': MiCuenta,
   'publico/crear-cuenta': CrearCuenta,
   'publico/': Inicio,

@@ -35,6 +35,11 @@ El navegador llama a `http://localhost:5173/api/...`; Vite reenvía `/api` a `ht
 | GET | `/api/salud/bd` | Abre la conexión a SQL Server (sin ejecutar SQL). Responde 503 si no está configurada. |
 | GET | `/api/agencias` | Agencias activas con teléfonos. Ver `docs/api/publico.md`. |
 | GET | `/api/cotizacion` | Cotizador público (origen, destino, peso). |
+| GET | `/api/tarifas` | Tarifas vigentes de una ruta, sin peso (precio referencial). |
+| GET · POST | `/api/reservas` | Reservas del cliente: listar (`?estado=`) y crear. Ver `docs/api/reservas.md`. |
+| GET | `/api/reservas/{codigo}` | Una reserva propia. |
+| POST | `/api/reservas/{codigo}/cancelar` | Cancela una reserva pendiente. |
+| GET | `/api/reservas/destinatario` | Autocompleta el nombre del destinatario por documento. |
 | POST | `/api/cuenta/registro` | Crea una cuenta CLIENTE (DNI) o EMPRESARIO (RUC). Ver `docs/api/cuenta.md`. |
 | GET · PATCH | `/api/cuenta` | Mi cuenta: ver y editar teléfonos y correo (cliente y empresario). |
 | POST | `/api/cuenta/contrasena` | Cambia la contraseña y cierra las otras sesiones. |
@@ -54,6 +59,7 @@ Sin dependencias y sin acceso a la base de datos (usan un repositorio simulado).
 # Terminal 2, desde C:\Jatsa:
 node frontend/tests/e2e/publico.mjs   # Inicio, Agencias y Cotizador (módulo 2)
 node frontend/tests/e2e/cuenta.mjs    # Crear cuenta y Mi cuenta (módulo 3)
+node frontend/tests/e2e/reservas.mjs  # Nueva reserva, Reserva registrada, Mis reservas y Mi panel (módulo 4)
 ```
 Abren Edge sin ventana (sin dependencias nuevas) y **interceptan las llamadas a `/api`** con respuestas fijas (arnés común en `frontend/tests/e2e/arnes.mjs`), así que no necesitan PHP ni base de datos. Cubren las pantallas, los errores del servidor y la carrera de respuestas lentas del Cotizador. Salen con código 1 si algo falla. Variables opcionales: `FRONTEND_URL` y `EDGE_PATH`.
 

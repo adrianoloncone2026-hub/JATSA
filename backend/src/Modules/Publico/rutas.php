@@ -9,4 +9,5 @@ use Jatsa\Modules\Publico\CotizadorController;
 return static function (Router $router): void {
     $router->get('/api/agencias', [AgenciasController::class, 'listar']);
     $router->get('/api/cotizacion', [CotizadorController::class, 'cotizar']);
+    $router->get('/api/tarifas', [CotizadorController::class, 'tarifas']);
 };
