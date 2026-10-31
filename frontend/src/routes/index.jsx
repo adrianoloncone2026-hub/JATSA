@@ -7,7 +7,9 @@ import LayoutGerente from '../layouts/LayoutGerente.jsx'
 import LayoutPublico from '../layouts/LayoutPublico.jsx'
 import LayoutTransportista from '../layouts/LayoutTransportista.jsx'
 import Agencias from '../modules/publico/Agencias.jsx'
+import MiCuenta from '../modules/cuenta/MiCuenta.jsx'
 import Cotizador from '../modules/publico/Cotizador.jsx'
+import CrearCuenta from '../modules/publico/CrearCuenta.jsx'
 import Ingresar from '../modules/publico/Ingresar.jsx'
 import Inicio from '../modules/publico/Inicio.jsx'
 import PruebaConexion from '../modules/publico/PruebaConexion.jsx'
@@ -23,6 +25,8 @@ const LAYOUTS = {
 
 // Pantallas ya reales; el resto de las rutas muestran un marcador.
 const PANTALLAS_REALES = {
+  'cliente/cuenta': MiCuenta,
+  'publico/crear-cuenta': CrearCuenta,
   'publico/': Inicio,
   'publico/agencias': Agencias,
   'publico/cotizador': Cotizador,

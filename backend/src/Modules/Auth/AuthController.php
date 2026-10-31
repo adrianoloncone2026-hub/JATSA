@@ -25,10 +25,10 @@ final class AuthController
         $contrasena = is_string($cuerpo['contrasena'] ?? null) ? $cuerpo['contrasena'] : '';
         $recordarme = ($cuerpo['recordarme'] ?? false) === true;
 
-        $datos = $this->auth->ingresar($usuario, $contrasena);
-        Sesion::abrir($datos, $recordarme);
+        $acceso = $this->auth->ingresarConHuella($usuario, $contrasena);
+        Sesion::abrir($acceso['usuario'], $recordarme, $acceso['huella']);
 
-        return Response::exito(['usuario' => $datos]);
+        return Response::exito(['usuario' => $acceso['usuario']]);
     }
 
     /** POST /api/auth/salir — cierra la sesión (si no había, no hace nada). */

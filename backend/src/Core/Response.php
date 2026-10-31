@@ -21,10 +21,21 @@ final class Response
         return self::json(['data' => $datos], $estado);
     }
 
-    /** Respuesta de error: { "error": { "codigo": "...", "mensaje": "..." } } */
-    public static function error(string $codigo, string $mensaje, int $estado, array $cabeceras = []): self
+    /**
+     * Respuesta de error: { "error": { "codigo": "...", "mensaje": "...", "campos": { "telefono": "..." } } }
+     * "campos" solo aparece cuando hay errores por campo (validaciones de formularios).
+     *
+     * @param array<string, string> $cabeceras
+     * @param array<string, string> $campos
+     */
+    public static function error(string $codigo, string $mensaje, int $estado, array $cabeceras = [], array $campos = []): self
     {
-        return self::json(['error' => ['codigo' => $codigo, 'mensaje' => $mensaje]], $estado, $cabeceras);
+        $error = ['codigo' => $codigo, 'mensaje' => $mensaje];
+        if ($campos !== []) {
+            $error['campos'] = $campos;
+        }
+
+        return self::json(['error' => $error], $estado, $cabeceras);
     }
 
     public static function vacia(int $estado = 204): self

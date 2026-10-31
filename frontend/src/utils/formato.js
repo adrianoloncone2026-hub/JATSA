@@ -4,6 +4,20 @@ export function formatoTelefono(numero) {
   return /^\d{9}$/.test(texto) ? `${texto.slice(0, 3)} ${texto.slice(3, 6)} ${texto.slice(6)}` : texto
 }
 
+// "María Elena Rojas Ccori" → "MR" (nombre y primer apellido). Con un nombre de dos palabras usa ambas.
+export function iniciales(nombreCompleto) {
+  const palabras = nombreCompleto.trim().split(/\s+/).filter(Boolean)
+  if (palabras.length === 0) return '?'
+  const segunda = palabras.length >= 3 ? palabras[palabras.length - 2] : palabras[1]
+  return (palabras[0][0] + (segunda?.[0] ?? '')).toUpperCase()
+}
+
+// "2026-03-01" → "01/03/2026"
+export function fechaCorta(fechaIso) {
+  const [anio, mes, dia] = String(fechaIso).slice(0, 10).split('-')
+  return anio && mes && dia ? `${dia}/${mes}/${anio}` : String(fechaIso)
+}
+
 // "Av. Ejército 512, Cercado, Arequipa": dirección, distrito, provincia y departamento sin repetir nombres.
 export function direccionCompleta(agencia) {
   const vistos = new Set()

@@ -32,6 +32,9 @@ Requiere sesión. `200 { "data": { "usuario": {...} } }`.
 | 401 | `no_autenticado` | No hay sesión o caducó |
 | 401 | `sesion_invalida` | La cuenta ya no existe o fue desactivada; se cierra la sesión |
 
+## Huella de la contraseña (módulo 3)
+La sesión guarda, además del usuario, una huella del hash de su contraseña (`Shared\Credencial`, nunca enviada al cliente). `RequiereSesion` la compara en cada petición: si la contraseña cambió desde que se abrió la sesión, esta responde `401 sesion_invalida`. Así, **cambiar la contraseña cierra las sesiones abiertas en otros dispositivos** (ver `cuenta.md`). Una sesión sin huella (anterior a este cambio) también se rechaza y obliga a ingresar de nuevo.
+
 ## Cerrar sesión en la interfaz
 La interfaz solo muestra la sesión como cerrada cuando `POST /api/auth/salir` responde correctamente. Si la petición falla (sin conexión, error del servidor), se conserva el usuario, se muestra un aviso y se puede reintentar; `salir` es idempotente. **Limitación conocida:** si el usuario cierra el navegador sin haber podido confirmar el cierre, la sesión del servidor sigue válida hasta caducar por inactividad (8 h, o 14 días con «Recordarme»).
 

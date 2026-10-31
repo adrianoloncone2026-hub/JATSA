@@ -96,7 +96,7 @@ La autorización se aplica **siempre en el backend**; ocultar una opción en el 
 **API REST**
 - Prefijo `/api`, recursos en plural y minúsculas (`/api/reservas`, `/api/envios/{id}`).
 - Siempre JSON, UTF-8. Códigos HTTP correctos (200, 201, 204, 400, 401, 403, 404, 409, 422, 500).
-- Respuesta correcta: `{ "data": ... }`. Error: `{ "error": { "codigo": "...", "mensaje": "..." } }`.
+- Respuesta correcta: `{ "data": ... }`. Error: `{ "error": { "codigo": "...", "mensaje": "..." } }`; los errores de validación de formularios añaden `"campos": { "campo": "mensaje" }`.
 - Nunca exponer trazas, SQL ni datos internos en un error.
 - Cada endpoint se documenta en `docs/api/` antes o junto con su implementación.
 

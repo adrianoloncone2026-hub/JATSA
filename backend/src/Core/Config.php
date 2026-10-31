@@ -20,6 +20,25 @@ final class Config
         self::$datos = require $raiz . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'app.php';
     }
 
+    /**
+     * Solo para pruebas: reemplaza un valor de configuración (notación de puntos). Las pruebas del
+     * backend vacían db.nombre para que cualquier acceso accidental a la base falle con 503 en vez de conectarse.
+     */
+    public static function fijar(string $clave, mixed $valor): void
+    {
+        $partes = explode('.', $clave);
+        $destino = &self::$datos;
+
+        foreach ($partes as $parte) {
+            if (!isset($destino[$parte]) || !is_array($destino[$parte])) {
+                $destino[$parte] = [];
+            }
+            $destino = &$destino[$parte];
+        }
+
+        $destino = $valor;
+    }
+
     public static function raiz(): string
     {
         return self::$raiz;

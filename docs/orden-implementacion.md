@@ -24,6 +24,7 @@ Criterio: primero la base técnica y el acceso, luego los catálogos de los que 
 
 - **Rastreo y salidas (módulo 9):** el rastreo muestra recorrido y llegada estimada, y las salidas se calculan con los viajes reales de cada ruta. Por eso dependen de que ya existan envíos, viajes y entregas. Si hace falta verlos antes, se pueden probar con datos de ejemplo.
 - **Módulo 2 (Agencias):** la sección «Salidas desde aquí» de la ficha de agencia necesita viajes reales y se completa en el módulo 9, junto con Salidas y Rastreo.
+- **Módulo 3 (Mi cuenta):** la sección «Actividad reciente» de la diapositiva 17 necesita reservas y envíos y se completa en los módulos 4 y 9.
 - **Módulo 10:** es independiente del flujo operativo. Se puede adelantar si hace falta cargar sucursales, rutas, vehículos y personal reales antes de probar los módulos 4 a 8.
 - **Módulo 12 bloqueado:** exportar Excel (`.xlsx`), paquete ZIP y manual PDF requiere tecnología aún no autorizada. No se empieza hasta que el usuario decida.
 - **Mi panel (11)** se hace en dos pasos: primero reservas (módulo 4) y se completa en el módulo 9 con envíos en curso y saldo por pagar.
