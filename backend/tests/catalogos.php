@@ -988,3 +988,97 @@ prueba('contraseña propia: exige la actual y cumple las reglas de la nueva para
     $limpiar();
     esperarError(fn () => $c->cambiarContrasena(peticion('POST', '/x', json_encode(['contrasenaActual' => 'ClaveAdmin#1', 'contrasenaNueva' => 'NuevaClave#2026'])), []), 401, 'no_autenticado');
 });
+
+// ── Cambio de contraseña: dos solicitudes con la MISMA contraseña anterior no pueden confirmarse las dos (revisión del PR #11) ──────
+prueba('contraseña propia: dos cambios simultáneos con la misma contraseña anterior — solo uno confirma; el otro recibe 409 y no escribe ni renueva la huella', function () use ($limpiar) {
+    foreach ([2 => ['admin1', 'ClaveAdmin#1'], 4 => ['cliente1', 'ClaveCliente#1'], 1 => ['gerente1', 'ClaveGerente#1']] as $id => [$usuario, $actual]) {
+        $limpiar();
+        [$auth, $cuentas, $servicio, $servicioAuth] = escenarioContrasenas();
+        $c = new CuentaController($servicio);
+        sesionDe($auth, $servicioAuth, $id);
+        $huellaA = Sesion::huella();
+        // La petición B (otro dispositivo, misma contraseña anterior) lee, verifica y CONFIRMA entre la verificación de A y su UPDATE.
+        $cuentas->antesDeActualizarHash = static function (CuentasFalso $c) use ($servicio, $id, $actual): void {
+            $c->antesDeActualizarHash = null;
+            $servicio->cambiarContrasena($id, $actual, 'ClaveDeB#2026');
+        };
+        $e = esperarError(fn () => $c->cambiarContrasena(peticion('POST', '/x', json_encode(['contrasenaActual' => $actual, 'contrasenaNueva' => 'ClaveDeA#2026'])), []), 409, 'contrasena_modificada');
+        afirmar(!isset($e->campos['contrasenaActual']), "$usuario: es un conflicto, no una contraseña incorrecta");
+        $hash = $auth->buscarPorId($id)['hashContrasena'];
+        afirmar(password_verify('ClaveDeB#2026', $hash) && !password_verify('ClaveDeA#2026', $hash), "$usuario: quedó la contraseña de quien confirmó primero (B), no la de A");
+        afirmar(Sesion::huella() === $huellaA, "$usuario: la petición perdedora NO renovó la huella de su sesión");
+        esperarError(fn () => $servicioAuth->ingresar($usuario, 'ClaveDeA#2026'), 401, 'credenciales_invalidas');
+        afirmar($servicioAuth->ingresar($usuario, 'ClaveDeB#2026')['nombreUsuario'] === $usuario, "$usuario: la ganadora sirve para ingresar");
+        // Reintentar con la contraseña VIGENTE ya funciona (el conflicto es recuperable).
+        $r = leer($c->cambiarContrasena(peticion('POST', '/x', json_encode(['contrasenaActual' => 'ClaveDeB#2026', 'contrasenaNueva' => 'ClaveDeA#2026'])), []));
+        afirmar($r['estado'] === 200, "$usuario: repetir con la contraseña vigente confirma");
+    }
+    $limpiar();
+});
+
+prueba('contraseña propia: el segundo cambio con la contraseña anterior, ya confirmado el primero, sigue siendo «contraseña incorrecta» (422) y no un conflicto', function () use ($limpiar) {
+    $limpiar();
+    [$auth, , $servicio, $servicioAuth] = escenarioContrasenas();
+    $servicio->cambiarContrasena(2, 'ClaveAdmin#1', 'ClaveDeB#2026');
+    $hash = $auth->buscarPorId(2)['hashContrasena'];
+    esperarError(fn () => $servicio->cambiarContrasena(2, 'ClaveAdmin#1', 'ClaveDeA#2026'), 422, 'contrasena_incorrecta');
+    afirmar($auth->buscarPorId(2)['hashContrasena'] === $hash, 'no se escribió nada');
+    $limpiar();
+});
+
+prueba('contraseña propia: el UPDATE es condicional sobre el hash anterior, con comparación binaria, y el servicio comprueba el resultado (revisión estática)', function () {
+    $repo = (string) file_get_contents(dirname(__DIR__) . '/src/Modules/Cuenta/CuentaRepository.php');
+    $c = substr($repo, (int) strpos($repo, 'function actualizarHash'), 1400);
+    afirmar(str_contains($c, 'UPDATE Usuario SET hashContrasena = :nuevo WHERE idUsuario = :id AND hashContrasena COLLATE Latin1_General_BIN2 = :anterior'), 'UPDATE condicional por hash anterior (comparación binaria)');
+    afirmar(str_contains($c, 'rowCount() === 1'), 'devuelve si afectó exactamente una fila');
+    $svc = (string) file_get_contents(dirname(__DIR__) . '/src/Modules/Cuenta/CuentaService.php');
+    afirmar(preg_match('/if \(!\$this->cuentas->actualizarHash\(\$idUsuario, \$hashActual, \$hashNuevo\)\) \{\s+throw new HttpException\(409, \'contrasena_modificada\'/', $svc) === 1, 'el servicio lanza 409 si el UPDATE no afectó la fila');
+    $ctl = (string) file_get_contents(dirname(__DIR__) . '/src/Modules/Cuenta/CuentaController.php');
+    afirmar(strpos($ctl, 'cambiarContrasena($this->idUsuarioDeLaSesion()') < strpos($ctl, 'Sesion::renovarHuella('), 'la huella solo se renueva después de que el servicio confirmó el cambio');
+});
+
+// ── Validador real pm10: revisión estática (NO se ejecuta; no hay SQL en estas pruebas) ───────────────────────────────────────────
+prueba('pm10 (revisión estática): exige DOS aceptaciones antes de hacer nada, y no contiene DDL ni DBCC ejecutables', function () {
+    $d = dirname(__DIR__) . '/tests/integracion';
+    $ps = (string) file_get_contents("$d/validar-pm10.ps1");
+    $sinComentarios = preg_replace(['/<#.*?#>/s', '/^\s*#.*$/m'], '', $ps);
+    $g1 = strpos($sinComentarios, 'if (-not $AutorizadoPorElPropietario)');
+    $g2 = strpos($sinComentarios, 'if (-not $AceptoAvanceIrreversibleDeIdentity)');
+    $primeraAccion = strpos($sinComentarios, '. "$aqui\api.ps1"');
+    afirmar($g1 !== false && $g2 !== false && $g1 < $g2 && $g2 < $primeraAccion, 'las dos aceptaciones se exigen (y salen con código 2) antes de cualquier acción');
+    afirmar(substr_count($sinComentarios, 'exit 2') === 2, 'ambas rechazan con exit 2');
+    $sinTextos = preg_replace(["/'[^'\n]*'/", '/"[^"\n]*"/'], '', (string) $sinComentarios); // los mensajes de «Rechazado» mencionan DBCC solo para prohibirlo
+    afirmar(preg_match('/\b(DROP|ALTER|TRUNCATE|DBCC|CHECKIDENT|CREATE\s+TABLE)\b/i', (string) $sinTextos) === 0, 'el PowerShell no ejecuta DDL ni DBCC');
+    afirmar(preg_match('/Leer\s+"[^"]*\b(INSERT|UPDATE|DELETE|MERGE)\b/i', $ps) === 0, 'toda consulta directa del orquestador es SELECT');
+    $php = (string) file_get_contents("$d/escritura_pm10.php");
+    $php = preg_replace(['~/\*.*?\*/~s', '~^\s*//.*$~m'], '', $php);
+    afirmar(preg_match('/\b(DROP|ALTER|TRUNCATE|DBCC|CHECKIDENT|CREATE\s+TABLE)\b/i', (string) $php) === 0, 'el PHP de escritura no ejecuta DDL ni DBCC');
+    afirmar(str_contains((string) $php, 'abortar(\'Operación no permitida'), 'rechaza cualquier operación que no sea preparar, ruta-antigua o limpiar');
+});
+
+prueba('pm10 (revisión estática): la limpieza solo borra tablas que el módulo escribe, con listas del manifiesto, en una transacción y verificando cada DELETE', function () {
+    $php = (string) file_get_contents(dirname(__DIR__) . '/tests/integracion/escritura_pm10.php');
+    preg_match_all('/DELETE FROM (\w+)/', $php, $m);
+    afirmar($m[1] === ['Viaje', 'Telefono_Sucursal', 'Ruta', 'Usuario', 'Persona', 'Vehiculo', 'Sucursal'], 'DELETE solo sobre ' . implode(',', $m[1]) . ' y en orden hijo → padre');
+    foreach (['Pago', 'Envio', 'Reserva', 'Bulto', 'Envio_Viaje'] as $tabla) {
+        afirmar(!preg_match("/DELETE FROM $tabla\b/", $php), "nunca borra de $tabla");
+    }
+    afirmar(substr_count($php, 'DELETE FROM') === 7 && preg_match_all('/DELETE FROM \w+ WHERE [^\']*IN \(/', $php) === 7, 'cada DELETE está acotado por una lista (IN) del manifiesto');
+    afirmar(strpos($php, '$pdo->beginTransaction();', (int) strpos($php, "if (\$op === 'limpiar')")) < strpos($php, '$afectadas !== $esperadas') && str_contains($php, 'rollBack()'), 'borra dentro de una transacción y la deshace si algún DELETE no afecta lo esperado');
+    afirmar(str_contains($php, "<= {\$ident['Sucursal']}") && str_contains($php, "<= {\$ident['Persona']}") && str_contains($php, "<= {\$ident['Usuario']}") && str_contains($php, "<= {\$ident['Vehiculo']}") && str_contains($php, "<= {\$ident['Viaje']}"), 'verifica que cada fila a borrar es POSTERIOR a la instantánea (id mayor que IDENT_CURRENT inicial)');
+    afirmar(str_contains($php, 'no se borra nada') || str_contains($php, 'No se borra nada'), 'ante cualquier divergencia no borra nada');
+    afirmar(preg_match("/'(9000010\\\\d\|2000000010\\\\d)'/", $php) === 0 || str_contains($php, '9000010'), 'solo reconoce documentos temporales pm10');
+});
+
+prueba('pm10 (revisión estática): separa DATOS ORIGINALES de CONTADORES IDENTITY y no promete restaurar IDENTITY', function () {
+    $d = dirname(__DIR__) . '/tests/integracion';
+    $f = (string) file_get_contents("$d/pm10-funciones.ps1");
+    $i = strpos($f, 'function Get-ComparacionOriginales');
+    $cuerpo = substr($f, (int) $i, (int) strpos($f, '# Clasifica el IDENT_CURRENT') - (int) $i);
+    afirmar(!str_contains($cuerpo, '.ident') && !str_contains($cuerpo, 'IDENT_CURRENT'), 'la comparación de datos originales NO mira IDENT_CURRENT');
+    afirmar(str_contains($f, 'RETROCEDIO') && str_contains($f, 'Inesperado') && str_contains($f, 'Avanzo'), 'los contadores se clasifican (avanzó / retrocedió / inesperado), no se exige que coincidan');
+    $ps = (string) file_get_contents("$d/validar-pm10.ps1");
+    afirmar(str_contains($ps, 'NO se promete que coincidan') && str_contains($ps, 'carreras perdidas') && str_contains($ps, 'BASE DE PRUEBAS AISLADA'), 'el informe y la cabecera explican que el avance es irreversible, puede superar las altas y que se prefiere una base aislada');
+    afirmar(str_contains($ps, '$codigoSalida = if ($mal -eq 0 -and $limpio) { 0 } else { 1 }'), 'exit 0 solo sin fallos y con los datos originales comprobados');
+    afirmar(str_contains($ps, 'interbloqueos') && str_contains($ps, '1205'), 'cuenta e informa los interbloqueos (1205) sin suponerlos imposibles');
+});

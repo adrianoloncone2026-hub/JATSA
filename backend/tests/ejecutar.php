@@ -598,13 +598,28 @@ final class CuentasFalso implements RepositorioCuentas
         return $this->auth->buscarPorId($idUsuario)['hashContrasena'] ?? null;
     }
 
-    public function actualizarHash(int $idUsuario, string $hashContrasena): void
+    /** Se ejecuta DENTRO de actualizarHash, justo antes de la comparación: simula otra petición que se intercala y confirma antes. */
+    public mixed $antesDeActualizarHash = null;
+
+    public function actualizarHash(int $idUsuario, string $hashAnterior, string $hashContrasena): bool
     {
+        if ($this->antesDeActualizarHash !== null) {
+            $gancho = $this->antesDeActualizarHash;
+            $this->antesDeActualizarHash = null; // la otra petición no se vuelve a intercalar a sí misma
+            $gancho($this);
+        }
         foreach ($this->auth->registros as $i => $r) {
             if ($r['idUsuario'] === $idUsuario) {
+                if (!hash_equals($r['hashContrasena'], $hashAnterior)) {
+                    return false; // el UPDATE condicional no afecta ninguna fila
+                }
                 $this->auth->registros[$i]['hashContrasena'] = $hashContrasena;
+
+                return true;
             }
         }
+
+        return false;
     }
 }
 

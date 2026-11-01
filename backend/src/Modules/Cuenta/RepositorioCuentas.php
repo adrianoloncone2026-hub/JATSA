@@ -38,5 +38,10 @@ interface RepositorioCuentas
 
     public function obtenerHash(int $idUsuario): ?string;
 
-    public function actualizarHash(int $idUsuario, string $hashContrasena): void;
+    /**
+     * Cambia el hash SOLO si la cuenta sigue teniendo `$hashAnterior` (actualización condicional, «compare-and-swap»): dos cambios
+     * simultáneos que partieron de la misma contraseña no pueden confirmarse los dos. true si cambió una fila; false si otra
+     * petición ya cambió la contraseña (o la cuenta no existe) y entonces no se escribe nada.
+     */
+    public function actualizarHash(int $idUsuario, string $hashAnterior, string $hashContrasena): bool;
 }

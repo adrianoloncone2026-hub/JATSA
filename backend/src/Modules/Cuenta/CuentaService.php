@@ -153,7 +153,11 @@ final class CuentaService
         }
 
         $hashNuevo = password_hash($contrasenaNueva, PASSWORD_BCRYPT, ['cost' => 12]);
-        $this->cuentas->actualizarHash($idUsuario, $hashNuevo);
+        // Compare-and-swap: solo cambia si la contraseña sigue siendo la que se acaba de verificar. Si otra petición ganó, no se
+        // escribe nada (y el controlador no renueva la huella): el cliente recibe un conflicto y debe repetir con la contraseña vigente.
+        if (!$this->cuentas->actualizarHash($idUsuario, $hashActual, $hashNuevo)) {
+            throw new HttpException(409, 'contrasena_modificada', 'Tu contraseña cambió mientras se procesaba esta solicitud. Vuelve a intentarlo con tu contraseña actual.');
+        }
 
         return $hashNuevo;
     }

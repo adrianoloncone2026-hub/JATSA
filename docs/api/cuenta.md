@@ -38,6 +38,7 @@ Crea una cuenta. **No abre sesión**: después la persona ingresa con su usuario
 - **PATCH** `{ telefono, telefonoAuxiliar?, correo? }` → cuenta actualizada. Solo cambia esos tres campos de la persona; documento y nombre son de solo lectura. Mismas reglas que el registro; `422` con `campos` si no cumplen y no se guarda nada.
 - **POST contrasena** `{ contrasenaActual, contrasenaNueva }` → `{ "contrasenaCambiada": true }`.
   - `422 contrasena_incorrecta` (`campos.contrasenaActual`) si la actual no coincide.
+- 409 contrasena_modificada si OTRA petición cambió la contraseña entre la verificación y el guardado: el cambio es una **actualización condicional** (UPDATE ... WHERE idUsuario = :id AND hashContrasena = :anterior, comparación binaria) y se comprueba que afectó una fila. De dos cambios simultáneos con la misma contraseña anterior solo uno confirma; el perdedor no escribe nada y **no renueva la huella** de su sesión; puede repetir con la contraseña vigente.
   - `422 datos_invalidos` (`campos.contrasenaNueva`) si la nueva incumple las reglas, es igual a la actual o al usuario.
   - **Cierra las demás sesiones de la cuenta** (ver más abajo).
 
