@@ -45,6 +45,10 @@ El navegador llama a `http://localhost:5173/api/...`; Vite reenvía `/api` a `ht
 | POST | `/api/envios/cotizacion` | ADMINISTRADOR: tipo y costo de cada bulto, sin escribir. |
 | POST | `/api/envios` | ADMINISTRADOR: formaliza la reserva (envío + bultos) en una transacción. |
 | GET | `/api/envios/{codigo}` | ADMINISTRADOR: un envío (etiqueta) de su sucursal de origen o destino. |
+| GET · POST | `/api/caja/pagos` | ADMINISTRADOR: pagos cobrados en su caja con totales por método, y registrar un pago. Ver `docs/api/pagos.md`. |
+| POST | `/api/caja/pagos/{id}/anular` | ADMINISTRADOR: anula un pago cobrado en su caja (no se borra). |
+| GET | `/api/caja/envios/{codigo}` | ADMINISTRADOR: el envío a cobrar con importe, pagado y saldo. |
+| GET | `/api/pagos` | CLIENTE / EMPRESARIO: «Mis pagos» y total pagado. |
 | POST | `/api/cuenta/registro` | Crea una cuenta CLIENTE (DNI) o EMPRESARIO (RUC). Ver `docs/api/cuenta.md`. |
 | GET · PATCH | `/api/cuenta` | Mi cuenta: ver y editar teléfonos y correo (cliente y empresario). |
 | POST | `/api/cuenta/contrasena` | Cambia la contraseña y cierra las otras sesiones. |
@@ -66,6 +70,7 @@ node frontend/tests/e2e/publico.mjs   # Inicio, Agencias y Cotizador (módulo 2)
 node frontend/tests/e2e/cuenta.mjs    # Crear cuenta y Mi cuenta (módulo 3)
 node frontend/tests/e2e/reservas.mjs  # Nueva reserva, Reserva registrada, Mis reservas y Mi panel (módulo 4)
 node frontend/tests/e2e/ventanilla.mjs # Ventanilla, Cliente sin reserva, Formalizar envío y etiqueta (módulo 5)
+node frontend/tests/e2e/caja.mjs       # Caja y Mis pagos (módulo 6)
 # Con CAPTURAS=<carpeta> guarda capturas (escritorio y móvil) para revisar el diseño contra el prototipo.
 ```
 Abren Edge sin ventana (sin dependencias nuevas) y **interceptan las llamadas a `/api`** con respuestas fijas (arnés común en `frontend/tests/e2e/arnes.mjs`), así que no necesitan PHP ni base de datos. Cubren las pantallas, los errores del servidor y la carrera de respuestas lentas del Cotizador. Salen con código 1 si algo falla. Variables opcionales: `FRONTEND_URL` y `EDGE_PATH`.

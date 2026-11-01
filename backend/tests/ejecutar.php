@@ -1490,6 +1490,7 @@ prueba('controlador de tarifas: lee la consulta y es público', function () use 
 });
 
 require __DIR__ . '/envios.php'; // Módulo 5: ventanilla y envíos
+require __DIR__ . '/pagos.php'; // Módulo 6: pagos y caja
 
 // ── Informe ─────────────────────────────────────────────────────────────────
 ob_end_clean();

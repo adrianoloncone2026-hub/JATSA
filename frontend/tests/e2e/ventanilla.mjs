@@ -310,7 +310,7 @@ try {
   await captura('19b_envio_registrado')
   comprobar('título y código de seguimiento', [await texto('h1'), await texto('.codigo-reserva')], ['Envío registrado', 'ENK7Q2M9X1BT'])
   comprobar('resumen del envío', await texto('.mensaje-confirmacion'), '2 bultos · 9.20 kg · S/ 23.75 · entrega a domicilio (Av. Siempre Viva 742)')
-  comprobar('tras «Guardar y cobrar ahora», Caja se destaca', await enlaces('.acciones-confirmacion a'), 'Cobrar ahora (Caja)→/administrador/caja | Volver a Ventanilla→/administrador')
+  comprobar('tras «Guardar y cobrar ahora», Caja se destaca', await enlaces('.acciones-confirmacion a'), 'Cobrar ahora (Caja)→/administrador/caja?envio=ENK7Q2M9X1BT | Volver a Ventanilla→/administrador')
   comprobar('etiqueta: código, ruta, destinatario, entrega, bultos y reserva', await filas('.etiqueta p'),
     'JATSA Cargo || ENK7Q2M9X1BT || Agencia Moquegua → Agencia Arequipa Centro || Destinatario: Luis Alberto Flores Condori || Entrega: A domicilio · Av. Siempre Viva 742 || 2 bultos · 9.20 kg || Reserva R000000006 · 31/10/2026 09:20')
   await evaluar(`window.__impresiones = 0; window.print = () => { window.__impresiones++ }`)

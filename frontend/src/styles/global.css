@@ -1454,3 +1454,108 @@ input[readonly] {
     padding: 1rem;
   }
 }
+
+
+/* ── Pagos y Caja (módulo 6) ───────────────────────────────────────────── */
+.caja .panel,
+.mis-pagos .panel {
+  margin-bottom: 1.25rem;
+}
+
+.registrar-pago h2 {
+  margin-top: 0;
+}
+
+.resumen-cobro {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.75rem;
+  margin: 1rem 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.resumen-cobro strong {
+  color: var(--marino);
+}
+
+.formulario-pago {
+  margin-top: 1rem;
+}
+
+.metodos-pago {
+  border: 0;
+  padding: 0;
+  margin: 0.75rem 0 1rem;
+}
+
+.metodos-pago legend {
+  padding: 0;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* Los radios van ocultos a la vista pero accesibles; el rótulo es el botón. */
+.metodos-pago .filtro:focus-within {
+  outline: 3px solid var(--marino);
+  outline-offset: 2px;
+}
+
+.insignia-registrado {
+  background: var(--celeste);
+}
+
+.insignia-anulado {
+  background: #eceff3;
+  border-color: #d3d9e2;
+  color: var(--gris);
+}
+
+.tabla-pagos td[data-etiqueta='Monto'] {
+  font-variant-numeric: tabular-nums;
+}
+
+.totales-caja {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.totales-caja p {
+  display: flex;
+  flex-direction: column;
+  min-width: 9rem;
+  margin: 0;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  background: var(--celeste);
+}
+
+.totales-caja strong {
+  font-size: 1.15rem;
+  color: var(--marino);
+}
+
+.totales-caja span {
+  font-size: 0.85rem;
+  color: var(--gris);
+}
+
+.totales-caja .total-general {
+  background: var(--marino);
+}
+
+.totales-caja .total-general strong,
+.totales-caja .total-general span {
+  color: #fff;
+}
+
+.total-pagado {
+  margin: 1rem 0 0;
+  font-size: 1.1rem;
+}
+
+.total-pagado strong {
+  color: var(--marino);
+}

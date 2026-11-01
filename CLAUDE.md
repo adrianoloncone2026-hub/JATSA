@@ -54,7 +54,7 @@ C:\Jatsa
 - `backend/src/Modules/<Modulo>/` — un módulo por área funcional, cada uno con su `Controller`, `Service` y `Repository` (y rutas propias).
 - `backend/bin/` — comandos de consola (PHP CLI), p. ej. `vencer-reservas.php`. Escriben solo con una opción explícita (`--ejecutar`) y no se programan sin autorización.
 - `backend/storage/logs/` — registros de la aplicación.
-- `backend/tests/` — pruebas del backend (`C:\php\php.exe backend/tests/ejecutar.php`, sin dependencias ni base de datos; `envios.php` es la parte del módulo 5, incluida desde `ejecutar.php`).
+- `backend/tests/` — pruebas del backend (`C:\php\php.exe backend/tests/ejecutar.php`, sin dependencias ni base de datos; `envios.php` es la parte del módulo 5 y `pagos.php` la del módulo 6, incluidas desde `ejecutar.php`).
 - `backend/storage/sessions/` — archivos de sesión (no se versionan).
 - `database/script/` y `database/notas/` — reservadas y vacías. El script SQL **no** está aquí: está en `docs/` (ver Documentos de referencia).
 - `docs/prototipo/`, `docs/informe-bd/` — reservadas y vacías. `docs/api/` — contrato de la API (se llena módulo a módulo). `docs/orden-implementacion.md` — orden de módulos.

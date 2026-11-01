@@ -77,13 +77,14 @@ export default function EnvioRegistrado() {
           Reserva {envio.reserva.codigo} formalizada · registrado el {fechaHoraCorta(envio.fechaHoraRegistro)}
         </p>
         <p className="mensaje-aviso" role="status">
-          Envío guardado · pago pendiente. El cobro todavía no se registró: se hará en Caja. La modalidad «paga en destino» tampoco queda registrada aún.
+          Envío guardado · pago pendiente. El cobro se registra en Caja, donde se elige quién paga; la modalidad «paga en destino» no se guarda.
         </p>
         <div className="acciones-confirmacion">
           <button type="button" className="boton boton-azul" onClick={() => window.print()}>
             Imprimir etiqueta
           </button>
-          <Link to="/administrador/caja" className={cobrarAhora ? 'boton boton-marino' : 'boton boton-claro'}>
+          {/* «Cobrar ahora» abre Caja con el envío ya cargado (solo un parámetro de la URL: la modalidad no se guarda). */}
+          <Link to={cobrarAhora ? `/administrador/caja?envio=${encodeURIComponent(envio.codigoSeguimiento)}` : '/administrador/caja'} className={cobrarAhora ? 'boton boton-marino' : 'boton boton-claro'}>
             {cobrarAhora ? 'Cobrar ahora (Caja)' : 'Ir a Caja'}
           </Link>
           <Link to="/administrador" className="boton boton-claro">

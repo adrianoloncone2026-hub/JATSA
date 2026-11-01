@@ -32,6 +32,14 @@ export function fechaHoraCorta(fechaHoraIso) {
   return hora ? `${fechaCorta(texto)} ${hora}` : fechaCorta(texto)
 }
 
+// "2026-10-14 14:05:00" → "14/10 14:05" (fecha y hora sin el año, como en las tablas de Caja del prototipo)
+export function fechaHoraBreve(fechaHoraIso) {
+  const texto = String(fechaHoraIso)
+  const [anio, mes, dia] = texto.slice(0, 10).split('-')
+  const hora = texto.slice(11, 16)
+  return anio && mes && dia ? `${dia}/${mes}${hora ? ` ${hora}` : ''}` : texto
+}
+
 // "Av. Ejército 512, Cercado, Arequipa": dirección, distrito, provincia y departamento sin repetir nombres.
 export function direccionCompleta(agencia) {
   const vistos = new Set()
