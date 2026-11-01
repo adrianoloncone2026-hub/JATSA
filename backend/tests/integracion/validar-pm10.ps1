@@ -1,52 +1,56 @@
 ﻿<#
-  Validación REAL del módulo 10 (Catálogos y cuentas del gerente) contra SQL Server con registros temporales pm10.
-  PREPARADA PARA REVISIÓN ESTÁTICA. NO SE HA EJECUTADO y NO SE EJECUTA SIN AUTORIZACIÓN EXPRESA Y SEPARADA DEL PROPIETARIO.
+  Validación REAL del módulo 10 (Catálogos y cuentas del gerente) en una BASE SQL Server AISLADA y DESCARTABLE, con registros temporales pm10.
+  PREPARADA PARA REVISIÓN ESTÁTICA. NO SE HA EJECUTADO y NO SE EJECUTA SIN AUTORIZACIÓN EXPRESA Y SEPARADA DEL PROPIETARIO (autorización C del plan:
+  docs/plan-pm10-bd-aislada.md). pm10 YA NO SE EJECUTA CONTRA LA BASE HABITUAL: se niega a correr si no se le indica una base aislada válida.
 
-  QUÉ ESCRIBE: Sucursal, Telefono_Sucursal, Ruta, Vehiculo, Persona, Usuario y Viaje (INSERT/UPDATE por los endpoints y por escritura_pm10.php;
-  DELETE solo en la limpieza y solo de lo anotado en el manifiesto). No toca Reserva, Envio, Bulto, Pago ni Envio_Viaje. Sin DDL, sin tocar el script
-  SQL, sin DBCC CHECKIDENT y sin modificar ninguna fila original: la única tarifa que se cierra es una temporal creada por la prueba.
+  CÓMO SE EJECUTA (después de las autorizaciones A y B): se ejecuta la COPIA DE TRABAJO de este script, que dejó preparada cargar_bd_aislada.ps1 en
+  %TEMP%\jatsa_pm10_<marca>\backend\tests\integracion. Esa copia tiene su propio .env (generado, con el login y la base aislados): así TODOS los procesos
+  PHP (la CLI y los 4 servidores) leen esa configuración y no la de backend/.env, que además tiene prioridad sobre las variables del proceso.
+    powershell -File <copia>\backend\tests\integracion\validar-pm10.ps1 -AutorizadoPorElPropietario -BaseAislada JATSA_pm10_aislada_AAAAMMDD_HHMM
+
+  FASE 0 (antes de escribir NADA, todo SELECT): el script está en una copia (jatsa_pm10_*), su .env tiene DB_NAME = la base aislada y DB_USER = el login
+  aislado; DB_NAME()/SUSER_SNAME() por la CLI son los esperados; el login aislado NO puede abrir la base habitual (debe fallar); tiene VIEW SERVER STATE
+  (para comprobar sesiones antes de limpiar); existe el gerente semilla activo; y, con los servidores arrancados, una sonda (sonda_db.php, que solo existe en
+  la copia) en CADA puerto devuelve la base y el login aislados, y la línea de comandos de cada php.exe está en la copia.
+
+  QUÉ ESCRIBE: Sucursal, Telefono_Sucursal, Ruta, Vehiculo, Persona, Usuario y Viaje (por los endpoints y por escritura_pm10.php); la carrera del «último
+  gerente» desactiva y RESTAURA a «seed_gerente». DELETE solo en la limpieza y solo de lo anotado en el manifiesto. No toca Reserva, Envio, Bulto, Pago ni
+  Envio_Viaje. Sin DDL, sin tocar el script SQL, sin DBCC CHECKIDENT.
 
   DOS GARANTÍAS DISTINTAS (no se mezclan):
-    1) DATOS ORIGINALES: tras la limpieza, las 12 tablas deben quedar con las MISMAS filas, el mismo checksum y el mismo hash de cada fila.
-       Si no, el resultado es fallo (exit 1).
-    2) CONTADORES IDENTITY: borrar no los restaura (y una carrera perdida, un interbloqueo o un ROLLBACK también consumen valores), así que
-       NO se promete que coincidan ni que su avance iguale el número de altas del manifiesto. Se INFORMA el avance exacto por tabla, se exige que
-       ninguno RETROCEDA y que solo avancen las tablas que este módulo escribe. Por eso se exige -AceptoAvanceIrreversibleDeIdentity: es un
-       cambio permanente de la base que ningún script puede deshacer (DBCC CHECKIDENT está prohibido).
-    Alternativa recomendada si el propietario la autoriza después: ejecutar sobre una BASE DE PRUEBAS AISLADA (copia), donde ese avance no importa.
+    1) DATOS ORIGINALES (la semilla sintética): tras la limpieza, las 12 tablas deben quedar con las MISMAS filas, el mismo checksum y el mismo hash de cada
+       fila. Si no, el resultado es fallo (exit 1).
+    2) CONTADORES IDENTITY: borrar no los restaura (y una carrera perdida, un interbloqueo o un ROLLBACK también consumen valores), así que NO se promete
+       que coincidan. Se INFORMA el avance, se exige que ninguno RETROCEDA y que solo avancen las tablas que este módulo escribe. En una base descartable
+       ese avance no daña nada.
 
-  Uso (desde C:\Jatsa, con PHP en C:\php\php.exe):
-    powershell -File backend\tests\integracion\validar-pm10.ps1 -AutorizadoPorElPropietario -AceptoAvanceIrreversibleDeIdentity -ConfirmoUsoExclusivoDeLaBase
+  COBERTURA QUE SE DECLARA (y la que no): la semilla deja VACÍAS Reserva, Envio, Bulto, Viaje, Envio_Viaje y Pago, así que se ejercita la identificación de
+  filas en tablas inicialmente vacías (Viaje, Envio_Viaje) y en tablas con filas (Persona, Sucursal, Telefono_Sucursal, Usuario, Vehiculo, Ruta). NO se ejercita
+  una base completamente vacía (exigiría adaptar la carrera del último gerente y sus precondiciones) ni datos históricos reales.
 
-  IDENTIFICACIÓN DE FILAS TEMPORALES: no se usa «id > IDENT_CURRENT» (con una tabla inicialmente vacía el contador vale la semilla y la primera fila creada
-  puede recibir ese mismo id). El manifiesto guarda el CONJUNTO REAL de ids de cada tabla en la instantánea inicial (idsAntes, posiblemente vacío) y una
-  fila es de la prueba solo si su clave está en el manifiesto y su id no estaba en ese conjunto; cualquier fila nueva que no sea del manifiesto detiene la
-  limpieza. Eso tampoco prueba la autoría ante escrituras externas simultáneas: por eso se exige -ConfirmoUsoExclusivoDeLaBase (nadie más usa la base
-  durante el ensayo) o, mejor, una base aislada.
+  IDENTIFICACIÓN DE FILAS TEMPORALES: no se usa «id > IDENT_CURRENT». El manifiesto guarda el CONJUNTO REAL de ids de cada tabla en la instantánea inicial
+  (idsAntes, posiblemente vacío) y una fila es de la prueba solo si su clave está en el manifiesto y su id no estaba en ese conjunto; cualquier fila nueva
+  que no sea del manifiesto detiene la limpieza.
 
-  Contraseñas efímeras generadas en memoria, usadas en ESTE proceso y nunca impresas ni guardadas (las de los gerentes temporales viajan al PHP
-  solo por variables de entorno del proceso hijo). Si algo falla: se detiene, limpia SOLO lo anotado y reporta; si la limpieza detecta una divergencia
-  con el manifiesto NO borra nada y pide revisión. exit 0 solo si no hubo fallos, la limpieza quedó comprobada y los datos originales son idénticos.
+  Contraseñas efímeras generadas en memoria, usadas en ESTE proceso y nunca impresas ni guardadas (las de los gerentes temporales viajan al PHP solo por
+  variables de entorno del proceso hijo). Si algo falla: se detiene, limpia SOLO lo anotado y reporta; si la limpieza detecta una divergencia con el
+  manifiesto NO borra nada y pide revisión. exit 0 solo si no hubo fallos, la limpieza quedó comprobada y los datos originales son idénticos.
   Interbloqueos y errores 500: un HTTP 500 solo se acepta en una carrera si el registro de la aplicación muestra, durante esa carrera, un interbloqueo real
-  (SQL 1205 / «deadlock») y el estado final es consistente; un 500 genérico es un FALLO. Se cuentan y se informan por separado (el orden de bloqueos no
-  cubre todas las rutas del sistema, así que no se suponen imposibles).
-  Si un paso del que dependen las fases siguientes falla, la validación se DETIENE (limpieza controlada e informe) en lugar de seguir con supuestos falsos.
+  (SQL 1205 / «deadlock») y el estado final es consistente; un 500 genérico es un FALLO.
+  Trabajos paralelos y limpieza: la limpieza automática solo se ejecuta con todos los trabajos concluidos y con una respuesta por tarea, con los servidores
+  PHP confirmados como terminados Y con la confirmación de SQL Server de que no quedan sesiones ni transacciones del login aislado; ante la duda, NO limpia
+  y reporta para una recuperación controlada. Si un paso del que dependen las fases siguientes falla, la validación se DETIENE.
 #>
-param([switch]$AutorizadoPorElPropietario, [switch]$AceptoAvanceIrreversibleDeIdentity, [switch]$ConfirmoUsoExclusivoDeLaBase)
+param([switch]$AutorizadoPorElPropietario, [string]$BaseAislada = '')
 
 if (-not $AutorizadoPorElPropietario) {
-    Write-Host 'Rechazado: esta validación escribe en la base real. Requiere autorización expresa del propietario (-AutorizadoPorElPropietario).'
+    Write-Host 'Rechazado: esta validación escribe en la base aislada. Requiere autorización expresa del propietario (-AutorizadoPorElPropietario).'
     exit 2
 }
-if (-not $AceptoAvanceIrreversibleDeIdentity) {
-    Write-Host 'Rechazado: los contadores IDENTITY avanzarán de forma irreversible (borrar no los restaura y DBCC CHECKIDENT está prohibido). Requiere -AceptoAvanceIrreversibleDeIdentity, aceptado de antemano por el propietario.'
+if ([string]$BaseAislada -cnotmatch '^JATSA_pm10_aislada_\d{8}_\d{4}$' -or $BaseAislada -match '(?i)encomiendas') {
+    Write-Host 'Rechazado: pm10 solo se ejecuta en una BASE AISLADA y descartable (-BaseAislada JATSA_pm10_aislada_AAAAMMDD_HHMM); nunca contra la base habitual.'
     exit 2
 }
-if (-not $ConfirmoUsoExclusivoDeLaBase) {
-    Write-Host 'Rechazado: la identificación de filas temporales no prueba la autoría ante escrituras externas simultáneas. Requiere -ConfirmoUsoExclusivoDeLaBase (nadie más usa la base durante el ensayo) o ejecutar sobre una base aislada.'
-    exit 2
-}
-
 $ErrorActionPreference = 'Stop'
 $aqui = $PSScriptRoot
 $php = 'C:\php\php.exe'
@@ -55,6 +59,8 @@ New-Item -ItemType Directory -Force $salida | Out-Null
 . "$aqui\api.ps1"
 . "$aqui\pm9-funciones.ps1"   # ConvertFrom-FilasJson: filas planas con 0, 1 o N filas en PowerShell 5.1
 . "$aqui\pm10-funciones.ps1"
+. "$aqui\pm10-aislamiento.ps1"   # reglas del aislamiento: nombre de la base, destino, sondas, procesos, sesiones SQL
+$backend = Split-Path (Split-Path $aqui -Parent) -Parent   # la carpeta backend de ESTA copia de trabajo (todo se resuelve desde aquí)
 
 $ok = 0; $mal = 0; $interbloqueos = 0; $errores500Genericos = 0
 function V($nombre, $cond, $detalle = '') { if ($cond) { $script:ok++; "  OK    $nombre" } else { $script:mal++; "  FALLO $nombre  $detalle" } }
@@ -68,7 +74,7 @@ function Clave { $a = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 # MANIFIESTO de lo creado EN ESTA EJECUCIÓN: es lo único que escritura_pm10.php puede borrar. Se guarda en disco tras cada anotación
 # (y ANTES de crear), de modo que una interrupción deja la limpieza exacta.
 $manifiestoRuta = Join-Path $salida 'manifiesto.json'
-$manifiesto = @{ identAntes = @{}; idsAntes = @{}; sucursales = @(); vehiculos = @(); documentos = @(); usuarios = @(); viajes = @() }
+$manifiesto = @{ baseAislada = $BaseAislada; identAntes = @{}; idsAntes = @{}; sucursales = @(); vehiculos = @(); documentos = @(); usuarios = @(); viajes = @() }
 function Anotar($clave, $valor) {
     if ($valor -and ($manifiesto[$clave] -notcontains $valor)) { $manifiesto[$clave] = @($manifiesto[$clave]) + @($valor) }
     $manifiesto | ConvertTo-Json -Depth 4 | Set-Content $manifiestoRuta -Encoding ascii
@@ -149,7 +155,22 @@ $codigoSalida = 1
 try {
     "== 1. Precondiciones (solo lectura): si alguna falla, se DETIENE antes de escribir nada"
     Exigir (Test-Path $php) 'PHP disponible'
-    Exigir (Test-Path 'backend\public\index.php') 'se ejecuta desde la raíz del repositorio (C:\Jatsa)'
+    Exigir (Test-Path "$backend\public\index.php") "existe el front controller de esta copia ($backend\public)"
+    "== 0. Aislamiento (solo lectura): TODO PHP debe apuntar a la base aislada y nunca a la habitual"
+    Exigir (Test-NombreBdAislada $BaseAislada) "el nombre «$BaseAislada» es el de una base aislada válida"
+    Exigir ($aqui -match '\\jatsa_pm10_\d{8}_\d{6}\\backend\\tests\\integracion$') 'este script se ejecuta desde una COPIA DE TRABAJO temporal (jatsa_pm10_*), no desde el repositorio ni desde el backend habitual'
+    Exigir (Test-Path -LiteralPath "$backend\.env") 'la copia tiene su propio .env'
+    $envCopia = Test-EnvDeCopia ([IO.File]::ReadAllText("$backend\.env", [Text.Encoding]::UTF8)) $BaseAislada
+    Exigir $envCopia.Valido "el .env de la copia apunta a la base y al login aislados ($($envCopia.Motivo))"
+    $destinoCli = (Leer "SELECT DB_NAME() AS bd, SUSER_SNAME() AS login")[0]
+    $d = Test-DestinoAislado $destinoCli.bd $destinoCli.login $BaseAislada
+    Exigir $d.Valido "la CLI (leer.php) está en la base aislada con el login aislado ($($d.Motivo))"
+    # El login aislado NO debe poder abrir la base habitual: si esta consulta funcionara, se detiene TODO antes de escribir.
+    & $php "$aqui\leer.php" 'SELECT TOP 1 1 AS x FROM JATSA_Encomiendas.dbo.Persona' 2>$null | Out-Null
+    Exigir ($LASTEXITCODE -ne 0) 'el login aislado NO puede leer la base habitual (acceso denegado, como debe ser)'
+    Exigir ([int](Leer "SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') AS puede")[0].puede -eq 1) 'el login aislado tiene VIEW SERVER STATE (hace falta para comprobar sesiones y transacciones antes de limpiar)'
+    Exigir ([int](Leer "SELECT COUNT(*) AS n FROM Usuario WHERE nombreUsuario = 'seed_gerente' AND rol = 'GERENTE' AND activo = 1")[0].n -eq 1) 'existe el gerente semilla «seed_gerente» activo (la carrera del último gerente lo usa y lo restaura)'
+    Exigir ([int](Leer "SELECT COUNT(*) AS n FROM Persona WHERE numeroDocumento LIKE '9999990_'")[0].n -ge 1) 'la semilla sintética está cargada'
     foreach ($p in 8000..8003) { Exigir (-not (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue)) "el puerto $p está libre (no se toca ningún servidor ajeno)" }
     & $php "$aqui\instantanea.php" "$salida\antes.json" | Out-Null
     Exigir ($LASTEXITCODE -eq 0 -and (Test-Path "$salida\antes.json")) 'instantánea inicial tomada (solo SELECT)'
@@ -177,12 +198,25 @@ try {
     foreach ($p in 'PM1-901', 'PM1-902', 'PM1-903', 'PM1-904') { Anotar 'vehiculos' $p }
     foreach ($d in '90000101', '90000102', '90000103', '90000104', '90000105', '90000106', '90000108', '20000000107') { Anotar 'documentos' $d }
     foreach ($u in 'pm10_gerente', 'pm10_gerente2', 'pm10_admin', 'pm10_trans', 'pm10_trans2', 'pm10_cliente', 'pm10_empresa', 'pm10_nueva') { Anotar 'usuarios' $u }
+    $vacias = @($antes.tablas.PSObject.Properties | ? { [int]$_.Value.filas -eq 0 } | % { $_.Name })
+    "  tablas inicialmente VACÍAS (ejercitan la identificación de ids con tabla vacía): $($vacias -join ', ')"
     Exigir ((Test-ManifiestoPm10 $manifiesto).Count -eq 0) 'el manifiesto es válido: solo contiene nombres temporales pm10 (nunca datos originales)'
 
     $escrituraIniciada = $true
-    foreach ($p in 8000..8003) { $servidores += Start-Process $php -ArgumentList '-S', "localhost:$p", '-t', 'backend/public' -WindowStyle Hidden -PassThru }
+    foreach ($p in 8000..8003) { $servidores += Start-Process $php -ArgumentList '-S', "localhost:$p", '-t', "$backend\public" -WindowStyle Hidden -PassThru }
     Start-Sleep -Seconds 3
     foreach ($p in 8000..8003) { Exigir ([bool](Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue)) "servidor de prueba escuchando en $p" }
+    # Cada PROCESO servidor debe estar conectado a la base aislada: la sonda (que solo existe en la copia) responde DB_NAME() y el login de ESE proceso.
+    Copy-Item -LiteralPath "$aqui\sonda_db.plantilla" -Destination "$backend\public\sonda_db.php" -Force
+    $respuestas = foreach ($p in 8000..8003) {
+        try { $w = Invoke-WebRequest -Uri "http://localhost:$p/sonda_db.php" -UseBasicParsing -TimeoutSec 20; $j = $w.Content | ConvertFrom-Json; [pscustomobject]@{ Puerto = "$p"; Estado = [int]$w.StatusCode; Bd = $j.bd; Login = $j.login } }
+        catch { [pscustomobject]@{ Puerto = "$p"; Estado = 0; Bd = ''; Login = '' } }
+    }
+    $sondas = Get-ResultadoSondas $respuestas @('8000', '8001', '8002', '8003') $BaseAislada
+    Critico "los 4 servidores PHP están conectados SOLO a la base aislada ($($sondas.Motivo))" $sondas.Valido
+    $lineasOk = $true
+    foreach ($srv in $servidores) { $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$($srv.Id)"; if (-not (Test-LineaDeComandosEnCopia $proc.CommandLine $backend)) { $lineasOk = $false } }
+    Critico 'ningún php.exe de la prueba se lanzó fuera de la copia de trabajo' $lineasOk
 
     "== 2. Preparación: 6 personas y 2 gerentes temporales (INSERT por escritura_pm10.php; contraseñas solo en memoria)"
     $pw = @{ g1 = Clave; g2 = Clave; admin = Clave; trans = Clave; trans2 = Clave; cliente = Clave; empresa = Clave }
@@ -356,15 +390,19 @@ try {
     $n = [int](Leer "SELECT COUNT(*) AS n FROM Ruta r WHERE r.vigenteHasta IS NULL AND r.tipoEnvio='PAQUETE' AND r.idSucursalOrigen=(SELECT idSucursal FROM Sucursal WHERE codigoSucursal='PMX903') AND r.idSucursalDestino=(SELECT idSucursal FROM Sucursal WHERE codigoSucursal='PMX904')")[0].n
     V "C6 Nueva ruta doble: exactamente UNA tarifa vigente (resultado: $(Resumen $res); vigentes=$n)" ($n -eq 1)
 
-    # C7) Dos gerentes temporales que se desactivan mutuamente. La regla del «último gerente» no puede probarse aquí: existen gerentes originales
-    #     (desactivarlos sería tocar datos reales); queda cubierta solo por las pruebas simuladas. Se comprueba que no hay estados incoherentes.
+    # C7) La regla del «último gerente» DE VERDAD (solo es seguro en la base aislada): se desactiva al gerente semilla, de modo que los únicos gerentes
+    #     activos son los dos temporales, y estos se desactivan mutuamente A LA VEZ. Si la regla funciona, nunca quedan CERO gerentes activos. Después se
+    #     RESTAURA al gerente semilla (si ninguno de los dos puede, lo reactiva escritura_pm10.php reactivar-semilla antes de limpiar).
+    V 'C7: se desactiva al gerente semilla (quedan solo los dos temporales activos)' ((Api POST '/api/usuarios/seed_gerente/estado' @{ activo = $false } $g1).Estado -eq 200)
     $marca = MarcaLog
     $res = EnParalelo @((Tarea 8000 $g1 POST '/api/usuarios/pm10_gerente2/estado' @{ activo = $false }), (Tarea 8001 $g2 POST '/api/usuarios/pm10_gerente/estado' @{ activo = $false }))
     $null = Evaluar500 $res $marca 'C7 gerentes cruzados'
-    $act = [int](Leer "SELECT COUNT(*) AS n FROM Usuario WHERE rol='GERENTE' AND activo=1 AND nombreUsuario NOT LIKE 'pm10[_]%'")[0].n
-    V "C7 gerentes cruzados: ninguna petición deja un estado incoherente y los gerentes ORIGINALES siguen activos (resultado: $(Resumen $res); originales activos=$act)" ($act -ge 1 -and (($res | ? { $_.Estado -notin 200, 409, 401, 500 }).Count -eq 0))
-    V 'C7: las respuestas coinciden con el estado final de cada gerente temporal' (@($res | ? { $_.Estado -eq 200 }).Count -eq (2 - [int](Leer "SELECT COUNT(*) AS n FROM Usuario WHERE nombreUsuario IN ('pm10_gerente','pm10_gerente2') AND activo=1")[0].n))
-    AnotarViajesTemporales
+    $activos = [int](Leer "SELECT COUNT(*) AS n FROM Usuario WHERE rol='GERENTE' AND activo=1")[0].n
+    V "C7 último gerente: nunca quedan CERO gerentes activos (resultado: $(Resumen $res); gerentes activos=$activos)" ($activos -ge 1 -and (($res | ? { $_.Estado -notin 200, 409, 401, 500 }).Count -eq 0))
+    $activosTemporales = [int](Leer "SELECT COUNT(*) AS n FROM Usuario WHERE nombreUsuario IN ('pm10_gerente','pm10_gerente2') AND activo=1")[0].n
+    V 'C7: las respuestas coinciden con el estado final de cada gerente temporal' (@($res | ? { $_.Estado -eq 200 }).Count -eq (2 - $activosTemporales))
+    $sobrevive = if ([int](Leer "SELECT activo AS n FROM Usuario WHERE nombreUsuario='pm10_gerente'")[0].n -eq 1) { $g1 } elseif ([int](Leer "SELECT activo AS n FROM Usuario WHERE nombreUsuario='pm10_gerente2'")[0].n -eq 1) { $g2 } else { $null }
+    if ($sobrevive) { V 'C7: el gerente que sobrevivió restaura al gerente semilla' ((Api POST '/api/usuarios/seed_gerente/estado' @{ activo = $true } $sobrevive).Estado -eq 200) }    AnotarViajesTemporales
     V "ningún 500 genérico en todas las carreras (genéricos: $errores500Genericos); interbloqueos reales comprobados en el registro y aceptados: $interbloqueos" ($errores500Genericos -eq 0)
 }
 catch {
@@ -376,13 +414,30 @@ finally {
     foreach ($s in $servidores) { try { Stop-Process -Id $s.Id -Force -ErrorAction SilentlyContinue } catch { } }
     $procesosVivos = @()
     foreach ($s in $servidores) { try { if (-not $s.WaitForExit(20000)) { $procesosVivos += $s.Id } } catch { $procesosVivos += $s.Id } }
+    Remove-Item -LiteralPath "$backend\public\sonda_db.php" -Force -ErrorAction SilentlyContinue   # la sonda solo existe mientras dura la prueba
     $trabajosVivos = @(Get-Job -ErrorAction SilentlyContinue | ? { $_.State -in 'Running', 'NotStarted', 'Blocked' } | % { $_.Id })
-    $decision = Get-DecisionLimpieza $incidenciasParalelas $procesosVivos $trabajosVivos
+    # 2) Confirmar con SQL Server que no quedan sesiones ni transacciones del login aislado: WaitForExit prueba que terminó el PROCESO de Windows, no que el
+    #    servidor haya terminado el rollback. Se consulta hasta 30 s; sin VIEW SERVER STATE, o ante cualquier duda o error, NO se limpia.
+    $problemasSql = @()
+    if ($escrituraIniciada) {
+        $evSql = $null
+        for ($intentoSql = 0; $intentoSql -lt 10; $intentoSql++) {
+            try {
+                $puedeVer = (Leer "SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') AS puede")[0].puede
+                $filasSql = @(Leer "SELECT s.session_id, s.status, (SELECT COUNT(*) FROM sys.dm_tran_session_transactions t WHERE t.session_id = s.session_id) AS transacciones, (SELECT COUNT(*) FROM sys.dm_exec_requests r WHERE r.session_id = s.session_id) AS solicitudes FROM sys.dm_exec_sessions s WHERE s.is_user_process = 1 AND s.login_name = SUSER_SNAME() AND s.session_id <> @@SPID")
+                $evSql = Get-EvaluacionSesionesSql $puedeVer $filasSql
+            } catch { $evSql = [pscustomobject]@{ Segura = $false; Motivos = @("no se pudo consultar a SQL Server: $($_.Exception.Message)") } }
+            if ($evSql.Segura) { break }
+            Start-Sleep -Seconds 3
+        }
+        $problemasSql = @($evSql.Motivos)
+    }
+    $decision = Get-DecisionLimpieza $incidenciasParalelas $procesosVivos $trabajosVivos $problemasSql
     if ($escrituraIniciada -and -not $decision.Permitida) {
         $script:mal++
-        "== 10. LIMPIEZA AUTOMÁTICA DETENIDA: no se puede garantizar que cesó toda actividad contra la base"
+        "== 10. LIMPIEZA AUTOMÁTICA DETENIDA: no se puede garantizar que cesó toda actividad contra la base (procesos PHP, trabajos, sesiones y transacciones SQL)"
         $decision.Motivos | % { "   - $_" }
-        "   NO se ejecutó ningún DELETE. Qué hacer: (1) comprobar que no queda ningún proceso php.exe de esta prueba ni conexiones activas contra la base;"
+        "   NO se ejecutó ningún DELETE. Qué hacer: (1) comprobar que no queda ningún proceso php.exe de esta prueba ni sesiones del login aislado en SQL Server;"
         "   (2) revisar el manifiesto y las instantáneas en $salida; (3) la limpieza se hace después, de forma controlada y con el propietario, con"
         "   escritura_pm10.php limpiar <manifiesto> (que sigue verificando que cada fila es del manifiesto y que no hay filas ajenas)."
         $limpio = $false
@@ -394,6 +449,9 @@ finally {
         "== 10. Limpieza (solo lo registrado en el manifiesto de ESTA ejecución) y comparación con la instantánea"
         try {
             try { AnotarViajesTemporales } catch { "  (no se pudieron releer los viajes temporales: $($_.Exception.Message))" }
+            # El gerente semilla es un dato «original» de la base aislada: si la carrera del último gerente lo dejó desactivado, se restaura ANTES de comparar.
+            & $php "$aqui\escritura_pm10.php" reactivar-semilla $manifiestoRuta
+            if ($LASTEXITCODE -ne 0) { throw "no se pudo restaurar al gerente semilla (código $LASTEXITCODE): no se limpia" }
             # El script PHP verifica ANTES de borrar que lo existente coincide con el manifiesto y se detiene ante cualquier divergencia.
             & $php "$aqui\escritura_pm10.php" limpiar $manifiestoRuta
             if ($LASTEXITCODE -ne 0) { throw "la limpieza se detuvo (código $LASTEXITCODE): NO se borró nada; revisar con el propietario antes de continuar (sin borrados adicionales)" }
@@ -420,7 +478,7 @@ finally {
         } catch { "ERROR en la limpieza: $($_.Exception.Message)" }
     }
     # Sesiones: solo los archivos sess_<id> de las sesiones que abrió ESTA prueba; ninguna otra sesión se toca.
-    $carpeta = Join-Path (Split-Path $aqui -Parent | Split-Path -Parent) 'storage\sessions'
+    $carpeta = Join-Path $backend 'storage\sessions'
     $borradas = 0
     foreach ($id in ($sesionesPropias | Select-Object -Unique)) {
         if ($id -match '^[0-9a-zA-Z,-]{16,128}$') {
@@ -430,6 +488,7 @@ finally {
     }
     "sesiones propias borradas: $borradas de $(@($sesionesPropias | Select-Object -Unique).Count) (ninguna otra se toca)"
     "RESUMEN: $ok correctas, $mal con fallo. Limpieza completa y datos originales idénticos: $limpio. Manifiesto e instantáneas en $salida"
+    "La COPIA DE TRABAJO ($backend) sigue en disco con su .env aislado (contiene la contraseña del login descartable): bórrala cuando termines con Remove-Item -Recurse -Force sobre la carpeta jatsa_pm10_* que la contiene. La base aislada NO se borra (autorización D, aparte)."
     # Código de salida: 0 solo si no hubo ningún fallo y la limpieza quedó comprobada; en otro caso 1.
     $codigoSalida = if ($mal -eq 0 -and $limpio) { 0 } else { 1 }
 }

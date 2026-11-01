@@ -15,6 +15,9 @@ declare(strict_types=1);
  *
  *   preparar <manifiesto>      INSERT de 6 personas temporales (90000101-90000105 y 90000108) y de las cuentas de GERENTE pm10_gerente y pm10_gerente2
  *                              (contraseñas efímeras en JATSA_PM10_PW_G1 y _G2; nunca se imprimen). Aborta sin escribir si ya existe algo pm10.
+ *   reactivar-semilla <manifiesto>
+ *                              UPDATE de UNA fila de la SEMILLA sintética: reactiva a «seed_gerente» (la carrera del «último gerente» lo desactiva a propósito y
+ *                              debe quedar restaurado para que los datos originales queden idénticos). Idempotente.
  *   ruta-antigua <manifiesto> <origen> <destino> <tipo>
  *                              INSERT de UNA tarifa temporal con vigenteDesde = anteayer entre dos sucursales temporales del manifiesto, para poder
  *                              probar «Nuevo precio» (que se rechaza el mismo día). Imprime su idRuta.
@@ -24,6 +27,8 @@ declare(strict_types=1);
  *                              inicial: si una clave del manifiesto coincide con una fila ORIGINAL, o existe cualquier fila nueva que no sea del
  *                              manifiesto (otro proceso, o algo sin anotar), no borra nada (código 4). Verifica además que ninguna fila ajena
  *                              depende de lo temporal y que cada DELETE afecta exactamente lo contado.
+ * TODAS las operaciones exigen que el manifiesto traiga baseAislada y que ESTA conexión (la de la copia de trabajo) sea esa base, con el login
+ * aislado: si DB_NAME() es otra, o contiene «Encomiendas», se detiene (código 5) sin escribir nada. pm10 ya no se ejecuta contra la base habitual.
  * Cualquier otra operación se rechaza. Sin DDL, sin DBCC CHECKIDENT: los contadores IDENTITY NO se restauran (se informan en el orquestador).
  */
 $raiz = dirname(__DIR__, 2);
@@ -83,7 +88,15 @@ $vehiculos = textos($manifiesto['vehiculos'] ?? [], '/^PM1-9\d{2}$/', 'vehículo
 $documentos = textos($manifiesto['documentos'] ?? [], '/^(9000010\d|2000000010\d)$/', 'documentos');
 $usuarios = textos($manifiesto['usuarios'] ?? [], '/^pm10_[a-z0-9]{3,20}$/', 'usuarios');
 $viajes = textos($manifiesto['viajes'] ?? [], '/^VJ\d{10}$/', 'viajes');
+$baseAislada = (string) ($manifiesto['baseAislada'] ?? '');
+if (preg_match('/^JATSA_pm10_aislada_\d{8}_\d{4}$/', $baseAislada) !== 1 || stripos($baseAislada, 'encomiendas') !== false) {
+    abortar('El manifiesto no trae una base aislada válida (baseAislada).', 2);
+}
 $pdo = Database::conexion();
+$destino = $pdo->query('SELECT DB_NAME() AS bd, SUSER_SNAME() AS login')->fetch(PDO::FETCH_ASSOC);
+if ($destino['bd'] !== $baseAislada || $destino['login'] !== 'jatsa_pm10_aislado' || stripos((string) $destino['bd'], 'encomiendas') !== false) {
+    abortar('Esta conexión NO es la base aislada del manifiesto con el login aislado (' . $destino['bd'] . ' / ' . $destino['login'] . '). No se escribe nada.', 5);
+}
 $uno = static fn (string $sql): int => (int) $pdo->query($sql)->fetchColumn();
 $columna = static fn (string $sql): array => array_map('intval', $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN));
 
@@ -119,6 +132,14 @@ if ($op === 'preparar') {
     }
     $pdo->commit();
     echo "6 personas temporales y 2 cuentas de gerente (pm10_gerente, pm10_gerente2) creadas\n";
+    exit(0);
+}
+
+if ($op === 'reactivar-semilla') {
+    $afectadas = $pdo->exec("UPDATE Usuario SET activo = 1 WHERE nombreUsuario = 'seed_gerente' AND rol = 'GERENTE' AND activo = 0");
+    echo (int) $afectadas === 0 ? "seed_gerente ya estaba activo
+" : "seed_gerente reactivado
+";
     exit(0);
 }
 
@@ -222,4 +243,4 @@ if ($op === 'limpiar') {
     exit(0);
 }
 
-abortar('Operación no permitida: solo preparar, ruta-antigua y limpiar.', 2);
+abortar('Operación no permitida: solo preparar, reactivar-semilla, ruta-antigua y limpiar.', 2);

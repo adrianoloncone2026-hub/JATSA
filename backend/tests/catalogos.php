@@ -1038,17 +1038,15 @@ prueba('contraseña propia: el UPDATE es condicional sobre el hash anterior, con
 });
 
 // ── Validador real pm10: revisión estática (NO se ejecuta; no hay SQL en estas pruebas) ───────────────────────────────────────────
-prueba('pm10 (revisión estática): exige TRES aceptaciones antes de hacer nada, y no contiene DDL ni DBCC ejecutables', function () {
+prueba('pm10 (revisión estática): exige la autorización y UNA BASE AISLADA válida antes de hacer nada, y no contiene DDL ni DBCC ejecutables', function () {
     $d = dirname(__DIR__) . '/tests/integracion';
     $ps = (string) file_get_contents("$d/validar-pm10.ps1");
     $sinComentarios = preg_replace(['/<#.*?#>/s', '/^\s*#.*$/m'], '', $ps);
     $g1 = strpos($sinComentarios, 'if (-not $AutorizadoPorElPropietario)');
-    $g2 = strpos($sinComentarios, 'if (-not $AceptoAvanceIrreversibleDeIdentity)');
-    $g3 = strpos($sinComentarios, 'if (-not $ConfirmoUsoExclusivoDeLaBase)');
+    $g2 = strpos($sinComentarios, "BaseAislada -cnotmatch '^JATSA_pm10_aislada_");
     $primeraAccion = strpos($sinComentarios, '. "$aqui\api.ps1"');
-    afirmar($g1 !== false && $g2 !== false && $g3 !== false && $g1 < $g2 && $g2 < $g3 && $g3 < $primeraAccion, 'las tres aceptaciones (autorización, avance de IDENTITY y uso exclusivo de la base) se exigen antes de cualquier acción');
-    afirmar(substr_count($sinComentarios, 'exit 2') === 3, 'las tres rechazan con exit 2');
-    $sinTextos = preg_replace(["/'[^'\n]*'/", '/"[^"\n]*"/'], '', (string) $sinComentarios); // los mensajes de «Rechazado» mencionan DBCC solo para prohibirlo
+    afirmar($g1 !== false && $g2 !== false && $g1 < $g2 && $g2 < $primeraAccion, 'la autorización y una base aislada válida se exigen antes de cualquier acción');
+    afirmar(substr_count($sinComentarios, 'exit 2') === 2 && str_contains($sinComentarios, "-match '(?i)encomiendas'"), 'ambas rechazan con exit 2 y todo nombre con «Encomiendas» se rechaza: pm10 ya no corre contra la base habitual');    $sinTextos = preg_replace(["/'[^'\n]*'/", '/"[^"\n]*"/'], '', (string) $sinComentarios); // los mensajes de «Rechazado» mencionan DBCC solo para prohibirlo
     afirmar(preg_match('/\b(DROP|ALTER|TRUNCATE|DBCC|CHECKIDENT|CREATE\s+TABLE)\b/i', (string) $sinTextos) === 0, 'el PowerShell no ejecuta DDL ni DBCC');
     afirmar(preg_match('/Leer\s+"[^"]*\b(INSERT|UPDATE|DELETE|MERGE)\b/i', $ps) === 0, 'toda consulta directa del orquestador es SELECT');
     $php = (string) file_get_contents("$d/escritura_pm10.php");
@@ -1080,7 +1078,7 @@ prueba('pm10 (revisión estática): separa DATOS ORIGINALES de CONTADORES IDENTI
     afirmar(!str_contains($cuerpo, '.ident') && !str_contains($cuerpo, 'IDENT_CURRENT'), 'la comparación de datos originales NO mira IDENT_CURRENT');
     afirmar(str_contains($f, 'RETROCEDIO') && str_contains($f, 'Inesperado') && str_contains($f, 'Avanzo'), 'los contadores se clasifican (avanzó / retrocedió / inesperado), no se exige que coincidan');
     $ps = (string) file_get_contents("$d/validar-pm10.ps1");
-    afirmar(str_contains($ps, 'NO se promete que coincidan') && str_contains($ps, 'carreras perdidas') && str_contains($ps, 'BASE DE PRUEBAS AISLADA'), 'el informe y la cabecera explican que el avance es irreversible, puede superar las altas y que se prefiere una base aislada');
+    afirmar(str_contains($ps, 'NO se promete que coincidan') && str_contains($ps, 'carreras perdidas') && str_contains($ps, 'DESCARTABLE'), 'el informe y la cabecera explican que el avance es irreversible, puede superar las altas y que se prefiere una base aislada');
     afirmar(str_contains($ps, '$codigoSalida = if ($mal -eq 0 -and $limpio) { 0 } else { 1 }'), 'exit 0 solo sin fallos y con los datos originales comprobados');
     afirmar(str_contains($ps, 'interbloqueos') && str_contains($ps, '1205'), 'cuenta e informa los interbloqueos (1205) sin suponerlos imposibles');
 });
@@ -1159,8 +1157,95 @@ prueba('pm10 (revisión estática): los trabajos paralelos exigen finalización 
 
 prueba('plan de la base aislada (documento): cubre Env.php, la copia de trabajo, las sondas, el script original con USE/CREATE DATABASE y las autorizaciones', function () {
     $d = (string) file_get_contents(dirname(__DIR__, 2) . '/docs/plan-pm10-bd-aislada.md');
-    foreach (['prioriza `backend/.env`', 'copia de trabajo', 'sonda_db.php', 'SELECT DB_NAME()', 'USE JATSA_Encomiendas', 'copia derivada', 'SHA-256', 'login dedicado', 'Win32_Process', 'Autorizaciones que se pedirían', 'nada de A–D está autorizado'] as $clave) {
+    foreach (['prioriza `backend/.env`', 'copia de trabajo', 'sonda_db.php', 'SELECT DB_NAME()', 'USE JATSA_Encomiendas', 'copia derivada', 'SHA-256', 'jatsa_pm10_aislado', 'Win32_Process', 'Autorizaciones que se pedirían', 'hoy ninguna está concedida'] as $clave) {
         afirmar(str_contains($d, $clave) || stripos($d, $clave) !== false, "el plan menciona «{$clave}»");
     }
     afirmar(!str_contains($d, 'CREATE DATABASE JATSA_pm10') && !preg_match('/^\s*(CREATE|DROP|ALTER)\s+(DATABASE|LOGIN)/mi', $d), 'el plan no contiene sentencias SQL ejecutables: es solo un plan');
+});
+
+// ── pm10: aislamiento en una base SQL Server descartable (revisión estática; NADA de esto se ha ejecutado) ───────────────────────
+prueba('pm10 aislado (revisión estática): la fase 0 verifica nombre, .env de la copia, DB_NAME() por CLI y por cada servidor, acceso denegado a la base habitual y procesos', function () {
+    $ps = (string) file_get_contents(dirname(__DIR__) . '/tests/integracion/validar-pm10.ps1');
+    $tokens = ['Test-NombreBdAislada $BaseAislada', 'jatsa_pm10_\d{8}_\d{6}', 'Test-EnvDeCopia', 'Test-DestinoAislado $destinoCli.bd', 'FROM JATSA_Encomiendas.dbo.Persona', 'NO puede leer la base habitual', "HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE')", "seed_gerente", 'sonda_db.plantilla', 'Get-ResultadoSondas', 'Test-LineaDeComandosEnCopia'];
+    $anterior = -1;
+    foreach ($tokens as $token) {
+        $pos = strpos($ps, $token);
+        afirmar($pos !== false, "el orquestador contiene «{$token}»");
+        afirmar($pos > $anterior || $token === 'seed_gerente', "«{$token}» aparece después de la verificación anterior");
+        $anterior = max($anterior, (int) $pos);
+    }
+    $escribe = strpos($ps, '$escrituraIniciada = $true');
+    afirmar($escribe !== false && strpos($ps, 'NO puede leer la base habitual') < $escribe && strpos($ps, 'Test-DestinoAislado $destinoCli.bd') < $escribe, 'las verificaciones por CLI y de acceso denegado van ANTES de la primera escritura');
+    afirmar(preg_match("/-ArgumentList '-S', \"localhost:\\\$p\", '-t', \"\\\$backend\\\\public\"/", $ps) === 1 && !str_contains($ps, "'backend/public'") && !str_contains($ps, "'backend\\public"), 'los servidores se lanzan desde el backend de LA COPIA, no desde backend/public relativo');
+    afirmar(str_contains($ps, 'Critico "los 4 servidores PHP están conectados SOLO a la base aislada') && str_contains($ps, "Critico 'ningún php.exe de la prueba se lanzó fuera de la copia de trabajo'"), 'la sonda y los procesos son condiciones críticas: si fallan, se detiene antes de operar');
+    afirmar(str_contains($ps, '$aqui = $PSScriptRoot') && str_contains($ps, '$backend = Split-Path (Split-Path $aqui -Parent) -Parent'), 'todo se resuelve desde donde está el script (la copia), no desde C:\Jatsa');
+});
+
+prueba('pm10 aislado (revisión estática): antes de limpiar se comprueban procesos PHP, trabajos y SESIONES/TRANSACCIONES SQL; sin certeza no hay DELETE; la sonda se retira', function () {
+    $ps = (string) file_get_contents(dirname(__DIR__) . '/tests/integracion/validar-pm10.ps1');
+    $final = substr($ps, (int) strrpos($ps, 'finally {'));
+    $pos = [];
+    foreach (['Stop-Process -Id $s.Id', 'WaitForExit(20000)', 'sonda_db.php', 'sys.dm_tran_session_transactions', 'sys.dm_exec_sessions', 'Get-EvaluacionSesionesSql', 'Get-DecisionLimpieza $incidenciasParalelas $procesosVivos $trabajosVivos $problemasSql', 'LIMPIEZA AUTOMÁTICA DETENIDA', 'reactivar-semilla', 'escritura_pm10.php" limpiar'] as $token) {
+        $pos[$token] = strpos($final, $token);
+        afirmar($pos[$token] !== false, "el bloque final contiene «{$token}»");
+    }
+    afirmar($pos['Stop-Process -Id $s.Id'] < $pos['WaitForExit(20000)'] && $pos['WaitForExit(20000)'] < $pos['sys.dm_tran_session_transactions'] && $pos['Get-EvaluacionSesionesSql'] < $pos['Get-DecisionLimpieza $incidenciasParalelas $procesosVivos $trabajosVivos $problemasSql'], 'orden: detener PHP → confirmar que terminó → preguntar a SQL Server → decidir');
+    afirmar($pos['Get-DecisionLimpieza $incidenciasParalelas $procesosVivos $trabajosVivos $problemasSql'] < $pos['LIMPIEZA AUTOMÁTICA DETENIDA'] && $pos['LIMPIEZA AUTOMÁTICA DETENIDA'] < $pos['reactivar-semilla'] && $pos['reactivar-semilla'] < $pos['escritura_pm10.php" limpiar'], 'la rama «detenida» precede a la que restaura la semilla y ejecuta el DELETE');
+    afirmar(str_contains($final, "s.login_name = SUSER_SNAME() AND s.session_id <> @@SPID") && str_contains($final, 'is_user_process = 1'), 'consulta las sesiones de usuario del login aislado distintas de la propia');
+    afirmar(str_contains($final, 'catch { $evSql = [pscustomobject]@{ Segura = $false'), 'si no puede consultar a SQL Server, el resultado es «no seguro»');
+    $f = (string) file_get_contents(dirname(__DIR__) . '/tests/integracion/pm10-aislamiento.ps1');
+    afirmar(str_contains($f, '"$puedeVer" -ne \'1\'') && str_contains($f, 'no se puede verificar'), 'sin VIEW SERVER STATE la ausencia de filas no se toma como prueba');
+});
+
+prueba('pm10 aislado (revisión estática): escritura_pm10.php exige la base aislada del manifiesto y que ESTA conexión sea esa base, antes de cualquier operación', function () {
+    $php = (string) file_get_contents(dirname(__DIR__) . '/tests/integracion/escritura_pm10.php');
+    $guarda = strpos($php, "if (\$destino['bd'] !== \$baseAislada");
+    $primeraOperacion = strpos($php, "if (\$op === 'preparar')");
+    afirmar($guarda !== false && $primeraOperacion !== false && strpos($php, "\$manifiesto['baseAislada']") < $guarda && $guarda < $primeraOperacion, 'comprueba baseAislada y DB_NAME()/SUSER_SNAME() antes de preparar, reactivar-semilla, ruta-antigua o limpiar');
+    afirmar(str_contains($php, "stripos((string) \$destino['bd'], 'encomiendas') !== false") && str_contains($php, "'jatsa_pm10_aislado'") && str_contains($php, 'exit') && str_contains($php, ', 5)') || str_contains($php, 'abortar(\'Esta conexión NO es la base aislada'), 'rechaza cualquier base con «Encomiendas» y exige el login aislado');
+    afirmar(preg_match("/UPDATE Usuario SET activo = 1 WHERE nombreUsuario = 'seed_gerente' AND rol = 'GERENTE' AND activo = 0/", $php) === 1, 'reactivar-semilla solo toca a «seed_gerente»');
+    preg_match_all('/\bUPDATE\s+(\w+)/i', (string) preg_replace(['~/\*.*?\*/~s', '~^\s*(//|\*).*$~m'], '', $php), $u);
+    afirmar($u[1] === ['Usuario'], 'el único UPDATE del script es el de la semilla: ' . implode(',', $u[1]));
+});
+
+prueba('pm10 aislado (revisión estática): crear_bd_aislada solo crea la base y el login nuevos, exige su autorización y comprueba que el login NO abre la base habitual', function () {
+    $d = dirname(__DIR__) . '/tests/integracion';
+    $ps = (string) file_get_contents("$d/crear_bd_aislada.ps1");
+    $php = (string) file_get_contents("$d/crear_bd_aislada.php");
+    $sinComentarios = preg_replace(['/<#.*?#>/s', '/^\s*#.*$/m'], '', $ps);
+    afirmar(strpos($sinComentarios, 'if (-not $AutorizadoCrearBase)') < strpos($sinComentarios, 'Test-NombreBdAislada') && str_contains($sinComentarios, 'exit 2'), 'sin -AutorizadoCrearBase no hace nada (exit 2) y antes de leer ninguna variable');
+    $php = preg_replace(['~/\*.*?\*/~s', '~^\s*//.*$~m'], '', $php);
+    preg_match_all('/exec\("([A-Z ]+)/', $php, $m);
+    afirmar($m[1] === ['CREATE DATABASE ', 'CREATE LOGIN ', 'GRANT VIEW SERVER STATE TO ', 'CREATE USER ', 'ALTER ROLE '], 'las únicas sentencias de escritura son CREATE DATABASE, CREATE LOGIN, GRANT VIEW SERVER STATE, CREATE USER y ALTER ROLE db_owner: ' . implode('|', $m[1]));
+    afirmar(!preg_match('/\bDROP\b/i', $php) && !preg_match('/\bDELETE\b|\bUPDATE\b|\bINSERT\b/i', $php), 'no borra ni modifica nada');
+    afirmar(strpos($php, 'Ya existe la base o el login aislado') < strpos($php, 'CREATE DATABASE'), 'si la base o el login ya existen, se detiene antes de crear nada');
+    afirmar(str_contains($php, "conectar(\$servidorDsn, 'JATSA_Encomiendas', \$login, \$claveLogin)") && str_contains($php, 'PUEDE abrir JATSA_Encomiendas'), 'verifica con el login aislado que NO puede abrir la base habitual');
+    afirmar(str_contains($php, 'preg_match(\'/^[A-Za-z0-9#_.\-]{16,64}$/\', $claveLogin)'), 'la contraseña del login se valida (el DDL no admite parámetros)');
+    afirmar(!str_contains($ps, 'docs\\JATSA_Envios') && !str_contains($php, 'JATSA_Envios-SQLQuery1'), 'no usa ni menciona el script SQL original');
+});
+
+prueba('pm10 aislado (revisión estática): cargar_bd_aislada nunca ejecuta el script original, no toca backend/.env, valida la copia y la estructura y carga solo una semilla sintética en una base vacía', function () {
+    $d = dirname(__DIR__) . '/tests/integracion';
+    $ps = (string) file_get_contents("$d/cargar_bd_aislada.ps1");
+    $php = (string) file_get_contents("$d/cargar_bd_aislada.php");
+    $sin = preg_replace(['/<#.*?#>/s', '/^\s*#.*$/m'], '', $ps);
+    afirmar(strpos($sin, 'if (-not $AutorizadoCargarEstructura -and -not $SoloPreparar)') !== false && strpos($sin, 'if (-not $AutorizadoCargarEstructura -and -not $SoloPreparar)') < strpos($sin, 'Test-NombreBdAislada'), 'sin autorización B (o -SoloPreparar) no hace nada');
+    afirmar(preg_match('/sqlcmd|Invoke-Sqlcmd|osql/i', $sin) === 0, 'no usa sqlcmd ni nada que ejecute el script original');
+    preg_match_all('/\$sqlOriginal/', $sin, $usos);
+    afirmar(substr_count($sin, 'ReadAllText($sqlOriginal') === 1 && substr_count($sin, 'Get-FileHash -LiteralPath $sqlOriginal') === 2 && str_contains($sin, '$hashSql0 -ne $hashSql1'), 'el original solo se LEE (una vez) y se compara su SHA-256 antes y después');
+    afirmar(str_contains($sin, 'Get-FileHash -LiteralPath $envHabitual') && !preg_match('/ReadAllText\(\$envHabitual|Get-Content[^\n]*\$envHabitual|Copy-Item[^\n]*\.env/', $sin) && str_contains($sin, '$hashEnv0 -ne $hashEnv1'), 'del backend/.env habitual solo se calcula el hash (nunca se lee ni se copia) y se comprueba que no cambió');
+    afirmar(str_contains($sin, 'Get-DiferenciasHashes') && str_contains($sin, 'la copia no es idéntica al repositorio') && str_contains($sin, 'Test-DdlDerivado $derivada $Base'), 'verifica la copia archivo a archivo y la estructura derivada antes de aplicarla');
+    afirmar(strpos($sin, 'cargar_bd_aislada.php') > strpos($sin, 'Test-DdlDerivado $derivada $Base') && str_contains($sin, "Join-Path \$backendCopia 'tests\\integracion\\cargar_bd_aislada.php'"), 'el PHP de carga se ejecuta DESDE LA COPIA (con el .env aislado), después de validar');
+    $php = preg_replace(['~/\*.*?\*/~s', '~^\s*//.*$~m'], '', $php);
+    afirmar(strpos($php, "if (\$actual['bd'] !== \$base") < strpos($php, 'sys.tables') && strpos($php, 'sys.tables') < strpos($php, '$pdo->exec($lote)'), 'orden: confirma base y login, confirma que está VACÍA y recién aplica la estructura');
+    afirmar(preg_match('/(exec|query)\(\s*["\x27]\s*(CREATE|DROP|ALTER)\s+(DATABASE|LOGIN|USER)/i', $php) === 0 && substr_count($php, 'JATSA_Encomiendas') <= 2, 'no crea ni borra bases (solo menciona JATSA_Encomiendas para rechazarla)');
+    afirmar(str_contains($php, "'99999901'") && str_contains($php, 'Sintético') && str_contains($php, 'TST001') && str_contains($php, 'random_bytes(24)'), 'la semilla es sintética (documentos 9999990x, nombres «Sintético», sucursales TST…) y la contraseña del gerente semilla es aleatoria y desconocida');
+    afirmar(preg_match("/'Reserva' => 0, 'Envio' => 0, 'Bulto' => 0, 'Viaje' => 0, 'Envio_Viaje' => 0, 'Pago' => 0/", $php) === 1, 'Reserva, Envio, Bulto, Viaje, Envio_Viaje y Pago quedan VACÍAS a propósito (tablas inicialmente vacías)');
+});
+
+prueba('pm10 aislado: lo que NO se declara — la cobertura de una base completamente vacía y de datos históricos reales queda fuera, y el plan/código lo dicen', function () {
+    $ps = (string) file_get_contents(dirname(__DIR__) . '/tests/integracion/validar-pm10.ps1');
+    afirmar(str_contains($ps, 'NO se ejercita') && str_contains($ps, 'base completamente vacía'), 'el validador declara que no cubre una base completamente vacía');
+    $plan = (string) file_get_contents(dirname(__DIR__, 2) . '/docs/plan-pm10-bd-aislada.md');
+    afirmar(stripos($plan, '**una sola** base') !== false && str_contains($plan, 'seed_gerente') && stripos($plan, 'no se declara') !== false, 'el plan empieza con UNA base con semilla (seed_gerente) y no declara cobertura de casos no ejecutados');
 });

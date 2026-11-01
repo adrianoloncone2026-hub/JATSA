@@ -1,8 +1,11 @@
 ﻿<# Prueba SIN base de datos ni red de las reglas puras del validador pm10. Uso: powershell -File backend\tests\integracion\probar-pm10-funciones.ps1 #>
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\pm10-funciones.ps1"
+. "$PSScriptRoot\pm10-aislamiento.ps1"
 $ok = 0; $mal = 0
 function V($nombre, $cond, $detalle = '') { if ($cond) { $script:ok++; "  OK    $nombre" } else { $script:mal++; "  FALLO $nombre  $detalle" } }
+# Verdadero si el bloque lanza una excepción (en PowerShell 5.1 `try` no es una expresión).
+function Lanza([scriptblock]$bloque) { try { $null = & $bloque; $false } catch { $true } }
 function Tabla($filas, $checksum, $ident, $hashes) { [pscustomobject]@{ filas = $filas; checksum = $checksum; ident = $ident; hashes = $hashes } }
 function Instantanea([hashtable]$tablas) { $t = New-Object psobject; foreach ($k in $tablas.Keys) { $t | Add-Member -NotePropertyName $k -NotePropertyValue $tablas[$k] }; [pscustomobject]@{ tablas = $t } }
 $nombres = 'Bulto', 'Envio', 'Envio_Viaje', 'Pago', 'Persona', 'Reserva', 'Ruta', 'Sucursal', 'Telefono_Sucursal', 'Usuario', 'Vehiculo', 'Viaje'
@@ -42,7 +45,7 @@ V 'ninguna tabla repetida y ninguna que el módulo no cree' (($o | Select-Object
 
 '-- manifiesto'
 $id = @{ Sucursal = @(1, 2); Telefono_Sucursal = @(); Ruta = @(1); Vehiculo = @(1); Persona = @(1, 2, 3); Usuario = @(1, 2); Viaje = @(); Envio_Viaje = @() }   # varias tablas pueden estar inicialmente vacías
-$valido = @{ idsAntes = $id; sucursales = @('PMX901'); vehiculos = @('PM1-901'); documentos = @('90000101', '20000000107'); usuarios = @('pm10_admin'); viajes = @('VJ2026110101') }
+$valido = @{ baseAislada = 'JATSA_pm10_aislada_20261101_1200'; idsAntes = $id; sucursales = @('PMX901'); vehiculos = @('PM1-901'); documentos = @('90000101', '20000000107'); usuarios = @('pm10_admin'); viajes = @('VJ2026110101') }
 V 'un manifiesto bien formado no tiene problemas' ((Test-ManifiestoPm10 $valido).Count -eq 0)
 foreach ($caso in @(@('sucursales', 'MOQ001'), @('vehiculos', 'B7K-210'), @('documentos', '71889345'), @('usuarios', 'lflores'), @('viajes', 'VJ12'))) {
     $m = @{} + $valido; $m[$caso[0]] = @($caso[1])
@@ -129,6 +132,120 @@ V 'un trabajo de PowerShell todavía vivo impide la limpieza' ((-not $d.Permitid
 $d = Get-DecisionLimpieza @('a', 'b') @(1) @(2)
 V 'varias causas se reportan todas' ((-not $d.Permitida) -and $d.Motivos.Count -eq 4)
 V 'valores nulos o vacíos en las listas no cuentan como incidencias' ((Get-DecisionLimpieza @($null, '') @($null) @($null)).Permitida)
+'-- manifiesto: la base aislada es obligatoria'
+$m = @{} + $valido; $m.baseAislada = 'JATSA_Encomiendas'
+V 'rechaza un manifiesto cuya base es la habitual' ((Test-ManifiestoPm10 $m).Count -ge 1)
+$m = @{} + $valido; $m.baseAislada = ''
+V 'rechaza un manifiesto sin base aislada' ((Test-ManifiestoPm10 $m).Count -ge 1)
+$m = @{} + $valido; $m.baseAislada = 'JATSA_pm10_aislada_20261101_1200_Encomiendas'
+V 'rechaza un nombre que se parezca al patrón pero contenga «Encomiendas»' ((Test-ManifiestoPm10 $m).Count -ge 1)
+
+'-- nombre de la base aislada'
+V 'acepta JATSA_pm10_aislada_20261101_1200' (Test-NombreBdAislada 'JATSA_pm10_aislada_20261101_1200')
+foreach ($malo in @('JATSA_Encomiendas', 'jatsa_encomiendas', 'JATSA_pm10_aislada', 'JATSA_pm10_aislada_2026110_1200', 'JATSA_pm10_aislada_20261101_12', 'xJATSA_pm10_aislada_20261101_1200', 'JATSA_pm10_aislada_20261101_1200 ', 'JATSA_pm10_aislada_20261101_1200;DROP', 'jatsa_pm10_aislada_20261101_1200', '', 'master')) {
+    V "rechaza «$malo»" (-not (Test-NombreBdAislada $malo))
+}
+
+'-- destino de cada conexión: DB_NAME() y el login'
+$base = 'JATSA_pm10_aislada_20261101_1200'
+V 'DB_NAME() y login aislados: válido' (Test-DestinoAislado $base 'jatsa_pm10_aislado' $base).Valido
+$d = Test-DestinoAislado 'JATSA_Encomiendas' 'jatsa_pm10_aislado' $base
+V 'DB_NAME() = JATSA_Encomiendas: se rechaza INEQUÍVOCAMENTE (aunque el login sea el aislado)' ((-not $d.Valido) -and $d.Motivo -match 'BASE HABITUAL')
+V 'DB_NAME() = jatsa_encomiendas en minúsculas también' (-not (Test-DestinoAislado 'jatsa_encomiendas' 'jatsa_pm10_aislado' $base).Valido)
+V 'otra base distinta de la esperada' (-not (Test-DestinoAislado 'JATSA_pm10_aislada_20261101_1300' 'jatsa_pm10_aislado' $base).Valido)
+V 'master' (-not (Test-DestinoAislado 'master' 'jatsa_pm10_aislado' $base).Valido)
+V 'login distinto (sa o el administrador)' (-not (Test-DestinoAislado $base 'sa' $base).Valido)
+V 'DB_NAME() vacío o nulo' ((-not (Test-DestinoAislado '' 'jatsa_pm10_aislado' $base).Valido) -and (-not (Test-DestinoAislado $null 'jatsa_pm10_aislado' $base).Valido))
+V 'si el nombre ESPERADO no es válido, nada es válido' (-not (Test-DestinoAislado 'JATSA_Encomiendas' 'jatsa_pm10_aislado' 'JATSA_Encomiendas').Valido)
+
+'-- sondas de los 4 servidores HTTP'
+function Sonda($puerto, $estado = 200, $bd = $base, $login = 'jatsa_pm10_aislado') { [pscustomobject]@{ Puerto = $puerto; Estado = $estado; Bd = $bd; Login = $login } }
+$puertos = @('8000', '8001', '8002', '8003')
+V 'los 4 servidores en la base aislada: válido' (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003')) $puertos $base).Valido
+$r = Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002' 200 'JATSA_Encomiendas'), (Sonda '8003')) $puertos $base
+V 'UN servidor conectado a la base habitual invalida todo y se identifica' ((-not $r.Valido) -and $r.Motivo -match 'puerto 8002' -and $r.Motivo -match 'BASE HABITUAL')
+$r = Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002')) $puertos $base
+V 'falta la respuesta de un puerto' ((-not $r.Valido) -and $r.Motivo -match 'puerto 8003 no respondió')
+V 'un servidor que responde HTTP 500 (sin conexión) invalida' (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003' 500 '' '')) $puertos $base).Valido)
+V 'un servidor sin respuesta (estado 0) invalida' (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003' 0 '' '')) $puertos $base).Valido)
+V 'un puerto repetido o inesperado invalida' ((-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003')) $puertos $base).Valido) -and (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003'), (Sonda '9999')) $puertos $base).Valido))
+V 'un login distinto en un servidor invalida' (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002' 200 $base 'sa'), (Sonda '8003')) $puertos $base).Valido)
+
+'-- procesos PHP: deben salir de la copia, nunca del backend habitual'
+$copia = 'C:\Users\Usuario\AppData\Local\Temp\jatsa_pm10_20261101_120000\backend'
+$habitual = 'C:\Jatsa\backend'
+V 'php -S … -t <copia>\public: válido' (Test-LineaDeComandosEnCopia "C:\php\php.exe -S localhost:8000 -t `"$copia\public`"" $copia @($habitual))
+V 'insensible a mayúsculas y a la dirección de las barras' (Test-LineaDeComandosEnCopia ('C:/php/php.exe -S localhost:8000 -t ' + $copia.ToUpper().Replace('\', '/') + '/public') $copia @($habitual))
+V 'php -S … -t C:\Jatsa\backend\public (el habitual): INVÁLIDO' (-not (Test-LineaDeComandosEnCopia 'C:\php\php.exe -S localhost:8000 -t C:\Jatsa\backend\public' $copia @($habitual)))
+V 'una línea que menciona la copia Y el backend habitual: INVÁLIDA' (-not (Test-LineaDeComandosEnCopia "C:\php\php.exe -S localhost:8000 -t $copia\public -c C:\Jatsa\backend\php.ini" $copia @($habitual)))
+V 'una línea vacía o sin la copia no es válida' ((-not (Test-LineaDeComandosEnCopia '' $copia @($habitual))) -and (-not (Test-LineaDeComandosEnCopia 'C:\php\php.exe -v' $copia @($habitual))))
+
+'-- .env independiente de la copia'
+$clave = 'Aislada#Segura2026ab'
+$env1 = New-ContenidoEnvAislado 'localhost' '1433' $base 'jatsa_pm10_aislado' $clave
+$ev = Test-EnvDeCopia $env1 $base
+V 'el .env generado es válido y trae TODAS las claves de conexión' ($ev.Valido -and $env1 -match 'DB_HOST=localhost' -and $env1 -match "DB_NAME=$base" -and $env1 -match 'DB_USER=jatsa_pm10_aislado' -and $env1 -match 'DB_PORT=1433')
+V 'el .env no menciona la base habitual' ($env1 -notmatch '(?i)encomiendas')
+V 'se negó a generar un .env para la base habitual' ((Lanza { New-ContenidoEnvAislado 'localhost' '' 'JATSA_Encomiendas' 'jatsa_pm10_aislado' $clave }))
+V 'se negó a generar un .env con otro login (p. ej. sa)' ((Lanza { New-ContenidoEnvAislado 'localhost' '' $base 'sa' $clave }))
+V 'se negó con una contraseña vacía o corta' (((Lanza { New-ContenidoEnvAislado 'localhost' '' $base 'jatsa_pm10_aislado' '' })) -and ((Lanza { New-ContenidoEnvAislado 'localhost' '' $base 'jatsa_pm10_aislado' 'corta' })))
+V 'se negó con saltos de línea en un valor (inyección de claves)' ((Lanza { New-ContenidoEnvAislado 'localhost' '' $base 'jatsa_pm10_aislado' "$clave`nDB_NAME=JATSA_Encomiendas" }))
+V 'puerto vacío sigue definiendo DB_PORT (no cae a variables del proceso)' ((Test-EnvDeCopia (New-ContenidoEnvAislado 'localhost' '' $base 'jatsa_pm10_aislado' $clave) $base).Valido)
+V 'Test-EnvDeCopia rechaza un .env al que le falta DB_NAME (Env usaría la variable del proceso)' (-not (Test-EnvDeCopia (($env1 -split "`n" | Where-Object { $_ -notmatch '^DB_NAME=' }) -join "`n") $base).Valido)
+V 'Test-EnvDeCopia rechaza un DB_NAME repetido' (-not (Test-EnvDeCopia ($env1 + "`nDB_NAME=$base") $base).Valido)
+V 'Test-EnvDeCopia rechaza DB_NAME = JATSA_Encomiendas' (-not (Test-EnvDeCopia ($env1.Replace("DB_NAME=$base", 'DB_NAME=JATSA_Encomiendas')) $base).Valido)
+V 'Test-EnvDeCopia rechaza otro DB_USER y una contraseña vacía' ((-not (Test-EnvDeCopia ($env1.Replace('DB_USER=jatsa_pm10_aislado', 'DB_USER=sa')) $base).Valido) -and (-not (Test-EnvDeCopia ($env1.Replace("DB_PASSWORD=$clave", 'DB_PASSWORD=')) $base).Valido))
+
+'-- la copia debe ser idéntica al repositorio (hashes)'
+V 'inventarios iguales: sin diferencias' ((Get-DiferenciasHashes @{ 'src\a.php' = 'AA'; 'config\b.php' = 'BB' } @{ 'src\a.php' = 'AA'; 'config\b.php' = 'BB' }).Count -eq 0)
+$dif = Get-DiferenciasHashes @{ 'src\a.php' = 'AA'; 'config\b.php' = 'BB' } @{ 'src\a.php' = 'XX'; 'public\sonda_db.php' = 'CC' }
+V 'detecta archivo distinto, archivo que falta y archivo que sobra (p. ej. una sonda olvidada)' (($dif -contains 'difiere: src\a.php') -and ($dif -contains 'falta en la copia: config\b.php') -and ($dif -contains 'sobra en la copia: public\sonda_db.php'))
+
+'-- estructura derivada del script original (el original NO se modifica ni se ejecuta)'
+$origSintetico = "--1. Crear Base de datos`nIF DB_ID('JATSA_Encomiendas') IS NULL CREATE DATABASE JATSA_Encomiendas;`nGO`n`nUSE JATSA_Encomiendas;`nGO`n`n-- tablas`n" + (($script:TABLAS_ESPERADAS | ForEach-Object { "CREATE TABLE $_ (`n    id INT IDENTITY(1,1) NOT NULL`n);`nGO`n" }) -join "`n") + "`n--3. Insertar Datos de Prueba`nINSERT INTO Persona (tipoDocumento) VALUES ('DNI');`nINSERT INTO Sucursal (codigoSucursal) VALUES ('AQP001');"
+$der = ConvertTo-DdlDerivado $origSintetico $base
+V 'sintético: la derivada empieza con USE de la base aislada' ($der.StartsWith("USE [$base];`nGO"))
+V 'sintético: la derivada es válida (12 tablas, sin INSERT ni JATSA_Encomiendas, un USE)' ((Test-DdlDerivado $der $base).Count -eq 0)
+V 'sintético: no queda nada del encabezado original ni de los datos' (($der -notmatch 'JATSA_Encomiendas') -and ($der -notmatch 'INSERT') -and ($der -notmatch 'CREATE DATABASE'))
+V 'se negó a derivar hacia la base habitual' ((Lanza { ConvertTo-DdlDerivado $origSintetico 'JATSA_Encomiendas' }))
+V 'se negó si el original no tiene «USE JATSA_Encomiendas»' ((Lanza { ConvertTo-DdlDerivado "CREATE TABLE Persona (id INT);`nGO`nINSERT INTO Persona VALUES (1);" $base }))
+V 'se negó si el original no tiene INSERT (no se sabría dónde termina la estructura)' ((Lanza { ConvertTo-DdlDerivado "USE JATSA_Encomiendas;`nGO`nCREATE TABLE Persona (id INT);`nGO" $base }))
+V 'Test-DdlDerivado detecta un INSERT escondido' ((Test-DdlDerivado ($der + "`nINSERT INTO Persona (tipoDocumento) VALUES ('DNI');`nGO") $base) -match 'INSERT')
+V 'Test-DdlDerivado detecta JATSA_Encomiendas, aunque sea en un comentario' ((Test-DdlDerivado ($der + "`n-- viene de JATSA_Encomiendas") $base) -match 'JATSA_Encomiendas')
+V 'Test-DdlDerivado detecta CREATE DATABASE, DROP y un USE a otra base' (((Test-DdlDerivado ($der + "`nCREATE DATABASE X`nGO") $base) -match 'bases, logins') -and ((Test-DdlDerivado ($der + "`nDROP TABLE Persona`nGO") $base) -match 'no estructurales') -and ((Test-DdlDerivado $der.Replace("USE [$base];", 'USE [master];') $base) -match 'exactamente un USE'))
+V 'Test-DdlDerivado exige las 12 tablas (falta una)' ((Test-DdlDerivado ($der -replace 'CREATE TABLE Pago', 'CREATE TABLE Otra') $base) -match 'faltan las tablas: Pago')
+V 'Split-LotesGo separa por GO, ignora lotes vacíos y no parte «GOTO» ni palabras que empiezan por GO' ((@(Split-LotesGo "A`nGO`n`nGO`nB GO`nGOTO x`nGO`nC").Count -eq 3))
+
+'-- contra el script original REAL (solo lectura del archivo; no se ejecuta nada)'
+$ruta = Join-Path $PSScriptRoot '..\..\..\docs\JATSA_Envios-SQLQuery1 (1).sql'
+if (Test-Path -LiteralPath $ruta) {
+    $hash0 = (Get-FileHash -LiteralPath $ruta -Algorithm SHA256).Hash
+    $real = [IO.File]::ReadAllText($ruta, [Text.Encoding]::UTF8)
+    $derReal = ConvertTo-DdlDerivado $real $base
+    $problemasReal = @(Test-DdlDerivado $derReal $base)
+    V 'la estructura derivada del script REAL es válida (12 CREATE TABLE, sin INSERT ni JATSA_Encomiendas)' ($problemasReal.Count -eq 0) ($problemasReal -join '; ')
+    V 'el original SÍ crea y usa JATSA_Encomiendas y trae INSERT (por eso nunca se ejecuta tal cual)' (($real -match 'CREATE DATABASE JATSA_Encomiendas') -and ($real -match '(?m)^\s*USE JATSA_Encomiendas') -and ($real -match '(?m)^\s*INSERT INTO'))
+    V 'las 12 tablas del real son exactamente las esperadas' ((@([regex]::Matches($derReal, '(?im)^\s*CREATE\s+TABLE\s+(\w+)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object) -join ',') -eq (($script:TABLAS_ESPERADAS | Sort-Object) -join ','))
+    V 'el archivo original no cambió al derivarlo' ((Get-FileHash -LiteralPath $ruta -Algorithm SHA256).Hash -eq $hash0)
+} else { 'ADVERTENCIA: no se encontró el script original; se omiten las 4 comprobaciones contra el archivo real.' }
+
+'-- sesiones y transacciones de SQL Server antes de limpiar'
+function Ses($id, $estado, $tx, $sol) { [pscustomobject]@{ session_id = $id; status = $estado; transacciones = $tx; solicitudes = $sol } }
+V 'con permiso y SIN sesiones del login aislado: segura' (Get-EvaluacionSesionesSql 1 @()).Segura
+$e = Get-EvaluacionSesionesSql 1 @((Ses 61 'sleeping' 1 0))
+V 'una sesión con una transacción abierta: NO segura y lo explica' ((-not $e.Segura) -and $e.Motivos[0] -match 'transacción')
+$e = Get-EvaluacionSesionesSql 1 @((Ses 62 'running' 0 1))
+V 'una sesión ejecutando una solicitud: NO segura' ((-not $e.Segura) -and $e.Motivos[0] -match 'solicitud')
+$e = Get-EvaluacionSesionesSql 1 @((Ses 63 'sleeping' 0 0))
+V 'una sesión inactiva que sigue conectada con todos los PHP terminados: NO segura (ante la duda, no limpiar)' ((-not $e.Segura) -and $e.Motivos[0] -match 'sigue conectada')
+$e = Get-EvaluacionSesionesSql 0 @()
+V 'SIN VIEW SERVER STATE la ausencia de filas no prueba nada: NO segura' ((-not $e.Segura) -and $e.Motivos[0] -match 'no se puede verificar')
+V 'el permiso ausente o nulo también se trata como «no verificable»' ((-not (Get-EvaluacionSesionesSql $null @()).Segura) -and (-not (Get-EvaluacionSesionesSql '' @()).Segura))
+V 'varias sesiones se reportan todas' ((Get-EvaluacionSesionesSql 1 @((Ses 61 'sleeping' 1 0), (Ses 62 'running' 0 1))).Motivos.Count -eq 2)
+$d = Get-DecisionLimpieza @() @() @() @('sesión 61 [sleeping] con 1 transacción(es) abierta(s)')
+V 'la decisión de limpieza incorpora los problemas de SQL Server: una transacción pendiente la impide' ((-not $d.Permitida) -and $d.Motivos[0] -match '^SQL Server:')
+V 'sin problemas de SQL, ni procesos, ni trabajos, ni incidencias: se permite' ((Get-DecisionLimpieza @() @() @() @()).Permitida)
+V 'compatibilidad: la llamada con tres argumentos (sin SQL) sigue funcionando' ((Get-DecisionLimpieza @() @() @()).Permitida)
 "Resultado: $ok correctas, $mal con fallo."
 if ($mal -gt 0) { exit 1 }
 exit 0

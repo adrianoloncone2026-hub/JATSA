@@ -37,6 +37,7 @@ function Get-AvanceIdentity($antes, $despues) {
 # idsAntes trae, por tabla, TODOS los ids de la instantánea inicial: puede ser una lista vacía (tabla inicialmente vacía), pero debe existir.
 function Test-ManifiestoPm10($m) {
     $problemas = @()
+    if ([string]$m.baseAislada -cnotmatch '^JATSA_pm10_aislada_\d{8}_\d{4}$' -or [string]$m.baseAislada -match '(?i)encomiendas') { $problemas += 'el manifiesto debe traer baseAislada (una base aislada válida, nunca la habitual)' }
     $reglas = @{ sucursales = '^PMX9\d{2}$'; vehiculos = '^PM1-9\d{2}$'; documentos = '^(9000010\d|2000000010\d)$'; usuarios = '^pm10_[a-z0-9]{3,20}$'; viajes = '^VJ\d{10}$' }
     foreach ($clave in $reglas.Keys) {
         foreach ($valor in @($m[$clave])) {
@@ -115,12 +116,13 @@ function Get-EvaluacionTrabajos($infos, [int]$esperados) {
 
 # ¿Se puede empezar la limpieza automática? Solo si no hubo incidencias en trabajos paralelos, no queda ningún trabajo vivo y todos los procesos PHP
 # (servidores de prueba) están confirmados como terminados. Ante cualquier duda: NO, y se reporta para una recuperación controlada con el manifiesto.
-function Get-DecisionLimpieza($incidencias, $procesosPhpVivos, $trabajosVivos) {
+function Get-DecisionLimpieza($incidencias, $procesosPhpVivos, $trabajosVivos, $problemasSql = @()) {
     $motivos = @()
     foreach ($i in @($incidencias | Where-Object { $_ })) { $motivos += "incidencia en trabajos paralelos: $i" }
     $php = @($procesosPhpVivos | Where-Object { $null -ne $_ })
     $jobs = @($trabajosVivos | Where-Object { $null -ne $_ })
     if ($php.Count -gt 0) { $motivos += "siguen vivos $($php.Count) proceso(s) PHP de prueba (ids: $($php -join ',')): podrían estar atendiendo una petición" }
     if ($jobs.Count -gt 0) { $motivos += "siguen vivos $($jobs.Count) trabajo(s) de PowerShell (ids: $($jobs -join ','))" }
+    foreach ($s in @($problemasSql | Where-Object { $_ })) { $motivos += "SQL Server: $s" }
     [pscustomobject]@{ Permitida = ($motivos.Count -eq 0); Motivos = $motivos }
 }
