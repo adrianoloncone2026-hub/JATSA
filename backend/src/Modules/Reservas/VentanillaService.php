@@ -227,7 +227,7 @@ final class VentanillaService
         ];
     }
 
-    private static function errorDeDocumento(string $tipo, string $numero): ?string
+    public static function errorDeDocumento(string $tipo, string $numero): ?string
     {
         if (!in_array($tipo, self::TIPOS_DOCUMENTO, true)) {
             return 'Elige DNI, RUC, CE o PAS.';
@@ -246,7 +246,7 @@ final class VentanillaService
     }
 
     /** Quita espacios y guiones; CE y PAS se guardan en mayúsculas. */
-    private static function normalizarNumero(string $tipo, string $numero): string
+    public static function normalizarNumero(string $tipo, string $numero): string
     {
         $limpio = preg_replace('/[\s-]+/', '', $numero) ?? $numero;
 

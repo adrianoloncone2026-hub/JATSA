@@ -1671,3 +1671,85 @@ input[readonly] {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Llegadas y entregas (módulo 8) ────────────────────────────────────── */
+.viajes-en-camino {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.viajes-en-camino li {
+  margin: 0;
+  padding: 0.6rem 1rem;
+}
+
+.entrega {
+  margin: 1rem 0 1.5rem;
+}
+
+.entrega-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.entrega-cabecera h2 {
+  margin: 0;
+}
+
+.entrega-cabecera .boton {
+  margin-left: auto;
+}
+
+.fila-documento-entrega {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr) 9rem;
+  align-items: end;
+  gap: 1rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.coincidencia {
+  min-height: 2.4rem;
+  margin: 0;
+  padding-bottom: 0.55rem;
+  font-weight: 700;
+}
+
+.coincidencia.coincide {
+  color: var(--ok);
+}
+
+.coincidencia.no-coincide {
+  color: var(--error);
+}
+
+.insignia-en_destino {
+  background: #d9f0e0;
+  border-color: #b6dfc3;
+}
+
+.insignia-entregado {
+  background: #eceff3;
+  border-color: #d3d9e2;
+  color: var(--gris);
+}
+
+.insignia-devuelto {
+  background: #fff7cc;
+  border-color: var(--amarillo);
+}
+
+@media (max-width: 700px) {
+  .fila-documento-entrega {
+    grid-template-columns: 1fr;
+  }
+
+  .entrega-cabecera .boton {
+    margin-left: 0;
+  }
+}

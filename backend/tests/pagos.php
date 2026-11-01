@@ -119,10 +119,28 @@ final class PagosFalso implements RepositorioPagos
         return $this->pagos[$idPago] ?? null;
     }
 
-    public function anular(int $idPago, int $idSucursal): bool
+    /** Simula que el UPDATE condicional final no cambia ninguna fila (otra caja se adelantó justo después de decidir). */
+    public bool $anulacionPerdida = false;
+
+    public function anular(int $idPago, int $idSucursal, callable $decidir): ?bool
     {
-        $p = $this->pagos[$idPago] ?? null;
-        if ($p === null || $p['idSucursal'] !== $idSucursal || $p['estadoPago'] !== 'REGISTRADO') {
+        if (!isset($this->pagos[$idPago])) {
+            return null;
+        }
+        // «Bloquea» el envío y lee el pago con el bloqueo tomado, como el SQL real; después decide.
+        if ($this->antesDeDecidir !== null) {
+            ($this->antesDeDecidir)($this);
+        }
+        $p = $this->pagos[$idPago];
+        try {
+            $decidir(['pago' => ['idPago' => $idPago, 'idSucursal' => $p['idSucursal'], 'estadoPago' => $p['estadoPago']], 'estadoEnvio' => $this->estados[$p['codigoSeguimiento']] ?? 'REGISTRADO']);
+        } catch (Throwable $t) {
+            $this->transaccionesDeshechas++;
+            throw $t;
+        }
+        if ($this->anulacionPerdida || $p['idSucursal'] !== $idSucursal || $this->pagos[$idPago]['estadoPago'] !== 'REGISTRADO') {
+            $this->transaccionesDeshechas++;
+
             return false;
         }
         $this->pagos[$idPago]['estadoPago'] = 'ANULADO';
@@ -305,10 +323,32 @@ prueba('registrar: un envío ANULADO no admite pagos', function () {
     $repo->estados[$codigo] = 'ANULADO';
     esperarError(fn () => $servicio->registrar(personal(), pagoValido($codigo)), 409, 'envio_anulado');
     afirmar($repo->pagos === [], 'sin escritura');
-    foreach (['REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO', 'ENTREGADO'] as $estado) {
+    foreach (['REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO'] as $estado) {
         $repo->estados[$codigo] = $estado;
-        $servicio->registrar(personal(), pagoValido($codigo, ['monto' => '1.00'])); // el pago en destino ocurre con el envío en curso o entregado
+        $servicio->registrar(personal(), pagoValido($codigo, ['monto' => '1.00'])); // el pago en destino ocurre con el envío en curso o ya en destino
     }
+});
+
+prueba('registrar: un envío ENTREGADO o DEVUELTO ya no admite cobros (409 sin escritura); los reembolsos quedan fuera de alcance', function () {
+    [, , $repo, $servicio, $codigo] = escenarioPagos();
+    $servicio->registrar(personal(), pagoValido($codigo, ['monto' => '10.00']));
+    $antes = count($repo->pagos);
+    $repo->estados[$codigo] = 'ENTREGADO';
+    $e = esperarError(fn () => $servicio->registrar(personal(), pagoValido($codigo, ['monto' => '1.00'])), 409, 'envio_entregado');
+    afirmar(str_contains($e->getMessage(), 'entregado'), 'mensaje');
+    $repo->estados[$codigo] = 'DEVUELTO';
+    $e = esperarError(fn () => $servicio->registrar(personal(), pagoValido($codigo, ['monto' => '1.00'])), 409, 'envio_devuelto');
+    afirmar(str_contains($e->getMessage(), 'devuelto'), 'mensaje');
+    afirmar(count($repo->pagos) === $antes && $repo->transaccionesDeshechas === 2, 'sin escritura y transacciones deshechas');
+    // El envío sigue visible para consultar (saldo pendiente incluido): cerrarlo no oculta lo que se debe.
+    afirmar($servicio->envioParaCobro(personal(), $codigo)['saldo'] === '13.75', 'se puede consultar');
+});
+
+prueba('registrar: si el envío se devuelve entre la lectura y el cobro, la decisión usa el estado bloqueado (409) y no se cobra', function () {
+    [, , $repo, $servicio, $codigo] = escenarioPagos();
+    $repo->antesDeDecidir = function (PagosFalso $r) use ($codigo): void { $r->antesDeDecidir = null; $r->estados[$codigo] = 'DEVUELTO'; };
+    esperarError(fn () => $servicio->registrar(personal(), pagoValido($codigo)), 409, 'envio_devuelto');
+    afirmar($repo->pagos === [], 'sin escritura');
 });
 
 prueba('registrar: si otra caja se adelanta entre la lectura y el cobro, no hay sobrepago (la decisión usa lo bloqueado)', function () {
@@ -368,39 +408,48 @@ prueba('anular: solo en la caja que cobró; un pago de otra sucursal o inexisten
     afirmar($otra->getMessage() === $inexistente->getMessage() && $repo->pagos[$id]['estadoPago'] === 'REGISTRADO', 'mismo mensaje y el pago sigue REGISTRADO');
 });
 
-prueba('anular: si otra caja se adelantó (el UPDATE condicional no cambia nada) → 409', function () {
+prueba('anular: si otra caja se adelantó, se detecta bajo bloqueo (409) y, si el UPDATE condicional no cambia nada, también (409)', function () {
     [, , $repo, $servicio, $codigo] = escenarioPagos();
-    $id = $servicio->registrar(personal(), pagoValido($codigo))['pago']['id'];
-    // Entre la lectura y el UPDATE, alguien lo anuló: la lectura del servicio ve REGISTRADO, el UPDATE no cambia filas.
-    $envuelto = new class ($repo, $id) implements RepositorioPagos {
-        private bool $leido = false;
-
-        public function __construct(private readonly PagosFalso $base, private readonly int $id)
-        {
-        }
-
-        public function buscarEnvioParaCobro(string $c): ?array { return $this->base->buscarEnvioParaCobro($c); }
-        public function registrar(string $c, int $s, string $m, string $me, string $p, callable $d): ?int { return $this->base->registrar($c, $s, $m, $me, $p, $d); }
-        public function buscarPago(int $i): ?array
-        {
-            $pago = $this->base->buscarPago($i);
-            if (!$this->leido) {
-                $this->leido = true;
-                $this->base->pagos[$this->id]['estadoPago'] = 'ANULADO'; // se anula justo después de leerlo
-            }
-
-            return $pago;
-        }
-        public function anular(int $i, int $s): bool { return $this->base->anular($i, $s); }
-        public function listarDeSucursal(int $s, int $l): array { return $this->base->listarDeSucursal($s, $l); }
-        public function totalesDeSucursal(int $s): array { return $this->base->totalesDeSucursal($s); }
-        public function listarDePersona(int $p, int $l): array { return $this->base->listarDePersona($p, $l); }
-        public function totalPagadoDePersona(int $p): int { return $this->base->totalPagadoDePersona($p); }
-    };
-    [$res] = escenarioEnvios();
-    esperarError(fn () => (new PagoService($envuelto, $res))->anular(personal(), (string) $id), 409, 'pago_anulado');
+    $id = $servicio->registrar(personal(), pagoValido($codigo, ['monto' => '5.00']))['pago']['id'];
+    // Otra caja lo anula justo antes de que esta decida: con el envío bloqueado, la decisión ya lo ve ANULADO.
+    $repo->antesDeDecidir = function (PagosFalso $r) use ($id): void { $r->antesDeDecidir = null; $r->pagos[$id]['estadoPago'] = 'ANULADO'; };
+    esperarError(fn () => $servicio->anular(personal(), (string) $id), 409, 'pago_anulado');
+    // Y si, pese a todo, el UPDATE condicional final no cambia ninguna fila, la respuesta es la misma.
+    $id2 = $servicio->registrar(personal(), pagoValido($codigo, ['monto' => '5.00']))['pago']['id'];
+    $repo->anulacionPerdida = true;
+    esperarError(fn () => $servicio->anular(personal(), (string) $id2), 409, 'pago_anulado');
+    afirmar($repo->pagos[$id2]['estadoPago'] === 'REGISTRADO', 'el pago sigue REGISTRADO');
 });
 
+prueba('anular: después de la ENTREGA (o la devolución) del envío → 409 sin escritura; un pago ajeno sigue siendo 404 (no revela el estado del envío)', function () {
+    [, , $repo, $servicio, $codigo] = escenarioPagos();
+    $id = $servicio->registrar(personal(), pagoValido($codigo))['pago']['id'];
+    $repo->estados[$codigo] = 'ENTREGADO';
+    $e = esperarError(fn () => $servicio->anular(personal(), (string) $id), 409, 'envio_entregado');
+    afirmar(str_contains($e->getMessage(), 'reembolsos'), 'aclara que los reembolsos no se gestionan: ' . $e->getMessage());
+    afirmar($repo->pagos[$id]['estadoPago'] === 'REGISTRADO' && $repo->transaccionesDeshechas === 1, 'el pago sigue REGISTRADO y la transacción se deshizo');
+    $repo->estados[$codigo] = 'DEVUELTO';
+    esperarError(fn () => $servicio->anular(personal(), (string) $id), 409, 'envio_devuelto');
+    afirmar($repo->pagos[$id]['estadoPago'] === 'REGISTRADO', 'sigue REGISTRADO');
+    afirmar($servicio->envioParaCobro(personal(), $codigo)['saldo'] === '0.00', 'el envío conserva su saldo en cero (nunca queda con saldo por una anulación posterior)');
+    $otra = esperarError(fn () => $servicio->anular(personal(2, 'AQP001'), (string) $id), 404, 'pago_no_encontrado');
+    $inexistente = esperarError(fn () => $servicio->anular(personal(), '999'), 404, 'pago_no_encontrado');
+    afirmar($otra->getMessage() === $inexistente->getMessage(), 'la caja ajena recibe el mismo 404 aunque el envío esté cerrado');
+});
+
+prueba('carrera ENTREGA ↔ ANULACIÓN del mismo envío: gana una sola y nunca queda ENTREGADO con saldo', function () {
+    // Caso A: la entrega ocurre justo antes de decidir la anulación → la anulación se rechaza y el saldo sigue en cero.
+    [, , $repo, $servicio, $codigo] = escenarioPagos();
+    $id = $servicio->registrar(personal(), pagoValido($codigo))['pago']['id'];
+    $repo->antesDeDecidir = function (PagosFalso $r) use ($codigo): void { $r->antesDeDecidir = null; $r->estados[$codigo] = 'ENTREGADO'; };
+    esperarError(fn () => $servicio->anular(personal(), (string) $id), 409, 'envio_entregado');
+    afirmar($repo->pagos[$id]['estadoPago'] === 'REGISTRADO' && $servicio->envioParaCobro(personal(), $codigo)['saldo'] === '0.00', 'caso A: entregado y sin saldo');
+    // Caso B: la anulación gana → el envío queda con saldo; la entrega (módulo 8) lo rechaza por saldo pendiente (ver entregas.php).
+    [, , $repo2, $servicio2, $codigo2] = escenarioPagos();
+    $id2 = $servicio2->registrar(personal(), pagoValido($codigo2))['pago']['id'];
+    $servicio2->anular(personal(), (string) $id2);
+    afirmar($servicio2->envioParaCobro(personal(), $codigo2)['saldo'] === '23.75' && ($repo2->estados[$codigo2] ?? 'REGISTRADO') !== 'ENTREGADO', 'caso B: saldo pendiente y no entregado');
+});
 /**
  * Crea una reserva PENDIENTE de la agencia de origen y la formaliza con un solo bulto; devuelve el código del envío.
  */

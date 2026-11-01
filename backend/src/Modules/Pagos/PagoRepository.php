@@ -147,17 +147,67 @@ final class PagoRepository implements RepositorioPagos
         return $fila === false ? null : self::aPago($fila);
     }
 
-    public function anular(int $idPago, int $idSucursal): bool
+    public function anular(int $idPago, int $idSucursal, callable $decidir): ?bool
     {
-        $sentencia = Database::conexion()->prepare(
-            "UPDATE Pago SET estadoPago = 'ANULADO'
-             WHERE idPago = :id AND idSucursal = :sucursal AND estadoPago = 'REGISTRADO'",
-        );
-        $sentencia->bindValue(':id', $idPago, PDO::PARAM_INT);
-        $sentencia->bindValue(':sucursal', $idSucursal, PDO::PARAM_INT);
-        $sentencia->execute();
+        $pdo = Database::conexion();
+        $pdo->beginTransaction();
 
-        return $sentencia->rowCount() > 0;
+        try {
+            // 1) El envío del pago (Pago.idEnvio no cambia nunca, así que leerlo sin bloquear es seguro).
+            $busca = $pdo->prepare('SELECT idEnvio FROM Pago WHERE idPago = :id');
+            $busca->bindValue(':id', $idPago, PDO::PARAM_INT);
+            $busca->execute();
+            $idEnvio = $busca->fetchColumn();
+            $busca->closeCursor();
+            if ($idEnvio === false) {
+                $pdo->rollBack();
+
+                return null;
+            }
+
+            // 2) Bloquear PRIMERO el envío (el mismo bloqueo que toman registrar y la entrega): anular, cobrar y entregar quedan serializados.
+            $bloqueo = $pdo->prepare('SELECT estadoEnvio FROM Envio WITH (UPDLOCK, HOLDLOCK) WHERE idEnvio = :envio');
+            $bloqueo->bindValue(':envio', (int) $idEnvio, PDO::PARAM_INT);
+            $bloqueo->execute();
+            $estadoEnvio = (string) $bloqueo->fetchColumn();
+            $bloqueo->closeCursor();
+
+            // 3) Con el envío bloqueado, volver a leer el pago y dejar que el servicio decida (sucursal, estado del pago y del envío).
+            $pago = $pdo->prepare('SELECT idSucursal, estadoPago FROM Pago WHERE idPago = :id');
+            $pago->bindValue(':id', $idPago, PDO::PARAM_INT);
+            $pago->execute();
+            $fila = $pago->fetch(PDO::FETCH_ASSOC);
+            $pago->closeCursor();
+            if ($fila === false) {
+                $pdo->rollBack();
+
+                return null;
+            }
+            $decidir(['pago' => ['idPago' => $idPago, 'idSucursal' => (int) $fila['idSucursal'], 'estadoPago' => (string) $fila['estadoPago']], 'estadoEnvio' => $estadoEnvio]);
+
+            // 4) Anulación condicional: nunca se borra, solo cambia el estado de un pago REGISTRADO de esta sucursal.
+            $anula = $pdo->prepare(
+                "UPDATE Pago SET estadoPago = 'ANULADO'
+                 WHERE idPago = :id AND idSucursal = :sucursal AND estadoPago = 'REGISTRADO'",
+            );
+            $anula->bindValue(':id', $idPago, PDO::PARAM_INT);
+            $anula->bindValue(':sucursal', $idSucursal, PDO::PARAM_INT);
+            $anula->execute();
+            if ($anula->rowCount() !== 1) {
+                $pdo->rollBack();
+
+                return false;
+            }
+
+            $pdo->commit();
+
+            return true;
+        } catch (Throwable $excepcion) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $excepcion;
+        }
     }
 
     public function listarDeSucursal(int $idSucursal, int $limite): array

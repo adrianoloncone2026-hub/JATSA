@@ -38,15 +38,21 @@ Todo se limita a **la sucursal de la sesión** (`Usuario.idSucursal`): se toma d
 | Monto | Soles con hasta 2 decimales (se acepta coma y espacios), mayor que 0, hasta 8 enteros. Sin coma flotante: se calcula en céntimos |
 | Saldo | El monto **no puede superar el saldo**. Se admiten **pagos parciales** (el campo «Monto» de la pantalla se rellena con el saldo, pero se puede cambiar) |
 | Pagado por / método | `REMITENTE` o `DESTINATARIO`; `EFECTIVO`, `TARJETA`, `BILLETERA` o `TRANSFERENCIA` (se aceptan en minúsculas) |
-| Estado del envío | Un envío `ANULADO` no admite pagos. Los demás estados sí (el pago en destino ocurre con el envío en curso, en destino o ya entregado) |
+| Estado del envío | Un envío `ANULADO` (`409 envio_anulado`), `ENTREGADO` (`409 envio_entregado`) o `DEVUELTO` (`409 envio_devuelto`) **no admite pagos**. Los demás estados sí (el pago en destino ocurre con el envío en curso o ya en destino, **antes** de entregarlo: la entrega exige saldo cero). Los reembolsos y devoluciones de dinero están **fuera del alcance** |
 
 Errores: `422 datos_invalidos` con **todos** los campos a la vez (`codigoSeguimiento`, `monto`, `pagadoPor`, `metodoPago`); `422` en `monto` si supera el saldo (el mensaje dice cuánto es); `404 envio_no_encontrado`; `409 envio_pagado` (saldo 0); `409 envio_anulado`.
 
 **Transacción** (`PagoRepository::registrar`), en este orden: (1) `SELECT … FROM Envio WITH (UPDLOCK, HOLDLOCK)` bloquea el envío: dos cobros simultáneos **del mismo envío** se ponen en fila; (2) lee el importe (`SUM(Bulto.costo)`) y lo pagado (`SUM(Pago.monto)` de los `REGISTRADO`) con el envío bloqueado; (3) el servicio vuelve a aplicar sucursal, estado y saldo y puede abortar (todo se deshace); (4) `INSERT INTO Pago … OUTPUT INSERTED.idPago`. Así dos cajeros no pueden sobrepasar el importe. Cobros de envíos distintos no se bloquean entre sí.
 
 ### POST `/api/caja/pagos/{id}/anular` — anular un pago con error
-`200 { "data": { "pago": {...} } }` con `estado: "ANULADO"`. «Un pago con error se anula, no se borra»: la fila queda, con su monto, y el saldo del envío se recupera (se puede volver a cobrar). Solo se anulan pagos **cobrados en la caja de la sesión**; uno de otra sucursal, inexistente o con un `id` mal formado da el **mismo** `404 pago_no_encontrado`. Ya anulado: `409 pago_anulado`. Es un `UPDATE … WHERE idPago = … AND idSucursal = … AND estadoPago = 'REGISTRADO'`: si otra caja se adelantó no cambia ninguna fila y se responde `409`. No hay motivo de anulación porque la tabla `Pago` no tiene dónde guardarlo.
+`200 { "data": { "pago": {...} } }` con `estado: "ANULADO"`. «Un pago con error se anula, no se borra»: la fila queda, con su monto, y el saldo del envío se recupera (se puede volver a cobrar). **La anulación corrige errores de registro; no es un reembolso** (los reembolsos y devoluciones de dinero no se gestionan en este sistema).
+| Regla | Error |
+|---|---|
+| Solo se anulan pagos **cobrados en la caja de la sesión**; uno de otra sucursal, inexistente o con un `id` mal formado da el **mismo** `404 pago_no_encontrado` (también si su envío ya está cerrado: no se revela el estado) | `404` |
+| Un pago ya anulado | `409 pago_anulado` |
+| Un pago de un envío **`ENTREGADO`** o **`DEVUELTO`** ya no se anula (evita dejar saldo en un envío cerrado) | `409 envio_entregado` / `409 envio_devuelto` |
 
+**Transacción** (`PagoRepository::anular`), en este orden: (1) lee el `idEnvio` del pago (no cambia nunca); (2) **bloquea el envío** (`SELECT … FROM Envio WITH (UPDLOCK, HOLDLOCK)`: el mismo bloqueo que toman «registrar pago» y la entrega del módulo 8); (3) con el envío bloqueado vuelve a leer el pago y el servicio aplica las reglas de la tabla (puede abortar: todo se deshace); (4) `UPDATE Pago SET estadoPago = 'ANULADO' WHERE idPago = … AND idSucursal = … AND estadoPago = 'REGISTRADO'`; si no cambia ninguna fila, se deshace y se responde `409`. Así **cobrar, anular y entregar el mismo envío quedan en fila**: si la entrega gana, la anulación se rechaza; si la anulación gana, la entrega ve el saldo y se rechaza (`saldo_pendiente`). Un envío `ENTREGADO` nunca queda con saldo por una anulación posterior. No hay motivo de anulación porque la tabla `Pago` no tiene dónde guardarlo.
 ### GET `/api/caja/pagos` — «Pagos cobrados aquí»
 `200` con los pagos de la sucursal de la sesión (más reciente primero, **hasta 200**; `hayMas: true` si hay más) y los totales por método de los pagos `REGISTRADO` (los anulados se listan pero no suman; los totales cuentan **todos** los pagos de la sucursal, aunque la lista se acote):
 ```json
