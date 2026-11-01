@@ -311,6 +311,7 @@ final class CatalogoRepository implements RepositorioCatalogo
     {
         $alta = $pdo->prepare(
             'INSERT INTO Ruta (idSucursalOrigen, idSucursalDestino, tipoEnvio, precioBase, precioPorKm, distanciaKm, tiempoHoras, vigenteDesde, vigenteHasta)
+             OUTPUT INSERTED.idRuta
              VALUES (:o, :d, :tipo, :base, :km, :dist, :horas, CAST(:hoy AS DATE), NULL)',
         );
         $alta->bindValue(':o', $idOrigen, PDO::PARAM_INT);
@@ -323,7 +324,13 @@ final class CatalogoRepository implements RepositorioCatalogo
         $alta->bindValue(':hoy', $hoy, PDO::PARAM_STR);
         $alta->execute();
 
-        $id = $pdo->query('SELECT CAST(SCOPE_IDENTITY() AS INT)')->fetchColumn();
+        // El id sale del MISMO INSERT (OUTPUT INSERTED): con pdo_sqlsrv el INSERT preparado corre en su propio ámbito (sp_executesql) y un SCOPE_IDENTITY() en otra
+        // sentencia devuelve NULL. Sin un id positivo no se confirma nada: nunca se devuelve un 201 con una ruta vacía.
+        $id = $alta->fetchColumn();
+        $alta->closeCursor();
+        if (!is_numeric($id) || (int) $id <= 0) {
+            throw new \RuntimeException('No se obtuvo el id de la ruta insertada.');
+        }
 
         return (int) $id;
     }

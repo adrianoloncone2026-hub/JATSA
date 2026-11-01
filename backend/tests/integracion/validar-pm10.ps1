@@ -295,7 +295,7 @@ try {
     "== 6. Rutas y precios"
     $ruta = @{ origen = 'PMX901'; destino = 'PMX902'; tipoEnvio = 'SOBRE'; precioBase = '8,00'; precioPorKm = '0.005'; distanciaKm = '100'; tiempoHoras = 2 }
     $r = Api POST '/api/catalogos/rutas' $ruta $g1
-    Critico 'Nueva ruta PMX901 → PMX902: 201, vigente desde hoy y costo del bulto 8.50' ($r.Estado -eq 201 -and $r.Json.data.ruta.vigente -eq $true -and $r.Json.data.ruta.costoBulto -eq '8.50' -and $r.Json.data.ruta.vigenteDesde -eq $hoySql) $r.Texto
+    Critico 'Nueva ruta PMX901 → PMX902: 201 con id positivo y datos de ruta correctos, vigente desde hoy y costo del bulto 8.50' ($r.Estado -eq 201 -and [int]$r.Json.data.ruta.id -gt 0 -and $r.Json.data.ruta.origen.codigo -eq 'PMX901' -and $r.Json.data.ruta.destino.codigo -eq 'PMX902' -and $r.Json.data.ruta.tipoEnvio -eq 'SOBRE' -and $r.Json.data.ruta.vigente -eq $true -and $r.Json.data.ruta.costoBulto -eq '8.50' -and $r.Json.data.ruta.vigenteDesde -eq $hoySql) $r.Texto
     $idHoy = $r.Json.data.ruta.id
     V 'repetir la misma ruta: 409 tarifa_vigente_existente' ((Codigo (Api POST '/api/catalogos/rutas' $ruta $g1)) -eq 'tarifa_vigente_existente')
     V 'origen = destino: 422' ((Api POST '/api/catalogos/rutas' (Get-ConCambios $ruta @{ destino = 'PMX901' }) $g1).Estado -eq 422)
@@ -304,7 +304,7 @@ try {
     $idAntigua = [int](& $php "$aqui\escritura_pm10.php" ruta-antigua $manifiestoRuta PMX902 PMX901 SOBRE | Select-Object -Last 1)
     Exigir ($LASTEXITCODE -eq 0 -and $idAntigua -gt 0 -and $manifiesto.idsAntes.Ruta -notcontains $idAntigua) 'tarifa TEMPORAL antigua creada (vigenteDesde = anteayer) para probar «Nuevo precio»'
     $r = Api POST "/api/catalogos/rutas/$idAntigua/precio" $nuevoPrecio $g1
-    V 'Nuevo precio sobre una tarifa antigua: 201 y la fila nueva queda vigente desde hoy' ($r.Estado -eq 201 -and $r.Json.data.ruta.vigenteDesde -eq $hoySql -and $r.Json.data.ruta.vigente -eq $true) $r.Texto
+    V 'Nuevo precio sobre una tarifa antigua: 201, id positivo distinto de la antigua, mismo origen/destino y la fila nueva queda vigente desde hoy' ($r.Estado -eq 201 -and [int]$r.Json.data.ruta.id -gt 0 -and [int]$r.Json.data.ruta.id -ne $idAntigua -and $r.Json.data.ruta.origen.codigo -eq 'PMX902' -and $r.Json.data.ruta.destino.codigo -eq 'PMX901' -and $r.Json.data.ruta.vigenteDesde -eq $hoySql -and $r.Json.data.ruta.vigente -eq $true) $r.Texto
     $filas = Leer "SELECT idRuta, precioBase, CONVERT(VARCHAR(10), vigenteDesde, 120) AS desde, CONVERT(VARCHAR(10), vigenteHasta, 120) AS hasta FROM Ruta WHERE idSucursalOrigen = (SELECT idSucursal FROM Sucursal WHERE codigoSucursal='PMX902') ORDER BY idRuta"
     $ayer = (Get-Date).AddDays(-1).ToString('yyyy-MM-dd')
     V 'la fila vieja se cerró AYER y conserva su precio 8.00; hay UNA sola vigente para ese origen, destino y tipo' (@($filas).Count -eq 2 -and $filas[0].hasta -eq $ayer -and [decimal]$filas[0].precioBase -eq 8 -and [decimal]$filas[1].precioBase -eq 9 -and $null -eq $filas[1].hasta)

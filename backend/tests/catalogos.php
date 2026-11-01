@@ -1230,6 +1230,35 @@ prueba('pm10 aislado (revisión estática): crear_bd_aislada solo ejecuta CREATE
     afirmar(!str_contains($ps, 'docs\\JATSA_Envios') && !str_contains($php, 'JATSA_Envios-SQLQuery1'), 'no usa ni menciona el script SQL original');
 });
 
+prueba('altas de Ruta: el id sale del MISMO INSERT (OUTPUT INSERTED.idRuta), se exige positivo y no queda ningún SCOPE_IDENTITY() en una sentencia aparte', function () {
+    $raiz = dirname(__DIR__);
+    $repo = (string) file_get_contents($raiz . '/src/Modules/Catalogos/CatalogoRepository.php');
+    $esc = (string) file_get_contents($raiz . '/tests/integracion/escritura_pm10.php');
+    $quitar = static fn (string $t): string => (string) preg_replace(['~/\*.*?\*/~s', '~^\s*(//|\*).*$~m'], '', $t);
+    $repoSin = $quitar($repo);
+    $escSin = $quitar($esc);
+    afirmar(preg_match('/INSERT INTO Ruta[^\']*OUTPUT INSERTED\.idRuta\s+VALUES/s', $repoSin) === 1, 'insertarRuta: OUTPUT INSERTED.idRuta en el mismo INSERT, antes de VALUES');
+    afirmar(preg_match('/INSERT INTO Ruta[^\']*OUTPUT INSERTED\.idRuta\s+VALUES/s', $escSin) === 1, 'ruta-antigua de pm10: OUTPUT INSERTED.idRuta en el mismo INSERT');
+    afirmar(str_contains($repoSin, '$alta->fetchColumn()') && str_contains($repoSin, '$alta->closeCursor()') && str_contains($repoSin, '(int) $id <= 0'), 'insertarRuta: lee con fetchColumn(), cierra el cursor y rechaza un id no positivo');
+    afirmar(str_contains($escSin, '$alta->fetchColumn()') && str_contains($escSin, '$alta->closeCursor()') && str_contains($escSin, '(int) $idRutaAntigua <= 0'), 'ruta-antigua: lee con fetchColumn(), cierra el cursor y aborta con un id no positivo');
+    // Sin id positivo, insertarRuta lanza ANTES del commit (se deshace la transacción): nunca un 201 con una ruta vacía.
+    afirmar(strpos($repoSin, 'No se obtuvo el id de la ruta insertada') !== false && strpos($repoSin, 'insertarRuta(') < strpos($repoSin, 'No se obtuvo el id de la ruta insertada'), 'el id inválido provoca una excepción dentro de la transacción');
+    // Búsqueda estática de casos equivalentes en el alcance del PR: backend/src y backend/tests/integracion.
+    $hallazgos = [];
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($raiz, FilesystemIterator::SKIP_DOTS));
+    foreach ($it as $archivo) {
+        $ruta = str_replace('\\', '/', (string) $archivo);
+        if (!str_ends_with($ruta, '.php') || str_contains($ruta, '/tests/catalogos.php') || str_contains($ruta, '/vendor/')) {
+            continue;
+        }
+        if (preg_match('/SCOPE_IDENTITY\s*\(|->lastInsertId\s*\(|@@IDENTITY/i', $quitar((string) file_get_contents($ruta))) === 1) {
+            $hallazgos[] = $ruta;
+        }
+    }
+    afirmar($hallazgos === [], 'no queda SCOPE_IDENTITY()/lastInsertId()/@@IDENTITY en el backend: ' . implode(', ', $hallazgos));
+    $ps = (string) file_get_contents($raiz . '/tests/integracion/validar-pm10.ps1');
+    afirmar(str_contains($ps, '[int]$r.Json.data.ruta.id -gt 0') && str_contains($ps, "ruta.origen.codigo -eq 'PMX901'") && str_contains($ps, '[int]$r.Json.data.ruta.id -ne $idAntigua'), 'pm10 exige id positivo y origen/destino correctos en Nueva ruta y en Nuevo precio');
+});
 prueba('pm10 aislado (revisión estática): cargar_bd_aislada nunca ejecuta el script original, no toca backend/.env, valida la copia y la estructura y carga solo una semilla sintética en una base vacía', function () {
     $d = dirname(__DIR__) . '/tests/integracion';
     $ps = (string) file_get_contents("$d/cargar_bd_aislada.ps1");

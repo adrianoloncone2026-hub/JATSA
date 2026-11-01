@@ -162,13 +162,19 @@ if ($op === 'ruta-antigua') {
     }
     $alta = $pdo->prepare(
         'INSERT INTO Ruta (idSucursalOrigen, idSucursalDestino, tipoEnvio, precioBase, precioPorKm, distanciaKm, tiempoHoras, vigenteDesde, vigenteHasta)
+         OUTPUT INSERTED.idRuta
          VALUES ((SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :o), (SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :d), :t, 8.00, 0.005, 100.0, 2, DATEADD(DAY, -2, CAST(GETDATE() AS DATE)), NULL)',
     );
     $alta->bindValue(':o', $origen);
     $alta->bindValue(':d', $destino);
     $alta->bindValue(':t', $tipo);
     $alta->execute();
-    echo (int) $pdo->query('SELECT CAST(SCOPE_IDENTITY() AS INT)')->fetchColumn(), "\n";
+    $idRutaAntigua = $alta->fetchColumn();
+    $alta->closeCursor();
+    if (!is_numeric($idRutaAntigua) || (int) $idRutaAntigua <= 0) {
+        abortar('No se obtuvo el id de la tarifa antigua insertada.', 4);
+    }
+    echo (int) $idRutaAntigua, "\n";
     exit(0);
 }
 
