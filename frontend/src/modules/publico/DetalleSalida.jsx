@@ -59,7 +59,6 @@ export default function DetalleSalida() {
   const r = estado.ruta
   const [origen, destino] = [r.origen.codigo, r.destino.codigo]
   const precios = r.tarifas.map((t) => `S/ ${t.precioPorBulto} (${t.tipo === 'SOBRE' ? 'sobre' : t.tipo === 'PAQUETE' ? 'paquete' : 'carga'})`)
-  const primera = r.horarios[0]
 
   return (
     <section className="detalle-salida">
@@ -73,18 +72,22 @@ export default function DetalleSalida() {
       <article className="panel llega-a-tiempo">
         <h2>¿Llega a tiempo?</h2>
         {r.horarios.length > 0 ? (
-          <p>
-            Sale habitualmente {r.horarios.join(' y ')}.
-            {r.llegadaAproximada &&
-              ` Si dejas tu paquete hoy antes de las ${primera}, llegaría aprox. a las ${r.llegadaAproximada.desde === r.llegadaAproximada.hasta ? r.llegadaAproximada.desde : `${r.llegadaAproximada.desde}–${r.llegadaAproximada.hasta}`}.`}
-          </p>
+          <>
+            <p>En los últimos viajes, esta ruta salió con más frecuencia a las {r.horarios.join(' y ')}.</p>
+            {r.llegadaAproximada && (
+              <p>
+                Con un viaje de {r.horas} h, una salida a esa hora llegaría aprox. {r.llegadaAproximada.desde === r.llegadaAproximada.hasta ? `a las ${r.llegadaAproximada.desde}` : `entre las ${r.llegadaAproximada.desde} y las ${r.llegadaAproximada.hasta}`}.
+              </p>
+            )}
+            <p className="ayuda">Es una referencia histórica, no una promesa: no asegura que haya una salida hoy ni que se admita tu paquete. Confirma la salida en la agencia.</p>
+          </>
         ) : (
-          <p>{r.programado ? 'Hay un viaje programado, pero todavía no hay salidas registradas para calcular el horario habitual.' : 'Todavía no hay salidas registradas en esta ruta.'}</p>
+          <p>{r.programado ? 'Hay un viaje programado, pero todavía no hay salidas registradas para dar una referencia histórica de horarios.' : 'Todavía no hay salidas registradas en esta ruta, así que no hay una referencia de horarios.'}</p>
         )}
         <p className="precios-ruta">Desde {precios.join(' · ')}</p>
       </article>
 
-      <h2>Salidas recientes</h2>
+      <h2>Salidas recientes (historial)</h2>
       {r.recientes.length === 0 ? (
         <div className="panel estado-vacio">
           <p>Todavía no hay viajes que hayan salido en esta ruta.</p>

@@ -20,11 +20,14 @@ interface RepositorioHistorial
     public function listar(int $idPersona, array $filtros, int $limite): array;
 
     /**
-     * Envíos en curso (REGISTRADO, EN_TRANSITO o EN_DESTINO) de la persona, con lo que hace falta para el resumen de «Mi panel».
+     * Resumen de «Mi panel». `enCurso` (cantidad de envíos REGISTRADO, EN_TRANSITO o EN_DESTINO de la persona como remitente o
+     * destinataria) y `saldo` (suma de lo que falta pagar de cada uno, nunca negativo) se calculan sobre TODOS sus envíos, sin tope.
+     * Solo `porRecoger` (los que recibe y ya están EN_DESTINO, el más reciente primero) se acota a `$limitePorRecoger` filas.
      *
-     * @return list<array<string, mixed>> Claves: codigoSeguimiento, estado, rol, otraParte, importe, pagado, destino{nombre, direccion}.
+     * @return array{enCurso: int, saldo: string, porRecoger: list<array<string, mixed>>} Cada fila de porRecoger: codigoSeguimiento,
+     *         estado, rol, otraParte, importe, pagado, destino{nombre, direccion}.
      */
-    public function enCurso(int $idPersona, int $limite): array;
+    public function resumenEnCurso(int $idPersona, int $limitePorRecoger): array;
 
     /**
      * Un envío de la persona con todo su detalle, o null si no es suyo (ni como remitente ni como destinatario).

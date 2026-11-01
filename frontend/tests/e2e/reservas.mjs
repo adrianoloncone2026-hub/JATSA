@@ -46,7 +46,7 @@ const sim = {
   fallaDestinatario: false,
   fallaListado: false,
   fallaResumen: false,
-  resumen: { enCurso: 1, saldoPorPagar: '0.00', porRecoger: [{ codigoSeguimiento: 'ENM2P6T8R1WQ', estado: 'EN_DESTINO', de: 'Pedro Mamani Huanca', agencia: { nombre: 'Agencia Moquegua', direccion: 'Jr. Ancash 325' } }] },
+  resumen: { enCurso: 1, saldoPendiente: '0.00', hayMasPorRecoger: false, porRecoger: [{ codigoSeguimiento: 'ENM2P6T8R1WQ', estado: 'EN_DESTINO', de: 'Pedro Mamani Huanca', agencia: { nombre: 'Agencia Moquegua', direccion: 'Jr. Ancash 325' } }] },
 }
 
 const { comprobar, titulo, terminar } = crearInforme()
@@ -182,10 +182,10 @@ try {
   await escribir('#sucursalOrigen', 'MOQ001'); await escribir('#sucursalDestino', 'AQP001')
   await esperar(600)
   comprobar('Moquegua → Arequipa: precios de la diapositiva 12', await filasTarifas(), 'SOBRE 1 kg S/ 9.15 || PAQUETE 30 kg S/ 14.60 || CARGA 300 kg —')
-  comprobar('«Próxima salida habitual» con la hora de llegada aproximada (diapositiva 12) y el enlace a la ruta elegida', [/^Próxima salida habitual (14|15):00 · llega aprox\. (18|19):00 \(4 h\)$/.test(await texto('.proxima-salida')), await evaluar(`document.querySelector('.panel-precio a').getAttribute('href')`)], [true, '/salidas/MOQ001-AQP001'])
+  comprobar('«Salida frecuente (referencia histórica)» con la llegada aproximada y sin prometer salida (diapositiva 12) y el enlace a la ruta elegida', [/^Salida frecuente \(referencia histórica\) (14|15):00 · llegaría aprox\. (18|19):00 \(4 h\)\. Confirma la salida en la agencia\.$/.test(await texto('.proxima-salida')), await evaluar(`document.querySelector('.panel-precio a').getAttribute('href')`)], [true, '/salidas/MOQ001-AQP001'])
   await escribir('#sucursalOrigen', 'AQP001'); await escribir('#sucursalDestino', 'MOQ001')
   await esperar(600)
-  comprobar('una ruta sin salidas registradas no muestra «Próxima salida habitual» ni rompe la pantalla', await existe('.proxima-salida'), false)
+  comprobar('una ruta sin salidas registradas no muestra «Salida frecuente» ni rompe la pantalla', await existe('.proxima-salida'), false)
   comprobar('ruta sin tarifas vigentes: guiones y aviso', [await filasTarifas(), await texto('.panel-precio .mensaje-aviso')], ['SOBRE 1 kg — || PAQUETE 30 kg — || CARGA 300 kg —', AVISO_SIN_TARIFAS])
   const antesSinTarifas = llamadasA('POST', '/api/reservas').length
   await escribir('#numeroDocumento', '70234561'); await escribir('#contenido', 'Documentos y ropa')
@@ -339,10 +339,10 @@ try {
   await irA('/cliente')
   const indicadores = () => evaluar(`[...document.querySelectorAll('.indicador')].map(i => i.innerText.replace(/\\s+/g, ' ').trim()).join(' | ')`)
   comprobar('saludo, indicadores (envíos en curso, reservas pendientes y saldo por pagar) y accesos', [await texto('h1'), await indicadores(), await evaluar(`[...document.querySelectorAll('.acciones-panel a')].map(a => a.innerText + '→' + a.getAttribute('href')).join(' | ')`)],
-    ['Hola, María Elena', '1 Envíos en curso | 1 Reservas pendientes | S/ 0.00 Saldo por pagar', 'Nueva reserva→/cliente/nueva-reserva | Rastrear un envío→/rastreo | Ver salidas→/salidas'])
+    ['Hola, María Elena', '1 Envíos en curso | 1 Reservas pendientes | S/ 0.00 Saldo pendiente de tus envíos', 'Nueva reserva→/cliente/nueva-reserva | Rastrear un envío→/rastreo | Ver salidas→/salidas'])
   comprobar('«Por recoger»: el envío en destino, de quién es, dónde recogerlo y «Ver detalle» (diapositiva 11)', [await texto('.tarjeta-recoger h3'), await texto('.tarjeta-recoger .insignia'), await texto('.tarjeta-recoger p'), await evaluar(`document.querySelector('.tarjeta-recoger a').getAttribute('href')`)],
     ['ENM2P6T8R1WQ', 'EN DESTINO', 'De Pedro Mamani Huanca · Listo para recoger en Agencia Moquegua, Jr. Ancash 325. Lleva tu documento de identidad.', '/cliente/historial?envio=ENM2P6T8R1WQ'])
-  comprobar('tarjeta de la reserva pendiente, con el horario habitual de su ruta (diapositiva 11)', [await texto('.tarjeta-reserva h3'), await texto('.tarjeta-reserva .insignia'), await texto('.tarjeta-reserva p')], ['R000000006', 'PENDIENTE', 'Para Luis Alberto Flores Condori · Lleva el paquete a Agencia Moquegua. Sale habitualmente 14:00 y 15:00.'])
+  comprobar('tarjeta de la reserva pendiente, con el horario habitual de su ruta (diapositiva 11)', [await texto('.tarjeta-reserva h3'), await texto('.tarjeta-reserva .insignia'), await texto('.tarjeta-reserva p')], ['R000000006', 'PENDIENTE', 'Para Luis Alberto Flores Condori · Lleva el paquete a Agencia Moquegua. Salió con más frecuencia a las 14:00 y 15:00 (referencia histórica).'])
   comprobar('«Ver reserva» y «Horario»', await evaluar(`[...document.querySelectorAll('.acciones-tarjeta a')].map(a => a.innerText + '→' + a.getAttribute('href')).join(' | ')`), 'Ver reserva→/cliente/reserva-registrada/R000000006 | Horario→/salidas/MOQ001-AQP001')
   sim.reservas = [...reservasIniciales(), reserva('R000000007', 'PENDIENTE', '2026-10-30', 'Rosa María Quispe Mamani', 'AQP001', 'LIM001')]
   await irA('/cliente')
@@ -350,6 +350,10 @@ try {
   sim.reservas = reservasIniciales().filter((r) => r.estado !== 'PENDIENTE')
   await irA('/cliente')
   comprobar('sin pendientes: estado vacío con acceso a reservar', [(await indicadores()).split(' | ')[1], await texto('.estado-vacio p')], ['0 Reservas pendientes', 'No tienes reservas pendientes.'])
+  sim.resumen = { ...sim.resumen, enCurso: 250, saldoPendiente: '1500.00', hayMasPorRecoger: true }
+  await irA('/cliente')
+  comprobar('con más de 200 envíos en curso: muestra los totales reales y avisa que «Por recoger» está acotado', [(await indicadores()).startsWith('250 Envíos en curso'), (await indicadores()).endsWith('S/ 1500.00 Saldo pendiente de tus envíos'), (await texto('.por-recoger + .ayuda'))], [true, true, 'Se muestran los 50 envíos más recientes por recoger. Revisa el resto en tu historial.'])
+  sim.resumen = { ...sim.resumen, enCurso: 1, saldoPendiente: '0.00', hayMasPorRecoger: false }
   sim.fallaListado = true
   await irA('/cliente')
   comprobar('si falla: aviso con «Reintentar», y los accesos siguen disponibles', [await texto('.resultado.error strong'), await existe('.acciones-panel a')], ['No se pudieron cargar tus reservas.', true])
@@ -359,9 +363,9 @@ try {
   await irA('/cliente')
   comprobar('si falla el resumen de envíos: su propio aviso, las reservas se siguen viendo y los indicadores quedan en «…»', [await texto('.resultado.error strong'), await existe('.tarjeta-reserva'), (await indicadores()).startsWith('… Envíos en curso')], ['No se pudo cargar el resumen de tus envíos.', true, true])
   sim.fallaResumen = false
-  sim.resumen = { enCurso: 0, saldoPorPagar: '5.50', porRecoger: [] }
+  sim.resumen = { enCurso: 0, saldoPendiente: '5.50', porRecoger: [], hayMasPorRecoger: false }
   await irA('/cliente')
-  comprobar('sin envíos por recoger no aparece esa sección; el saldo por pagar se muestra', [await existe('.tarjeta-recoger'), (await indicadores()).endsWith('S/ 5.50 Saldo por pagar')], [false, true])
+  comprobar('sin envíos por recoger no aparece esa sección; el saldo por pagar se muestra', [await existe('.tarjeta-recoger'), (await indicadores()).endsWith('S/ 5.50 Saldo pendiente de tus envíos')], [false, true])
   sim.sesion = usuario('EMPRESARIO', 'Comercial Sur S.A.C.')
   await irA('/cliente')
   comprobar('un empresario ve su razón social completa', await texto('h1'), 'Hola, Comercial Sur S.A.C.')

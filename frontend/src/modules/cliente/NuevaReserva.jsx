@@ -105,7 +105,7 @@ export default function NuevaReserva() {
     return () => control.abort()
   }, [campos.sucursalOrigen, campos.sucursalDestino])
 
-  // «Próxima salida habitual»: el horario de la ruta elegida (si no se puede consultar, se omite sin molestar).
+  // «Salida frecuente (referencia histórica)»: el horario de la ruta elegida (si no se puede consultar, se omite sin molestar).
   const [salida, setSalida] = useState({ fase: 'inactivo' }) // inactivo | cargando | listo
   useEffect(() => {
     const { sucursalOrigen: origen, sucursalDestino: destino } = campos
@@ -324,17 +324,17 @@ export default function NuevaReserva() {
   )
 }
 
-// «Próxima salida habitual: 14:00 · llega aprox. 18:00 (4 h)»: la primera salida habitual que queda hoy, o la primera de mañana.
+// «14:00 · llegaría aprox. 18:00 (4 h)»: la primera hora frecuente posterior a la actual, o la primera del día; solo una referencia histórica.
 function ProximaSalida({ ruta }) {
-  if (ruta.horarios.length === 0) return <p className="ayuda">Próxima salida habitual: todavía no hay salidas registradas en esta ruta.</p>
+  if (ruta.horarios.length === 0) return <p className="ayuda">Salida frecuente: todavía no hay salidas registradas en esta ruta (sin referencia de horario).</p>
   const ahora = new Date().getHours()
   const hora = ruta.horarios.find((h) => Number(h.slice(0, 2)) > ahora) ?? ruta.horarios[0]
   const llegada = `${String((Number(hora.slice(0, 2)) + ruta.horas) % 24).padStart(2, '0')}:00`
   return (
     <p className="proxima-salida">
-      <strong>Próxima salida habitual</strong>
+      <strong>Salida frecuente (referencia histórica)</strong>
       <span>
-        {hora} · llega aprox. {llegada} ({ruta.horas} h)
+        {hora} · llegaría aprox. {llegada} ({ruta.horas} h). Confirma la salida en la agencia.
       </span>
     </p>
   )

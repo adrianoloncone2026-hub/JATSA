@@ -72,26 +72,47 @@ final class HistorialRepository implements RepositorioHistorial
         return array_map([self::class, 'aFila'], $sentencia->fetchAll(PDO::FETCH_ASSOC));
     }
 
-    public function enCurso(int $idPersona, int $limite): array
+    public function resumenEnCurso(int $idPersona, int $limitePorRecoger): array
     {
-        $sentencia = Database::conexion()->prepare(
-            'SELECT TOP ' . max(1, $limite) . ' ' . self::COLUMNAS . ', sd.nombre AS destinoNombre, sd.direccion AS destinoDireccion ' . self::ORIGEN . '
+        $pdo = Database::conexion();
+
+        // Totales sobre TODOS los envíos en curso de la persona (sin tope): agregación en SQL, solo sus envíos y solo esos estados.
+        $totales = $pdo->prepare(
+            "SELECT COUNT(*) AS enCurso,
+                    COALESCE(SUM(CASE WHEN t.importe > t.pagado THEN t.importe - t.pagado ELSE 0 END), 0) AS saldo
+             FROM (SELECT (SELECT COALESCE(SUM(b.costo), 0) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS importe,
+                          (SELECT COALESCE(SUM(p.monto), 0) FROM Pago AS p WHERE p.idEnvio = e.idEnvio AND p.estadoPago = 'REGISTRADO') AS pagado
+                   FROM Envio AS e INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
+                   WHERE (r.idPersonaRemitente = :p1 OR r.idPersonaDestinatario = :p2)
+                     AND e.estadoEnvio IN ('REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO')) AS t",
+        );
+        $totales->bindValue(':p1', $idPersona, PDO::PARAM_INT);
+        $totales->bindValue(':p2', $idPersona, PDO::PARAM_INT);
+        $totales->execute();
+        $fila = $totales->fetch(PDO::FETCH_ASSOC);
+        $totales->closeCursor();
+
+        // Solo la lista «Por recoger» lleva tope: lo que recibe la persona y ya está en la agencia de destino.
+        $lista = $pdo->prepare(
+            'SELECT TOP ' . max(1, $limitePorRecoger) . ' ' . self::COLUMNAS . ', sd.nombre AS destinoNombre, sd.direccion AS destinoDireccion ' . self::ORIGEN . '
              INNER JOIN Sucursal AS sd ON sd.idSucursal = r.idSucursalDestino
-             WHERE (r.idPersonaRemitente = :p1 OR r.idPersonaDestinatario = :p2)
-               AND e.estadoEnvio IN (\'REGISTRADO\', \'EN_TRANSITO\', \'EN_DESTINO\')
+             WHERE r.idPersonaDestinatario = :p1 AND r.idPersonaRemitente <> :p2 AND e.estadoEnvio = \'EN_DESTINO\'
              ORDER BY e.fechaHoraRegistro DESC, e.idEnvio DESC',
         );
         foreach ([':rol1', ':rol2', ':p1', ':p2'] as $nombre) {
-            $sentencia->bindValue($nombre, $idPersona, PDO::PARAM_INT);
+            $lista->bindValue($nombre, $idPersona, PDO::PARAM_INT);
         }
-        $sentencia->execute();
+        $lista->execute();
 
-        return array_map(
-            static fn (array $f): array => self::aFila($f) + ['destino' => ['nombre' => (string) $f['destinoNombre'], 'direccion' => (string) $f['destinoDireccion']]],
-            $sentencia->fetchAll(PDO::FETCH_ASSOC),
-        );
+        return [
+            'enCurso' => (int) ($fila['enCurso'] ?? 0),
+            'saldo' => (string) ($fila['saldo'] ?? '0'),
+            'porRecoger' => array_map(
+                static fn (array $f): array => self::aFila($f) + ['destino' => ['nombre' => (string) $f['destinoNombre'], 'direccion' => (string) $f['destinoDireccion']]],
+                $lista->fetchAll(PDO::FETCH_ASSOC),
+            ),
+        ];
     }
-
     public function detalle(int $idPersona, string $codigoSeguimiento): ?array
     {
         $pdo = Database::conexion();

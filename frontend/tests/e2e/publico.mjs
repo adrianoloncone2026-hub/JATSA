@@ -125,7 +125,7 @@ try {
     'Agencia Arequipa Centro 14:00 · 15:00 4 h Ver salida→/salidas/MOQ001-AQP001')
   comprobar('«Ver todas las salidas» conserva el origen', await evaluar(`document.querySelector('.ficha-agencia > a.boton').getAttribute('href')`), '/salidas?origen=MOQ001')
   await pulsar('.agencia-item:nth-child(1) button'); await esperar(500)
-  comprobar('al elegir otra agencia se piden sus salidas (una ruta sin horario dice «programado»)', await texto('.salidas-desde-aqui tbody tr'), 'Agencia Lima Centro programado 18 h Ver salida')
+  comprobar('al elegir otra agencia se piden sus salidas (una ruta sin historial dice «viaje programado, sin historial»)', await texto('.salidas-desde-aqui tbody tr'), 'Agencia Lima Centro viaje programado, sin historial 18 h Ver salida')
   await irA('/agencias?agencia=ILO001'); await esperar(500)
   comprobar('una agencia sin rutas lo dice', await texto('.salidas-desde-aqui .ayuda'), 'Esta agencia todavía no tiene rutas con salidas.')
 

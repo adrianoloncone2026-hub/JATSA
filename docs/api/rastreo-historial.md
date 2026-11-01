@@ -16,12 +16,13 @@ Código de seguimiento `EN` + 10 caracteres alfanuméricos (`CK_ENVIO_CODIGO`); 
   "origen": { "codigo": "MOQ001", "nombre": "Agencia Moquegua" }, "destino": { "codigo": "AQP001", "nombre": "Agencia Arequipa Centro" },
   "cantidadBultos": 1, "pesoTotalKg": "18.50", "saldo": "0.00",
   "recorrido": [ { "fechaHora": "2026-10-14 14:00:00", "tipo": "registro", "texto": "Recibido en Agencia Moquegua (MOQ001)" }, "..." ],
-  "viajeActual": { "codigo": "VJ2026101402", "vehiculo": { "tipo": "FURGON", "placa": "B7K-210" }, "fechaHoraSalida": "...", "estado": "EN_RUTA", "origen": {}, "destino": {} },
-  "llegadaEstimada": "2026-10-14 19:00:00", "horasRuta": 4, "rutaId": "MOQ001-AQP001" }
+  "viajeActual": { "codigo": "VJ2026101402", "vehiculo": { "tipo": "FURGON", "placa": "B7K-210" }, "fechaHoraSalida": "...", "origen": {}, "destino": {} },
+  "rutaId": "MOQ001-AQP001" }
 ```
 - `etapas`: las cuatro del prototipo (`REGISTRADO`, `EN_TRANSITO`, `EN_DESTINO`, `ENTREGADO`). En `DEVUELTO` y `ANULADO` ninguna se marca (la pantalla muestra un aviso).
 - `recorrido`: ordenado por fecha. Tipos: `registro`, `carga`, `salida`, `llegada`, `entrega`, `estimada` (la llegada estimada, siempre al final).
-- `llegadaEstimada` = salida del viaje en curso + `Ruta.tiempoHoras`; `null` si no hay viaje en curso o la ruta no tiene tiempo. Es solo informativa.
+- La llegada estimada es el hito `estimada` del `recorrido` (salida del viaje en curso + `Ruta.tiempoHoras`); no existe si no hay viaje en curso o la ruta no tiene tiempo. Es solo informativa.
+- **Minimización (revisión del PR #10):** la respuesta tiene exactamente las claves de arriba. Se quitaron `llegadaEstimada` y `horasRuta` (repetían el hito `estimada`) y `viajeActual.estado` (siempre `EN_RUTA`). Del vehículo solo `tipo` y `placa`. **`saldo` y `placa` se mantienen porque la diapositiva 3 los muestra expresamente** («Saldo S/ 0.00», «FURGON B7K-210»); si el propietario decide no publicarlos, basta quitarlos de `RastreoService` y de `Rastreo.jsx` (las claves quedan fijadas por una prueba).
 - `rutaId` apunta al tramo en curso, o a origen→destino de la reserva si no hay viaje.
 
 ### GET `/api/salidas?origen=&destino=&tipo=`
@@ -45,12 +46,22 @@ Sin sesión `401`, otro rol `403`. Todo se limita a los envíos **de la persona 
 `200 { "data": { "envio": {...} } }`: lo anterior más `origen`, `destino`, `fechaHoraRegistro`, `fechaHoraEntrega`, `viaje { codigo, fechaHoraSalida, fechaHoraLlegada }`, `bultos [{ numero, descripcion, pesoKg, tipo, costo }]`, `cantidadBultos`, `pesoTotalKg`, `importe`, `pagado`, `saldo` y `pagos [{ monto, metodoPago, estado, sucursal, fechaHora }]` (los anulados se devuelven con su estado).
 
 ### GET `/api/mis-envios/resumen`
-Para *Mi panel*: `{ enCurso, saldoPorPagar, porRecoger: [{ codigoSeguimiento, estado, de, agencia: { nombre, direccion } }] }`. La ruta `/resumen` se registra **antes** que `/{codigo}`.
+Para *Mi panel*: `{ enCurso, saldoPendiente, porRecoger: [{ codigoSeguimiento, estado, de, agencia: { nombre, direccion } }], hayMasPorRecoger }`. La ruta `/resumen` se registra **antes** que `/{codigo}`.
+- `enCurso` y `saldoPendiente` se calculan **en SQL sobre todos** los envíos en curso de la persona (`COUNT(*)` y `SUM` por envío de lo que falta, sin `TOP`; filtrados por la persona y por `REGISTRADO`/`EN_TRANSITO`/`EN_DESTINO`). El tope de 200 ya **no** afecta a los totales.
+- Solo `porRecoger` se acota (50, el más reciente primero); `hayMasPorRecoger` avisa si hay más.
+- `saldoPendiente` es el **saldo pendiente de los envíos**, no una deuda personal: el sistema no sabe quién pagará hasta que se registra `Pago.pagadoPor`. La pantalla lo rotula «Saldo pendiente de tus envíos».
 
 ## Decisiones para revisar
-1. **Saldo por pagar** = lo que falta de los envíos *en curso* de la persona, sea remitente o destinataria: el sistema no sabe quién pagará hasta que se registra un `Pago.pagadoPor`.
-2. **Horario habitual**: calculado por hora (`HH:00`) con los últimos 10 viajes; si no hay salidas reales se dice «programado» o «sin salidas aún» en lugar de inventar un horario.
+1. **Saldo pendiente** = lo que falta de los envíos *en curso* de la persona, sea remitente o destinataria (ver arriba); no se presenta como deuda personal.
+2. **Horarios = referencia histórica, no una promesa.** Se calculan por hora (`HH:00`) con los últimos 10 viajes de la ruta; no aseguran que haya una salida hoy ni que se admita un paquete. Las pantallas dicen «salidas frecuentes» / «referencia histórica» y «confirma la salida en la agencia». Se distinguen: horas frecuentes (hay historial), «viaje programado, sin historial» (`programado: true`) y «sin historial de salidas».
 3. **Tiempo de la ruta**: máximo de las tarifas vigentes (misma regla que *Llegadas y entregas*).
 4. **Rastreo público**: sin nombres, documentos ni teléfonos; 404 uniforme. **Pendiente:** límite de consultas por IP (no hay dónde guardarlo sin añadir infraestructura).
 5. **«Exportar lista»** del historial queda **deshabilitado**: exporta a Excel y ese módulo (12) espera autorización de tecnología.
 6. **«Actividad reciente» de *Mi cuenta*** (diapositiva 17) no se incluye: no figura en el alcance del módulo 9 del orden de implementación.
+
+## Validación real de solo lectura (preparada, NO ejecutada)
+Script: `backend/tests/integracion/validar-pm9-lectura.ps1` (exige `-AutorizadoPorElPropietario`; sin él no hace nada).
+- **Solo SELECT.** No crea cuentas, personas, reservas ni envíos; no hay INSERT/UPDATE/DELETE/DDL/DBCC. Los endpoints del módulo son GET. El ingreso no escribe en la base (solo un archivo de sesión local, que el script borra al terminar).
+- **Parte pública** (sin cuenta): rastreo de hasta 6 envíos reales contra la base (estado, bultos, peso, saldo), claves públicas permitidas, ausencia de nombres/documentos/teléfonos, orden del recorrido y 404 uniforme; salidas y detalle de ruta contra `Ruta`/`Viaje` (una por ruta vigente, tarifas, horarios que salen de los últimos 10 viajes, sin inventar).
+- **Parte del cliente** (opcional): con una cuenta CLIENTE/EMPRESARIO **ya existente** que indique el propietario (`-UsuarioCliente` y contraseña en `JATSA_PM9_CLAVE`, solo en memoria): totales de *Mi panel* comparados con el SQL equivalente, historial, detalle y 404 uniforme de un envío ajeno.
+- Compara las 12 tablas antes y después (filas, checksum, `IDENT_CURRENT`, hash por fila): deben quedar idénticas; `exit 1` ante cualquier fallo.

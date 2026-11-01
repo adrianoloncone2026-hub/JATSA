@@ -20,6 +20,7 @@ final class HistorialService
     public const ROLES = ['ENVIE', 'RECIBI'];
     public const MAX_LISTA = 200;
     public const MAX_BUSQUEDA = 50;
+    public const MAX_POR_RECOGER = 50;
 
     private readonly RepositorioHistorial $historial;
     private readonly RepositorioReservas $reservas;
@@ -120,30 +121,34 @@ final class HistorialService
     }
 
     /**
-     * Resumen de «Mi panel»: envíos en curso, saldo por pagar y los envíos listos para recoger.
+     * Resumen de «Mi panel»: envíos en curso, saldo pendiente de esos envíos y los envíos listos para recoger.
      *
-     * Saldo por pagar = lo que falta pagar de los envíos en curso de la persona (como remitente o como destinataria): el sistema
-     * no sabe quién pagará un envío hasta que se cobra (`Pago.pagadoPor`), así que no lo reparte.
+     * `enCurso` y `saldoPendiente` cubren TODOS los envíos en curso de la persona (como remitente o como destinataria), calculados en
+     * la base de datos sin tope. Solo la lista `porRecoger` se acota (`MAX_POR_RECOGER`) y avisa con `hayMasPorRecoger`.
+     *
+     * Es el saldo pendiente de los ENVÍOS, no una deuda personal: el sistema no sabe quién pagará un envío hasta que se cobra
+     * (`Pago.pagadoPor`), así que no lo reparte entre remitente y destinatario.
      *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
     public function resumen(array $usuario): array
     {
-        $filas = $this->historial->enCurso($this->personaDe($usuario), self::MAX_LISTA);
+        $r = $this->historial->resumenEnCurso($this->personaDe($usuario), self::MAX_POR_RECOGER + 1);
 
-        $saldo = 0;
-        $porRecoger = [];
-        foreach ($filas as $f) {
-            $saldo += max(0, self::centimos($f['importe']) - self::centimos($f['pagado']));
-            if ($f['estado'] === 'EN_DESTINO' && $f['rol'] === 'RECIBI') {
-                $porRecoger[] = ['codigoSeguimiento' => $f['codigoSeguimiento'], 'estado' => $f['estado'], 'de' => $f['otraParte'], 'agencia' => ['nombre' => $f['destino']['nombre'], 'direccion' => $f['destino']['direccion']]];
-            }
-        }
+        $porRecoger = array_map(
+            static fn (array $f): array => ['codigoSeguimiento' => $f['codigoSeguimiento'], 'estado' => $f['estado'], 'de' => $f['otraParte'],
+                'agencia' => ['nombre' => $f['destino']['nombre'], 'direccion' => $f['destino']['direccion']]],
+            array_slice($r['porRecoger'], 0, self::MAX_POR_RECOGER),
+        );
 
-        return ['enCurso' => count($filas), 'saldoPorPagar' => Tarifas::formatoSoles($saldo), 'porRecoger' => $porRecoger];
+        return [
+            'enCurso' => $r['enCurso'],
+            'saldoPendiente' => Tarifas::formatoSoles(max(0, self::centimos($r['saldo']))),
+            'porRecoger' => $porRecoger,
+            'hayMasPorRecoger' => count($r['porRecoger']) > self::MAX_POR_RECOGER,
+        ];
     }
-
     // ── Utilidades ──────────────────────────────────────────────────────────
 
     /** @param array<string, mixed> $usuario */

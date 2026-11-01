@@ -44,7 +44,7 @@ export default function MiPanel() {
 
   const masReciente = estado.pendientes[0]
 
-  // «Sale habitualmente 14:00»: el horario de la ruta de la reserva pendiente más reciente (si no se puede consultar, se omite).
+  // «Salió con más frecuencia a las 14:00 (referencia histórica)»: el horario de la ruta de la reserva pendiente más reciente (si no se puede consultar, se omite).
   const rutaDeLaReserva = masReciente ? `${masReciente.origen.codigo}-${masReciente.destino.codigo}` : ''
   useEffect(() => {
     setHorarios([])
@@ -71,8 +71,8 @@ export default function MiPanel() {
             <span>Reservas pendientes</span>
           </div>
           <div className="indicador">
-            <strong>{resumen.fase === 'listo' ? `S/ ${resumen.datos.saldoPorPagar}` : '…'}</strong>
-            <span>Saldo por pagar</span>
+            <strong>{resumen.fase === 'listo' ? `S/ ${resumen.datos.saldoPendiente}` : '…'}</strong>
+            <span>Saldo pendiente de tus envíos</span>
           </div>
         </div>
         <div className="acciones-panel">
@@ -114,6 +114,7 @@ export default function MiPanel() {
               </li>
             ))}
           </ul>
+          {resumen.datos.hayMasPorRecoger && <p className="ayuda">Se muestran los 50 envíos más recientes por recoger. Revisa el resto en tu historial.</p>}
         </>
       )}
 
@@ -145,7 +146,7 @@ export default function MiPanel() {
           <h3>{masReciente.codigo}</h3>
           <InsigniaEstado estado={masReciente.estado} />
           <p>
-            Para {masReciente.destinatario} · Lleva el paquete a {masReciente.origen.nombre}.{horarios.length > 0 ? ` Sale habitualmente ${horarios.join(' y ')}.` : ''}
+            Para {masReciente.destinatario} · Lleva el paquete a {masReciente.origen.nombre}.{horarios.length > 0 ? ` Salió con más frecuencia a las ${horarios.join(' y ')} (referencia histórica).` : ''}
           </p>
           <div className="acciones-tarjeta">
             <Link to={`/cliente/reserva-registrada/${masReciente.codigo}`} className="boton boton-azul">

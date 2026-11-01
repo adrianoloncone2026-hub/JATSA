@@ -17,7 +17,7 @@ export async function obtenerMiEnvio(codigo, signal) {
   return datos.envio
 }
 
-// GET /api/mis-envios/resumen — { enCurso, saldoPorPagar, porRecoger } para «Mi panel».
+// GET /api/mis-envios/resumen — { enCurso, saldoPendiente, porRecoger, hayMasPorRecoger } para «Mi panel».
 export function obtenerResumenDeEnvios(signal) {
   return solicitar('/mis-envios/resumen', { signal })
 }

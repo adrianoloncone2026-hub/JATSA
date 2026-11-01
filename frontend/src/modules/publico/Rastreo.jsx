@@ -143,7 +143,7 @@ export default function Rastreo() {
               <p className="ayuda">{envio.estado === 'ENTREGADO' ? 'El envío ya fue entregado.' : 'Ahora no va en ningún viaje.'}</p>
             )}
             <Link to={`/salidas/${envio.rutaId}`} className="boton boton-marino">
-              Próximas salidas {nombreCorto(envio.viajeActual ? envio.viajeActual.origen.nombre : envio.origen.nombre)} → {nombreCorto(envio.viajeActual ? envio.viajeActual.destino.nombre : envio.destino.nombre)}
+              Salidas frecuentes {nombreCorto(envio.viajeActual ? envio.viajeActual.origen.nombre : envio.origen.nombre)} → {nombreCorto(envio.viajeActual ? envio.viajeActual.destino.nombre : envio.destino.nombre)}
             </Link>
           </aside>
         </div>

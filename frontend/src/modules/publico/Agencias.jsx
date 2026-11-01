@@ -182,7 +182,7 @@ export default function Agencias() {
                     <thead>
                       <tr>
                         <th scope="col">Hacia</th>
-                        <th scope="col">Sale</th>
+                        <th scope="col">Salidas frecuentes</th>
                         <th scope="col">Tiempo</th>
                         <th scope="col">Acción</th>
                       </tr>
@@ -191,7 +191,7 @@ export default function Agencias() {
                       {salidas.lista.map((s) => (
                         <tr key={s.id}>
                           <th scope="row">{s.destino.nombre}</th>
-                          <td>{s.horarios.length > 0 ? s.horarios.join(' · ') : s.programado ? 'programado' : 'sin salidas aún'}</td>
+                          <td>{s.horarios.length > 0 ? s.horarios.join(' · ') : s.programado ? 'viaje programado, sin historial' : 'sin historial de salidas'}</td>
                           <td>{s.horas} h</td>
                           <td>
                             <Link to={`/salidas/${s.id}`} className="boton boton-claro" aria-label={`Ver la salida hacia ${s.destino.nombre}`}>

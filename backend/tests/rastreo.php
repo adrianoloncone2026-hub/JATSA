@@ -57,6 +57,18 @@ function escenarioRastreo(array $cambios = []): array
     return [$r, new RastreoService($r, static fn (): string => '2026-10-31')];
 }
 
+/** La hora de la «Llegada estimada» dentro del recorrido (la respuesta ya no la repite como campo aparte), o null. */
+function estimadaDe(array $envio): ?string
+{
+    foreach ($envio['recorrido'] as $hito) {
+        if ($hito['tipo'] === 'estimada') {
+            return $hito['fechaHora'];
+        }
+    }
+
+    return null;
+}
+
 prueba('rastreo: reproduce la diapositiva 3 (en tránsito, recorrido, viaje en curso y llegada estimada ≈ 19:00)', function () {
     [, $servicio] = escenarioRastreo();
     $e = $servicio->rastrear('ENZ5H0D3V7NJ');
@@ -67,7 +79,7 @@ prueba('rastreo: reproduce la diapositiva 3 (en tránsito, recorrido, viaje en c
         '2026-10-14 14:00:00 Recibido en Agencia Moquegua (MOQ001)', '2026-10-14 14:20:00 Cargado en el viaje VJ2026101402',
         '2026-10-14 15:00:00 Salió hacia Agencia Arequipa Centro', '2026-10-14 19:00:00 Llegada estimada (ruta de 4 h)'], 'recorrido: ' . json_encode(array_column($e['recorrido'], 'texto')));
     afirmar($e['viajeActual']['codigo'] === 'VJ2026101402' && $e['viajeActual']['vehiculo'] === ['tipo' => 'FURGON', 'placa' => 'B7K-210'] && $e['viajeActual']['fechaHoraSalida'] === '2026-10-14 15:00:00', 'viaje en curso');
-    afirmar($e['llegadaEstimada'] === '2026-10-14 19:00:00' && $e['horasRuta'] === 4 && $e['rutaId'] === 'MOQ001-AQP001', 'llegada estimada y ruta');
+    afirmar(estimadaDe($e) === '2026-10-14 19:00:00' && $e['rutaId'] === 'MOQ001-AQP001', 'llegada estimada y ruta');
 });
 
 prueba('rastreo: el código se acepta en minúsculas; inexistente y mal formado dan el MISMO 404', function () {
@@ -91,11 +103,11 @@ prueba('rastreo: no expone documentos, teléfonos ni nombres de personas (regla 
 prueba('rastreo: envío recién registrado (sin viajes) y envío entregado', function () {
     [$r, $servicio] = escenarioRastreo(['estado' => 'REGISTRADO', 'tramos' => [], 'pagado' => '0.00']);
     $e = $servicio->rastrear('ENZ5H0D3V7NJ');
-    afirmar(count($e['recorrido']) === 1 && $e['viajeActual'] === null && $e['llegadaEstimada'] === null, 'solo «Recibido en…»');
+    afirmar(count($e['recorrido']) === 1 && $e['viajeActual'] === null && estimadaDe($e) === null, 'solo «Recibido en…»');
     afirmar(array_column($e['etapas'], 'cumplida') === [true, false, false, false] && $e['saldo'] === '14.60' && $e['rutaId'] === 'MOQ001-AQP001', 'etapa 1 y saldo pendiente');
     [, $servicio2] = escenarioRastreo(['estado' => 'ENTREGADO', 'fechaHoraEntrega' => '2026-10-14 20:10:00', 'tramos' => [tramo('VJ2026101402', '2026-10-14 14:20:00', '2026-10-14 15:00:00', '2026-10-14 19:05:00')]]);
     $e = $servicio2->rastrear('ENZ5H0D3V7NJ');
-    afirmar(array_column($e['etapas'], 'cumplida') === [true, true, true, true] && $e['viajeActual'] === null && $e['llegadaEstimada'] === null, 'cuatro etapas y sin viaje en curso');
+    afirmar(array_column($e['etapas'], 'cumplida') === [true, true, true, true] && $e['viajeActual'] === null && estimadaDe($e) === null, 'cuatro etapas y sin viaje en curso');
     afirmar(end($e['recorrido'])['texto'] === 'Entregado en Agencia Arequipa Centro' && $e['recorrido'][3]['texto'] === 'Llegó a Agencia Arequipa Centro', 'llegada y entrega al final, en orden');
 });
 
@@ -104,7 +116,7 @@ prueba('rastreo: transbordo — con el primer tramo terminado y el segundo en ru
         tramo('VJ2026101001', '2026-10-10 09:00:00', '2026-10-10 10:00:00', '2026-10-10 14:00:00', 'MOQ001', 'AQP001', 4),
         tramo('VJ2026101101', '2026-10-10 16:00:00', '2026-10-10 20:00:00', null, 'AQP001', 'LIM001', 18)]]);
     $e = $servicio->rastrear('ENZ5H0D3V7NJ');
-    afirmar($e['viajeActual']['codigo'] === 'VJ2026101101' && $e['rutaId'] === 'AQP001-LIM001' && $e['llegadaEstimada'] === '2026-10-11 14:00:00' && $e['horasRuta'] === 18, 'segundo tramo, ruta AQP→LIM y estimada del día siguiente');
+    afirmar($e['viajeActual']['codigo'] === 'VJ2026101101' && $e['rutaId'] === 'AQP001-LIM001' && estimadaDe($e) === '2026-10-11 14:00:00', 'segundo tramo, ruta AQP→LIM y estimada del día siguiente');
     afirmar(count(array_filter($e['recorrido'], static fn (array $h): bool => $h['tipo'] === 'estimada')) === 1, 'una sola llegada estimada');
 });
 
@@ -112,14 +124,14 @@ prueba('rastreo: DEVUELTO y ANULADO no avanzan por las etapas ni muestran viaje 
     foreach (['DEVUELTO', 'ANULADO'] as $estado) {
         [, $servicio] = escenarioRastreo(['estado' => $estado]);
         $e = $servicio->rastrear('ENZ5H0D3V7NJ');
-        afirmar($e['estado'] === $estado && !in_array(true, array_column($e['etapas'], 'actual'), true) && $e['viajeActual'] === null && $e['llegadaEstimada'] === null, $estado);
+        afirmar($e['estado'] === $estado && !in_array(true, array_column($e['etapas'], 'actual'), true) && $e['viajeActual'] === null && estimadaDe($e) === null, $estado);
     }
 });
 
 prueba('rastreo: sin tiempo de ruta no se inventa una llegada estimada', function () {
     [, $servicio] = escenarioRastreo(['tramos' => [tramo('VJ2026101402', '2026-10-14 14:20:00', '2026-10-14 15:00:00', null, 'MOQ001', 'AQP001', null)]]);
     $e = $servicio->rastrear('ENZ5H0D3V7NJ');
-    afirmar($e['llegadaEstimada'] === null && $e['viajeActual'] !== null, 'sin estimada pero con viaje en curso');
+    afirmar(estimadaDe($e) === null && $e['viajeActual'] !== null, 'sin estimada pero con viaje en curso');
 });
 
 // ── Salidas entre sucursales ────────────────────────────────────────────────
@@ -275,9 +287,20 @@ final class HistorialFalso implements RepositorioHistorial
         return array_slice(array_values($filas), 0, $limite);
     }
 
-    public function enCurso(int $idPersona, int $limite): array
+    /** Cuántas veces se pidió el resumen y con qué tope: prueba que los totales no dependen del tope de la lista. */
+    public array $topesPorRecoger = [];
+
+    public function resumenEnCurso(int $idPersona, int $limitePorRecoger): array
     {
-        return array_values(array_filter($this->porPersona[$idPersona] ?? [], static fn (array $e): bool => in_array($e['estado'], ['REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO'], true)));
+        $this->topesPorRecoger[] = $limitePorRecoger;
+        $enCurso = array_values(array_filter($this->porPersona[$idPersona] ?? [], static fn (array $e): bool => in_array($e['estado'], ['REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO'], true)));
+        $centimos = 0;
+        foreach ($enCurso as $e) {
+            $centimos += max(0, (int) round(((float) $e['importe']) * 100) - (int) round(((float) $e['pagado']) * 100));
+        }
+        $porRecoger = array_values(array_filter($enCurso, static fn (array $e): bool => $e['estado'] === 'EN_DESTINO' && $e['rol'] === 'RECIBI'));
+
+        return ['enCurso' => count($enCurso), 'saldo' => sprintf('%d.%02d', intdiv($centimos, 100), $centimos % 100), 'porRecoger' => array_slice($porRecoger, 0, $limitePorRecoger)];
     }
 
     public function detalle(int $idPersona, string $codigoSeguimiento): ?array
@@ -381,15 +404,80 @@ prueba('historial: un envío ajeno, inexistente o mal formado da el MISMO 404', 
 prueba('historial: el resumen de «Mi panel» (diapositiva 11): en curso, saldo por pagar y por recoger', function () {
     [$h, $servicio] = escenarioHistorial();
     $r = $servicio->resumen(clienteMaria());
-    afirmar($r['enCurso'] === 1 && $r['saldoPorPagar'] === '0.00', '1 envío en curso y saldo S/ 0.00');
+    afirmar($r['enCurso'] === 1 && $r['saldoPendiente'] === '0.00', '1 envío en curso y saldo S/ 0.00');
     afirmar($r['porRecoger'] === [['codigoSeguimiento' => 'ENM2P6T8R1WQ', 'estado' => 'EN_DESTINO', 'de' => 'Pedro Mamani Huanca', 'agencia' => ['nombre' => 'Agencia Moquegua', 'direccion' => 'Jr. Ancash 325']]], 'por recoger: de Pedro Mamani en Agencia Moquegua, Jr. Ancash 325');
     $h->porPersona[4][1]['pagado'] = '3.00'; // le falta pagar 5.50
-    afirmar($servicio->resumen(clienteMaria())['saldoPorPagar'] === '5.50', 'saldo por pagar');
+    afirmar($servicio->resumen(clienteMaria())['saldoPendiente'] === '5.50', 'saldo pendiente');
     $h->porPersona[4][] = $h->porPersona[4][0] + ['codigoSeguimiento' => 'ENAAAAAAAAAA'];
     $r = $servicio->resumen(clienteMaria());
     afirmar($r['enCurso'] === 1 && count($r['porRecoger']) === 1, 'un envío entregado no cuenta como en curso ni por recoger; uno que ENVIÉ en destino tampoco se recoge');
     $h->porPersona[1][0]['estado'] = 'EN_DESTINO';
     afirmar($servicio->resumen(['id' => 1, 'rol' => Roles::CLIENTE])['porRecoger'] === [], 'lo que yo envié, aunque esté en destino, no es «por recoger»');
+});
+
+prueba('rastreo público: minimización — solo las claves que muestra la diapositiva 3, sin datos de personas ni extras', function () {
+    [, $servicio] = escenarioRastreo();
+    $e = $servicio->rastrear('ENZ5H0D3V7NJ');
+    $claves = array_keys($e);
+    sort($claves);
+    afirmar($claves === ['cantidadBultos', 'codigoSeguimiento', 'destino', 'estado', 'etapas', 'origen', 'pesoTotalKg', 'recorrido', 'rutaId', 'saldo', 'viajeActual'], 'claves de primer nivel: ' . implode(',', $claves));
+    $viaje = array_keys($e['viajeActual']);
+    sort($viaje);
+    afirmar($viaje === ['codigo', 'destino', 'fechaHoraSalida', 'origen', 'vehiculo'], 'viaje: ' . implode(',', $viaje));
+    afirmar(array_keys($e['viajeActual']['vehiculo']) === ['tipo', 'placa'], 'del vehículo solo tipo y placa (los muestra la diapositiva 3)');
+    afirmar(array_keys($e['origen']) === ['codigo', 'nombre'] && array_keys($e['destino']) === ['codigo', 'nombre'], 'agencias: solo código y nombre');
+    $json = json_encode($e, JSON_UNESCAPED_UNICODE);
+    foreach (['documento', 'telefono', 'teléfono', 'correo', 'nombreCompleto', 'remitente', 'destinatario', 'dni', 'DNI', 'importe', 'pagado', 'idEnvio', 'idViaje'] as $prohibido) {
+        afirmar(!str_contains((string) $json, $prohibido), "la respuesta no contiene «{$prohibido}»");
+    }
+});
+
+prueba('historial: totales de «Mi panel» exactos con más de 200 envíos en curso (el tope solo acota «Por recoger»)', function () {
+    [$h, $servicio] = escenarioHistorial();
+    $base = $h->porPersona[4][0];
+    $h->porPersona[4] = [];
+    $saldoEsperado = 0;
+    for ($i = 1; $i <= 250; $i++) {
+        $recibido = $i % 2 === 0;
+        $h->porPersona[4][] = ['codigoSeguimiento' => sprintf('EN%010d', $i), 'estado' => $recibido ? 'EN_DESTINO' : 'REGISTRADO', 'rol' => $recibido ? 'RECIBI' : 'ENVIE',
+            'otraParte' => 'Pedro Mamani Huanca', 'importe' => '10.00', 'pagado' => $i % 5 === 0 ? '10.00' : '4.00', 'fechaHoraRegistro' => sprintf('2026-09-%02d 10:00:00', 1 + $i % 28),
+            'destino' => ['nombre' => 'Agencia Moquegua', 'direccion' => 'Jr. Ancash 325']] + $base;
+        $saldoEsperado += $i % 5 === 0 ? 0 : 600;
+    }
+    $h->porPersona[4][] = ['estado' => 'ENTREGADO', 'importe' => '99.00', 'pagado' => '0.00', 'codigoSeguimiento' => 'ENZZZZZZZZZZ'] + $base; // cerrado: no cuenta
+    $r = $servicio->resumen(clienteMaria());
+    afirmar($r['enCurso'] === 250, 'cuenta los 250 envíos en curso, no 200 ni 201: ' . $r['enCurso']);
+    afirmar($r['saldoPendiente'] === sprintf('%d.%02d', intdiv($saldoEsperado, 100), $saldoEsperado % 100), 'el saldo suma los 250 envíos: ' . $r['saldoPendiente']);
+    afirmar(count($r['porRecoger']) === HistorialService::MAX_POR_RECOGER && $r['hayMasPorRecoger'] === true, 'la lista «Por recoger» se acota a 50 y avisa que hay más');
+    afirmar(end($h->topesPorRecoger) === HistorialService::MAX_POR_RECOGER + 1, 'pide un registro más que el tope para saber si hay más');
+    afirmar(array_keys($r) === ['enCurso', 'saldoPendiente', 'porRecoger', 'hayMasPorRecoger'], 'forma de la respuesta');
+    $h->porPersona[4] = array_slice($h->porPersona[4], 0, 10);
+    $corto = $servicio->resumen(clienteMaria());
+    afirmar($corto['hayMasPorRecoger'] === false, 'con pocos envíos no avisa de más');
+});
+
+prueba('historial: el repositorio real calcula los totales en SQL sin TOP y solo con parámetros (revisión estática)', function () {
+    $fuente = (string) file_get_contents(dirname(__DIR__) . '/src/Modules/Envios/HistorialRepository.php');
+    $i = strpos($fuente, 'function resumenEnCurso');
+    $j = strpos($fuente, 'function detalle');
+    $cuerpo = substr($fuente, (int) $i, (int) $j - (int) $i);
+    afirmar(str_contains($cuerpo, 'COUNT(*) AS enCurso') && str_contains($cuerpo, 'SUM(CASE WHEN t.importe > t.pagado'), 'agrega con COUNT y SUM en la consulta');
+    $totales = substr($cuerpo, 0, (int) strpos($cuerpo, 'Solo la lista'));
+    afirmar(!str_contains($totales, 'TOP'), 'la consulta de totales no lleva TOP');
+    afirmar(str_contains($totales, "r.idPersonaRemitente = :p1 OR r.idPersonaDestinatario = :p2") && str_contains($totales, "IN ('REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO')"), 'filtrada por la persona y por los tres estados en curso');
+    afirmar(preg_match('/\b(INSERT|UPDATE|DELETE|DROP|ALTER|EXEC|MERGE)\b/i', $cuerpo) === 0, 'solo lectura');
+    afirmar(!preg_match('/\$idPersona\s*\./', $cuerpo), 'el id de la persona nunca se concatena');
+});
+
+prueba('salidas: los textos promueven una referencia histórica y no prometen salida hoy ni admisión', function () {
+    $raiz = dirname(__DIR__, 2) . '/frontend/src/modules';
+    $detalle = (string) file_get_contents($raiz . '/publico/DetalleSalida.jsx');
+    afirmar(!str_contains($detalle, 'Si dejas tu paquete hoy') && !str_contains($detalle, 'Sale habitualmente'), 'el detalle ya no promete salida hoy');
+    afirmar(str_contains($detalle, 'referencia histórica, no una promesa') && str_contains($detalle, 'Confirma la salida en la agencia'), 'el detalle aclara que es histórica');
+    foreach (['publico/Salidas.jsx', 'publico/Agencias.jsx', 'cliente/NuevaReserva.jsx', 'cliente/MiPanel.jsx'] as $archivo) {
+        $texto = (string) file_get_contents($raiz . '/' . $archivo);
+        afirmar(!preg_match('/Próxima salida habitual|Sale habitualmente|Sale: /', $texto), "{$archivo}: sin la promesa «próxima salida / sale habitualmente»");
+    }
 });
 
 // ── HTTP: rutas públicas y de cliente ───────────────────────────────────────

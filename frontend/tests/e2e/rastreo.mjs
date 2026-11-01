@@ -25,14 +25,14 @@ const rastreoBase = {
   recorrido: [hito('2026-10-14 14:00:00', 'registro', 'Recibido en Agencia Moquegua (MOQ001)'), hito('2026-10-14 14:20:00', 'carga', 'Cargado en el viaje VJ2026101402'),
     hito('2026-10-14 15:00:00', 'salida', 'Salió hacia Agencia Arequipa Centro'), hito('2026-10-14 19:00:00', 'estimada', 'Llegada estimada (ruta de 4 h)')],
   viajeActual: { codigo: 'VJ2026101402', vehiculo: { tipo: 'FURGON', placa: 'B7K-210' }, fechaHoraSalida: '2026-10-14 15:00:00', estado: 'EN_RUTA', origen: MOQ, destino: AQP },
-  llegadaEstimada: '2026-10-14 19:00:00', horasRuta: 4, rutaId: 'MOQ001-AQP001',
+  rutaId: 'MOQ001-AQP001',
 }
 const RASTREOS = {
   ENZ5H0D3V7NJ: rastreoBase,
-  EN7K4Q2M9X1B: { ...rastreoBase, codigoSeguimiento: 'EN7K4Q2M9X1B', estado: 'ENTREGADO', etapas: ETAPAS(3), pesoTotalKg: '9.20', viajeActual: null, llegadaEstimada: null, horasRuta: null,
+  EN7K4Q2M9X1B: { ...rastreoBase, codigoSeguimiento: 'EN7K4Q2M9X1B', estado: 'ENTREGADO', etapas: ETAPAS(3), pesoTotalKg: '9.20', viajeActual: null,
     recorrido: [hito('2026-10-10 10:02:00', 'registro', 'Recibido en Agencia Moquegua (MOQ001)'), hito('2026-10-10 14:00:00', 'salida', 'Salió hacia Agencia Arequipa Centro'), hito('2026-10-10 18:30:00', 'llegada', 'Llegó a Agencia Arequipa Centro'), hito('2026-10-12 11:30:00', 'entrega', 'Entregado en Agencia Arequipa Centro')] },
   ENDEVUELTO01: { ...rastreoBase, codigoSeguimiento: 'ENDEVUELTO01', estado: 'DEVUELTO', etapas: ETAPAS(-1).map((e) => ({ ...e, cumplida: false, actual: false })), viajeActual: null, llegadaEstimada: null },
-  ENSALDO00001: { ...rastreoBase, codigoSeguimiento: 'ENSALDO00001', estado: 'REGISTRADO', etapas: ETAPAS(0), saldo: '14.60', viajeActual: null, llegadaEstimada: null, recorrido: [rastreoBase.recorrido[0]] },
+  ENSALDO00001: { ...rastreoBase, codigoSeguimiento: 'ENSALDO00001', estado: 'REGISTRADO', etapas: ETAPAS(0), saldo: '14.60', viajeActual: null, recorrido: [rastreoBase.recorrido[0]] },
 }
 
 const rutaDe = (id, origen, destino, horarios, horas, desde, extra = {}) => ({ id, origen, destino, horarios, programado: false, horas, desde, ...extra })
@@ -90,7 +90,7 @@ const navegador = await iniciarNavegador(9348, ({ metodo, ruta: rutaApi, url }) 
   const detalleRuta = rutaApi.match(/^\/api\/salidas\/([A-Z0-9-]+)$/)
   if (detalleRuta) return detalleRuta[1] === 'MOQ001-AQP001' ? exito({ ruta: DETALLE_RUTA }) : error(404, 'ruta_no_encontrada', 'No encontramos esa ruta.')
 
-  if (rutaApi === '/api/mis-envios/resumen') return exito({ enCurso: 1, saldoPorPagar: '0.00', porRecoger: [] })
+  if (rutaApi === '/api/mis-envios/resumen') return exito({ enCurso: 1, saldoPendiente: '0.00', porRecoger: [], hayMasPorRecoger: false })
   if (rutaApi === '/api/mis-envios') {
     if (sim.fallaHistorial) return error(500, 'error_interno', 'Ocurrió un error interno. Inténtalo de nuevo más tarde.')
     if (sim.vacio) return exito({ envios: [], hayMas: false })
@@ -123,7 +123,7 @@ try {
     ['ENZ5H0D3V7NJ', 'EN TRÁNSITO', 'Agencia Moquegua → Agencia Arequipa Centro · 1 bulto · 18.50 kg · Saldo S/ 0.00'])
   comprobar('las cuatro etapas: ✓ cumplida, la actual marcada y las pendientes', [await filas('.etapas li'), await evaluar(`document.querySelector('.etapa.actual').innerText.trim().replace(/\\s+/g,' ')`)], ['✓ REGISTRADO || 2 EN TRÁNSITO || 3 EN DESTINO || 4 ENTREGADO', '2 EN TRÁNSITO'])
   comprobar('el recorrido (con la llegada estimada)', await filas('.recorrido li'), '14/10 14:00 Recibido en Agencia Moquegua (MOQ001) || 14/10 14:20 Cargado en el viaje VJ2026101402 || 14/10 15:00 Salió hacia Agencia Arequipa Centro || 14/10 ≈19:00 Llegada estimada (ruta de 4 h)')
-  comprobar('el viaje en curso y el acceso a las próximas salidas', [await texto('.rastreo-viaje h2'), await texto('.rastreo-viaje p'), await texto('.rastreo-viaje a')], ['Moquegua → Arequipa', 'Viaje VJ2026101402 · FURGON B7K-210 · salió 15:00 · en ruta', 'Próximas salidas Moquegua → Arequipa'])
+  comprobar('el viaje en curso y el acceso a las próximas salidas', [await texto('.rastreo-viaje h2'), await texto('.rastreo-viaje p'), await texto('.rastreo-viaje a')], ['Moquegua → Arequipa', 'Viaje VJ2026101402 · FURGON B7K-210 · salió 15:00 · en ruta', 'Salidas frecuentes Moquegua → Arequipa'])
   comprobar('«Ver horarios de esta ruta» y «Ver agencia de destino» enlazan con su ruta y su agencia', await enlaces('.rastreo-estado .acciones-formulario a'), 'Ver horarios de esta ruta→/salidas/MOQ001-AQP001 | Ver agencia de destino→/agencias?agencia=AQP001')
   comprobar('no muestra documentos, teléfonos ni nombres de personas', /DNI|RUC|teléfono|María|Luis/.test(await texto('.rastreo')), false)
   await captura('03_rastreo')
@@ -155,19 +155,19 @@ try {
 
   titulo('Salidas entre sucursales: pantalla de la diapositiva 4')
   await irA('/salidas')
-  comprobar('título y aclaración', [await texto('h1'), await texto('.salidas > .ayuda')], ['Salidas entre sucursales', 'Horario habitual calculado con las salidas reales de los últimos viajes de cada ruta.'])
-  comprobar('las rutas con horario, tiempo y precio «desde» (o «programado» / «sin salidas aún»)', await filas('.salida-fila'),
-    'Agencia Moquegua → Agencia Arequipa Centro Sale: 14:00 · 15:00 · 4 h · desde S/ 9.15 Ver || Agencia Arequipa Centro → Agencia Lima Centro Sale: sin salidas aún · 18 h · desde S/ 30.20 Ver || Agencia Ilo → Agencia Moquegua Sale: 07:00 · 2 h · desde S/ 8.50 Ver || Agencia Lima Centro → Agencia Ilo Sale: programado · 24 h · desde S/ 136.00 Ver')
+  comprobar('título y aclaración', [await texto('h1'), await texto('.salidas > .ayuda')], ['Salidas entre sucursales', 'Referencia histórica: las horas en que más salieron los últimos viajes de cada ruta. No es un horario garantizado; confirma la salida en la agencia.'])
+  comprobar('las rutas con horario, tiempo y precio «desde» (o «viaje programado, sin historial» / «sin historial de salidas»)', await filas('.salida-fila'),
+    'Agencia Moquegua → Agencia Arequipa Centro Salidas frecuentes: 14:00 · 15:00 · 4 h · desde S/ 9.15 Ver || Agencia Arequipa Centro → Agencia Lima Centro Salidas frecuentes: sin historial de salidas · 18 h · desde S/ 30.20 Ver || Agencia Ilo → Agencia Moquegua Salidas frecuentes: 07:00 · 2 h · desde S/ 8.50 Ver || Agencia Lima Centro → Agencia Ilo Salidas frecuentes: viaje programado, sin historial · 24 h · desde S/ 136.00 Ver')
   comprobar('«Ver» lleva al detalle de la ruta', (await enlaces('.salida-fila a')).split(' | ')[0], 'Ver→/salidas/MOQ001-AQP001')
   comprobar('los filtros se llenan con las agencias', await evaluar(`[...document.querySelectorAll('#filtroOrigen option')].map(o => o.innerText).join(',')`), 'Todas,Agencia Arequipa Centro,Agencia Ilo,Agencia Lima Centro,Agencia Moquegua')
   await escribir('#filtroOrigen', 'MOQ001'); await esperar(600)
   comprobar('filtrar por origen: consulta con el filtro, lo deja en la dirección y muestra solo esa ruta', [await ruta(), (await filas('.salida-fila')).startsWith('Agencia Moquegua → Agencia Arequipa'), await evaluar(`document.querySelectorAll('.salida-fila').length`)], ['/salidas?origen=MOQ001', true, 1])
   await escribir('#filtroOrigen', ''); await escribir('#filtroTipo', 'PAQUETE'); await esperar(600)
-  comprobar('filtrar por tipo cambia el precio «desde»', await filas('.salida-fila'), 'Agencia Moquegua → Agencia Arequipa Centro Sale: 14:00 · 15:00 · 4 h · desde S/ 14.60 Ver || Agencia Arequipa Centro → Agencia Lima Centro Sale: sin salidas aún · 18 h · desde S/ 30.20 Ver')
+  comprobar('filtrar por tipo cambia el precio «desde»', await filas('.salida-fila'), 'Agencia Moquegua → Agencia Arequipa Centro Salidas frecuentes: 14:00 · 15:00 · 4 h · desde S/ 14.60 Ver || Agencia Arequipa Centro → Agencia Lima Centro Salidas frecuentes: sin historial de salidas · 18 h · desde S/ 30.20 Ver')
   await escribir('#filtroDestino', 'ILO001'); await esperar(600)
   comprobar('sin coincidencias: mensaje', await texto('.estado-vacio'), 'No hay salidas que coincidan con esos filtros.')
   await irA('/salidas?origen=ILO001')
-  comprobar('los filtros de la dirección se aplican al entrar', [await valor('#filtroOrigen'), await filas('.salida-fila')], ['ILO001', 'Agencia Ilo → Agencia Moquegua Sale: 07:00 · 2 h · desde S/ 8.50 Ver'])
+  comprobar('los filtros de la dirección se aplican al entrar', [await valor('#filtroOrigen'), await filas('.salida-fila')], ['ILO001', 'Agencia Ilo → Agencia Moquegua Salidas frecuentes: 07:00 · 2 h · desde S/ 8.50 Ver'])
   sim.fallaSalidas = true
   await irA('/salidas')
   comprobar('si falla: aviso con «Reintentar»', await texto('.resultado.error'), 'No se pudieron cargar las salidas. Ocurrió un error interno. Inténtalo de nuevo más tarde. Reintentar')
@@ -178,19 +178,20 @@ try {
   await irA('/salidas')
   await escribir('#filtroOrigen', 'LIM001'); await esperar(300)
   await escribir('#filtroOrigen', 'ILO001'); await esperar(500)
-  comprobar('dos filtros seguidos: se muestra el último', await filas('.salida-fila'), 'Agencia Ilo → Agencia Moquegua Sale: 07:00 · 2 h · desde S/ 8.50 Ver')
+  comprobar('dos filtros seguidos: se muestra el último', await filas('.salida-fila'), 'Agencia Ilo → Agencia Moquegua Salidas frecuentes: 07:00 · 2 h · desde S/ 8.50 Ver')
   await esperar(RETRASO_MS + 300)
-  comprobar('la respuesta tardía del filtro anterior no la pisa', await filas('.salida-fila'), 'Agencia Ilo → Agencia Moquegua Sale: 07:00 · 2 h · desde S/ 8.50 Ver')
+  comprobar('la respuesta tardía del filtro anterior no la pisa', await filas('.salida-fila'), 'Agencia Ilo → Agencia Moquegua Salidas frecuentes: 07:00 · 2 h · desde S/ 8.50 Ver')
   sim.lentoSalidas = null
   await captura('04_salidas')
 
   titulo('Detalle de salida: pantalla de la diapositiva 5')
   await irA('/salidas/MOQ001-AQP001')
   comprobar('ruta, distancia y tiempo estimado', [await texto('h1'), await texto('.detalle-salida > .ruta-texto')], ['Moquegua → Arequipa', '230 km · 4 h estimadas · Agencia Moquegua (MOQ001) → Agencia Arequipa Centro (AQP001)'])
-  comprobar('«¿Llega a tiempo?» con el horario y la llegada aproximada', [await texto('.llega-a-tiempo h2'), await texto('.llega-a-tiempo p')],
-    ['¿Llega a tiempo?', 'Sale habitualmente 14:00 y 15:00. Si dejas tu paquete hoy antes de las 14:00, llegaría aprox. a las 18:00–19:00.'])
+  comprobar('«¿Llega a tiempo?» con el horario y la llegada aproximada', [await texto('.llega-a-tiempo h2'), await filas('.llega-a-tiempo p')],
+    ['¿Llega a tiempo?', 'En los últimos viajes, esta ruta salió con más frecuencia a las 14:00 y 15:00. || Con un viaje de 4 h, una salida a esa hora llegaría aprox. entre las 18:00 y las 19:00. || Es una referencia histórica, no una promesa: no asegura que haya una salida hoy ni que se admita tu paquete. Confirma la salida en la agencia. || Desde S/ 9.15 (sobre) · S/ 14.60 (paquete)'])
   comprobar('precios', await texto('.precios-ruta'), 'Desde S/ 9.15 (sobre) · S/ 14.60 (paquete)')
-  comprobar('salidas recientes', await filas('.tabla-salidas tbody tr'), 'VJ2026101402 14/10 15:00 — EN RUTA || VJ2026101001 10/10 14:00 10/10 18:30 TERMINADO')
+  comprobar('salidas recientes (historial) y sin promesa de salida hoy', [await texto('.detalle-salida > h2'), (await texto('.llega-a-tiempo')).includes('Si dejas tu paquete hoy')], ['Salidas recientes (historial)', false]);
+  comprobar('salidas recientes: viajes del historial', await filas('.tabla-salidas tbody tr'), 'VJ2026101402 14/10 15:00 — EN RUTA || VJ2026101001 10/10 14:00 10/10 18:30 TERMINADO')
   comprobar('acciones con la ruta ya elegida', await enlaces('.detalle-salida .acciones-formulario a'),
     'Reservar este envío→/cliente/nueva-reserva?origen=MOQ001&destino=AQP001 | Cotizar→/cotizador?origen=MOQ001&destino=AQP001 | Agencia de origen→/agencias?agencia=MOQ001 | Rastrear un envío→/rastreo | Volver a salidas→/salidas')
   await captura('05_detalle_salida')

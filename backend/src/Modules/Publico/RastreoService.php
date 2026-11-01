@@ -12,7 +12,8 @@ use Jatsa\Shared\Tarifas;
  * Rastreo público (diapositiva 3): estado, recorrido y llegada estimada de un envío a partir de su código de seguimiento.
  *
  * Regla 6 de CLAUDE.md: no se exponen documentos de identidad ni teléfonos (tampoco nombres de personas): solo el código, la
- * ruta, la cantidad y el peso, el saldo, los hitos del recorrido y el viaje en curso.
+ * ruta, la cantidad y el peso, el saldo, los hitos del recorrido (con la llegada estimada) y el viaje en curso (código, tipo y placa).
+ * El saldo y la placa los muestra expresamente la diapositiva 3; no se añade nada más (sin horas de ruta, estado del viaje duplicado ni ids).
  *
  * Un código inexistente o mal formado responde igual (404): no se revela nada sobre códigos que no existen. El límite de
  * consultas por visitante sigue pendiente (ver docs/api/reservas.md).
@@ -44,8 +45,6 @@ final class RastreoService
         $estado = $envio['estado'];
         $recorrido = [['fechaHora' => $envio['fechaHoraRegistro'], 'tipo' => 'registro', 'texto' => sprintf('Recibido en %s (%s)', $envio['origen']['nombre'], $envio['origen']['codigo'])]];
         $viajeActual = null;
-        $llegadaEstimada = null;
-        $horasRuta = null;
         $rutaId = $envio['origen']['codigo'] . '-' . $envio['destino']['codigo'];
 
         foreach ($envio['tramos'] as $tramo) {
@@ -58,13 +57,12 @@ final class RastreoService
             }
             // El tramo en curso: salió y todavía no llegó.
             if ($tramo['fechaHoraSalida'] !== null && $tramo['fechaHoraLlegada'] === null && !in_array($estado, ['ENTREGADO', 'DEVUELTO', 'ANULADO'], true)) {
-                $viajeActual = ['codigo' => $tramo['codigoViaje'], 'vehiculo' => $tramo['vehiculo'], 'fechaHoraSalida' => $tramo['fechaHoraSalida'], 'estado' => 'EN_RUTA',
+                $viajeActual = ['codigo' => $tramo['codigoViaje'], 'vehiculo' => $tramo['vehiculo'], 'fechaHoraSalida' => $tramo['fechaHoraSalida'],
                     'origen' => $tramo['origen'], 'destino' => $tramo['destino']];
-                $horasRuta = $tramo['horas'];
                 $rutaId = $tramo['origen']['codigo'] . '-' . $tramo['destino']['codigo'];
                 if ($tramo['horas'] !== null) {
-                    $llegadaEstimada = (new DateTimeImmutable($tramo['fechaHoraSalida']))->modify('+' . $tramo['horas'] . ' hours')->format('Y-m-d H:i:s');
-                    $recorrido[] = ['fechaHora' => $llegadaEstimada, 'tipo' => 'estimada', 'texto' => sprintf('Llegada estimada (ruta de %d h)', $tramo['horas'])];
+                    $estimada = (new DateTimeImmutable($tramo['fechaHoraSalida']))->modify('+' . $tramo['horas'] . ' hours')->format('Y-m-d H:i:s');
+                    $recorrido[] = ['fechaHora' => $estimada, 'tipo' => 'estimada', 'texto' => sprintf('Llegada estimada (ruta de %d h)', $tramo['horas'])];
                 }
             }
         }
@@ -93,8 +91,6 @@ final class RastreoService
             'saldo' => Tarifas::formatoSoles(max(0, $importe - $pagado)),
             'recorrido' => $recorrido,
             'viajeActual' => $viajeActual,
-            'llegadaEstimada' => $llegadaEstimada,
-            'horasRuta' => $horasRuta,
             'rutaId' => $rutaId,
         ];
     }

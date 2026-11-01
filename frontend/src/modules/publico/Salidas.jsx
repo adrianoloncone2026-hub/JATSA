@@ -6,7 +6,7 @@ const TIPOS = ['SOBRE', 'PAQUETE', 'CARGA']
 
 export function textoHorario(salida) {
   if (salida.horarios.length > 0) return salida.horarios.join(' · ')
-  return salida.programado ? 'programado' : 'sin salidas aún'
+  return salida.programado ? 'viaje programado, sin historial' : 'sin historial de salidas'
 }
 
 // Diapositiva 4 del prototipo: salidas entre sucursales. El horario habitual se calcula con las salidas reales de los últimos
@@ -50,7 +50,7 @@ export default function Salidas() {
   return (
     <section className="salidas">
       <h1>Salidas entre sucursales</h1>
-      <p className="ayuda">Horario habitual calculado con las salidas reales de los últimos viajes de cada ruta.</p>
+      <p className="ayuda">Referencia histórica: las horas en que más salieron los últimos viajes de cada ruta. No es un horario garantizado; confirma la salida en la agencia.</p>
 
       <div className="panel filtros-salidas">
         <div className="campo">
@@ -114,7 +114,7 @@ export default function Salidas() {
                 {s.origen.nombre} → {s.destino.nombre}
               </strong>
               <span className="salida-detalle">
-                Sale: {textoHorario(s)} · {s.horas} h · desde S/ {s.desde}
+                Salidas frecuentes: {textoHorario(s)} · {s.horas} h · desde S/ {s.desde}
               </span>
               <Link to={`/salidas/${s.id}`} className="boton boton-azul" aria-label={`Ver la salida ${s.origen.nombre} a ${s.destino.nombre}`}>
                 Ver
