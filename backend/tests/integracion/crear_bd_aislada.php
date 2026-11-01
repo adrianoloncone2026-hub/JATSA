@@ -64,13 +64,13 @@ try {
         abortar('Ya existe la base aislada: no se reutiliza ni se pisa nada. Elige otro nombre.', 3);
     }
     $pdo->exec("CREATE DATABASE [$base]");
-    echo "Base «$base» creada.\n";
+    echo "Base «{$base}» creada.\n";
 
     $nueva = conectar($servidorDsn, $base)->query('SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login')->fetch(PDO::FETCH_ASSOC);
     if ($nueva['bd'] !== $base || strcasecmp((string) $nueva['login'], (string) $yo['login']) !== 0) {
         abortar('La conexión nueva no quedó en la base creada con la misma cuenta.');
     }
-    echo "Verificado: una conexión nueva con la misma cuenta Windows entra a «$base».\n";
+    echo "Verificado: una conexión nueva con la misma cuenta Windows entra a «{$base}».\n";
 } catch (PDOException $e) {
     abortar('Error de SQL Server: ' . $e->getMessage());
 }

@@ -136,5 +136,5 @@ foreach ($esperado as $tabla => $n) {
 if ($fallos !== []) {
     abortar('Los conteos no coinciden en: ' . implode(', ', $fallos));
 }
-echo "Estructura y semilla sintética cargadas en «$base».\n";
+echo "Estructura y semilla sintética cargadas en «{$base}».\n";
 exit(0);
