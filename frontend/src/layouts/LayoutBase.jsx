@@ -20,6 +20,9 @@ export default function LayoutBase({ idSeccion }) {
   const enlaces = idSeccion === 'publico' ? todos.filter((e) => !RUTAS_DE_ACCESO.includes(e.to)) : todos
   const accesos = idSeccion === 'publico' && !usuario ? todos.filter((e) => RUTAS_DE_ACCESO.includes(e.to)) : []
   const tieneMiCuenta = usuario && (usuario.rol === ROLES.CLIENTE || usuario.rol === ROLES.EMPRESARIO)
+  // El personal (gerente, administrador y transportista) entra desde su nombre a «Cambiar contraseña»: solo la contraseña propia,
+  // sin datos personales ni funciones de cliente.
+  const rutaContrasena = usuario && !tieneMiCuenta && idSeccion !== 'publico' ? `${seccion.base}/contrasena` : null
 
   const identidad = usuario && (
     <>
@@ -65,6 +68,10 @@ export default function LayoutBase({ idSeccion }) {
               <div className="usuario-sesion">
                 {tieneMiCuenta ? (
                   <Link to="/cliente/cuenta" className="identidad" aria-label={`Mi cuenta, ${usuario.nombreCompleto}`}>
+                    {identidad}
+                  </Link>
+                ) : rutaContrasena ? (
+                  <Link to={rutaContrasena} className="identidad" aria-label={`Cambiar contraseña, ${usuario.nombreCompleto}`}>
                     {identidad}
                   </Link>
                 ) : (

@@ -11,6 +11,10 @@ use Jatsa\Middleware\RequiereRol;
 use Jatsa\Middleware\RequiereSesion;
 use Jatsa\Modules\Auth\AuthService;
 use Jatsa\Modules\Catalogos\CatalogoController;
+use Jatsa\Modules\Cuenta\CuentaController;
+use Jatsa\Modules\Cuenta\CuentaService;
+use Jatsa\Shared\Credencial;
+use Jatsa\Shared\Sesion;
 use Jatsa\Modules\Catalogos\CatalogoService;
 use Jatsa\Modules\Catalogos\RepositorioCatalogo;
 use Jatsa\Modules\Usuarios\RepositorioGestionUsuarios;
@@ -442,12 +446,20 @@ final class UsuariosFalso implements RepositorioGestionUsuarios
 
         return null;
     }
+    /** Se ejecuta DENTRO de cambiarEstado, antes de leer lo bloqueado: simula un cambio de otro gerente (sucursal desactivada o cuenta movida). */
+    public mixed $alIniciarCambiarEstado = null;
+
     public function cambiarEstado(string $nombreUsuario, bool $activo, callable $decidir): ?bool
     {
+        if ($this->alIniciarCambiarEstado !== null) {
+            ($this->alIniciarCambiarEstado)($this);
+        }
         $gerentes = count(array_filter($this->cuentas, static fn (array $c): bool => $c['rol'] === Roles::GERENTE && $c['activo']));
         foreach ($this->cuentas as $i => $c) {
             if (strcasecmp($c['nombreUsuario'], $nombreUsuario) === 0) {
-                $decidir(['rol' => $c['rol'], 'activo' => $c['activo'], 'viajesAbiertos' => $c['viajesAbiertos'], 'gerentesActivos' => $gerentes]);
+                $decidir(['rol' => $c['rol'], 'activo' => $c['activo'], 'sucursalCodigo' => $c['sucursalCodigo'],
+                    'sucursalActiva' => $c['sucursalCodigo'] !== null && ($this->sucursales[$c['sucursalCodigo']] ?? false),
+                    'viajesAbiertos' => $c['viajesAbiertos'], 'gerentesActivos' => $gerentes]);
                 $this->cuentas[$i]['activo'] = $activo;
 
                 return $activo;
@@ -792,4 +804,187 @@ prueba('orden de bloqueos del sistema: sucursales → vehículo → usuario → 
     foreach (['Usuarios/UsuariosService.php', 'Catalogos/CatalogoService.php', 'Despacho/DespachoService.php'] as $servicio) {
         afirmar(!str_contains((string) file_get_contents("$raiz/$servicio"), 'idSucursalActiva') && !str_contains((string) file_get_contents("$raiz/$servicio"), 'idVehiculoActivo'), "$servicio: no consulta «activo» fuera de la transacción");
     }
+});
+
+// ── Reactivar personal en una sucursal INACTIVA (revisión del PR #11) ───────────────────────────────────────────────────────────
+prueba('cuentas: desactivar cuenta → desactivar sucursal → reactivar es 409; tras moverla a una agencia activa, se reactiva', function () {
+    [$r, $servicio] = escenarioCuentas();
+    $servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => false]);
+    $r->sucursales['MOQ001'] = false; // el gerente desactiva la sucursal (ya sin personal activo ni operaciones)
+    $e = esperarError(fn () => $servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => true]), 409, 'sucursal_inactiva');
+    afirmar(str_contains($e->getMessage(), 'MOQ001') && str_contains($e->getMessage(), 'Editar'), 'el mensaje dice cuál sucursal y qué hacer: ' . $e->getMessage());
+    afirmar($r->cuentas[1]['activo'] === false, 'la cuenta sigue desactivada');
+    $c = $servicio->editar(SESION_GERENTE, 'lflores', ['rol' => 'ADMINISTRADOR', 'sucursal' => 'AQP001']); // mover una cuenta desactivada sí se puede
+    afirmar($c['sucursal']['codigo'] === 'AQP001' && $c['activa'] === false, 'movida a una agencia activa, sigue desactivada');
+    afirmar($servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => true])['activa'] === true, 'ahora sí se reactiva');
+    // y reactivando la sucursal también se puede reactivar sin moverla
+    $servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => false]);
+    $r->sucursales['AQP001'] = false;
+    esperarError(fn () => $servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => true]), 409, 'sucursal_inactiva');
+    $r->sucursales['AQP001'] = true;
+    afirmar($servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => true])['activa'] === true, 'con la sucursal reactivada, se reactiva');
+});
+
+prueba('cuentas: también aplica al TRANSPORTISTA; sin viajes abiertos se desactiva y su reactivación depende de la sucursal', function () {
+    [$r, $servicio] = escenarioCuentas();
+    $r->cuentas[4]['viajesAbiertos'] = 0;
+    $servicio->cambiarEstado(SESION_GERENTE, 'pmamani', ['activo' => false]);
+    $r->sucursales['AQP001'] = false;
+    esperarError(fn () => $servicio->cambiarEstado(SESION_GERENTE, 'pmamani', ['activo' => true]), 409, 'sucursal_inactiva');
+    afirmar($r->cuentas[4]['activo'] === false, 'sigue desactivado');
+});
+
+prueba('cuentas: las reactivaciones de gerente, cliente y empresario no dependen de ninguna sucursal; desactivar nunca se bloquea por ello', function () {
+    [$r, $servicio] = escenarioCuentas();
+    $r->sucursales = ['AQP001' => false, 'MOQ001' => false]; // ninguna sucursal activa
+    foreach (['mrojas', 'comsur'] as $usuario) {
+        $servicio->cambiarEstado(SESION_GERENTE, $usuario, ['activo' => false]);
+        afirmar($servicio->cambiarEstado(SESION_GERENTE, $usuario, ['activo' => true])['activa'] === true, "$usuario se reactiva");
+    }
+    $r->cuentas[] = ['nombreUsuario' => 'gerente2', 'nombreCompleto' => 'Otra Gerente', 'rol' => 'GERENTE', 'sucursalCodigo' => null, 'sucursalNombre' => null, 'activo' => false, 'viajesAbiertos' => 0];
+    afirmar($servicio->cambiarEstado(SESION_GERENTE, 'gerente2', ['activo' => true])['activa'] === true, 'un gerente (sin sucursal) se reactiva');
+    afirmar($servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => false])['activa'] === false, 'desactivar personal de una sucursal inactiva se permite');
+    afirmar($servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => false])['activa'] === false, 'repetir la desactivación no es un error');
+    $r->cuentas[1]['activo'] = true; // una cuenta ya activa
+    afirmar($servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => true])['activa'] === true, 'una cuenta ya activa no se bloquea al «reactivarla»');
+});
+
+prueba('cuentas: carrera reactivar / desactivar la sucursal — se decide con la sucursal leída bloqueada', function () {
+    // A) La sucursal se desactiva justo antes de que la reactivación lea lo bloqueado: se rechaza y la cuenta no cambia.
+    [$r, $servicio] = escenarioCuentas();
+    $servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => false]);
+    $r->alIniciarCambiarEstado = static function (UsuariosFalso $r): void { $r->sucursales['MOQ001'] = false; };
+    esperarError(fn () => $servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => true]), 409, 'sucursal_inactiva');
+    afirmar($r->cuentas[1]['activo'] === false, 'A: sigue desactivada');
+    // B) Otro gerente la mueve a una agencia activa justo antes del bloqueo: con la sucursal NUEVA ya puede reactivarse.
+    [$r, $servicio] = escenarioCuentas();
+    $servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => false]);
+    $r->sucursales['MOQ001'] = false;
+    $r->alIniciarCambiarEstado = static function (UsuariosFalso $r): void { $r->cuentas[1]['sucursalCodigo'] = 'AQP001'; };
+    afirmar($servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => true])['activa'] === true, 'B: se decide con la sucursal que la cuenta tiene al bloquearla');
+    // C) Control: sin ninguna intercalación el resultado es el esperado.
+    [$r, $servicio] = escenarioCuentas();
+    $servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => false]);
+    $r->alIniciarCambiarEstado = static function (UsuariosFalso $r): void { /* nadie cambia nada */ };
+    afirmar($servicio->cambiarEstado(SESION_GERENTE, 'lflores', ['activo' => true])['activa'] === true, 'C: control');
+});
+
+prueba('cuentas: cambiarEstado bloquea sucursal → gerentes → cuenta, reintenta si la cuenta se movió y decide antes del UPDATE (revisión estática)', function () {
+    $f = (string) file_get_contents(dirname(__DIR__) . '/src/Modules/Usuarios/UsuariosRepository.php');
+    $c = substr($f, (int) strpos($f, 'function cambiarEstado'), (int) strpos($f, '// ── Utilidades') - (int) strpos($f, 'function cambiarEstado'));
+    $s = strpos($c, 'FROM Sucursal WITH (UPDLOCK, HOLDLOCK)');
+    $g = strpos($c, "rol = 'GERENTE' AND activo = 1");
+    $u = strpos($c, 'FROM Usuario WITH (UPDLOCK, HOLDLOCK) WHERE nombreUsuario');
+    $d = strpos($c, '$decidir([');
+    $up = strpos($c, 'UPDATE Usuario SET activo');
+    afirmar($s !== false && $g !== false && $u !== false && $s < $g && $g < $u && $u < $d && $d < $up, 'orden: sucursal → gerentes → cuenta → decide → UPDATE');
+    afirmar(str_contains($c, '$idActual !== $idCandidata') && str_contains($c, 'continue;') && str_contains($c, "'cuenta_modificada'"), 'reintenta si la cuenta se movió de sucursal y termina con 409 si no se estabiliza');
+    afirmar(str_contains($c, "'sucursalActiva' =>"), 'entrega el estado de la sucursal bloqueada');
+});
+
+// ── Cambiar la PROPIA contraseña: todos los roles, sin ampliar la edición de datos personales ──────────────────────────────────
+/** Un escenario con una cuenta de cada rol y su persona. */
+function escenarioContrasenas(): array
+{
+    [$auth, $cuentas, , $servicioAuth] = escenarioCuenta();
+    $claves = [2 => ['admin1', Roles::ADMINISTRADOR, 'ClaveAdmin#1'], 6 => ['transp1', Roles::TRANSPORTISTA, 'ClaveTransp#1']];
+    foreach ($claves as $id => [$usuario, $rol, $clave]) {
+        $auth->registros[] = registro($id, $usuario, $clave, $rol, true, 3);
+        $cuentas->personas[60 + $id] = ['tipoDocumento' => 'DNI', 'numeroDocumento' => '4000000' . $id, 'nombreCompleto' => 'Persona ' . $usuario, 'telefono' => '90000000' . $id, 'telefonoAuxiliar' => null, 'correo' => null];
+        $cuentas->usuarioPersona[$id] = 60 + $id;
+    }
+    $cuentas->personas[61] = ['tipoDocumento' => 'DNI', 'numeroDocumento' => '45781236', 'nombreCompleto' => 'Rosa María Quispe Mamani', 'telefono' => '987654321', 'telefonoAuxiliar' => null, 'correo' => null];
+    $cuentas->usuarioPersona[1] = 61;
+    $auth->registros[] = registro(7, 'inactivo1', 'ClaveInact#1', Roles::ADMINISTRADOR, false, 3);
+
+    return [$auth, $cuentas, new CuentaService($cuentas), $servicioAuth];
+}
+
+prueba('contraseña propia: el backend deja cambiarla a los cinco roles con sesión vigente, y solo a ellos (sin sesión 401; cuenta desactivada 401)', function () use ($limpiar) {
+    $limpiar();
+    [$auth, , , $servicioAuth] = escenarioContrasenas();
+    $guardia = new RequiereSesion($servicioAuth); // igual que en Cuenta/rutas.php para POST /api/cuenta/contrasena
+    esperarError(fn () => $guardia(peticion('POST', '/api/cuenta/contrasena')), 401, 'no_autenticado');
+    foreach ([1 => 'gerente', 2 => 'administrador', 6 => 'transportista', 4 => 'cliente', 5 => 'empresario'] as $id => $rol) {
+        $limpiar();
+        sesionDe($auth, $servicioAuth, $id);
+        $guardia(peticion('POST', '/api/cuenta/contrasena')); // no lanza: el rol «' . $rol . '» puede cambiar SU contraseña
+    }
+    $limpiar();
+    Sesion::abrir(['id' => 7, 'nombreUsuario' => 'inactivo1', 'rol' => Roles::ADMINISTRADOR, 'nombreCompleto' => 'X', 'sucursal' => null], false, Credencial::huella($auth->buscarPorId(7)['hashContrasena']));
+    esperarError(fn () => $guardia(peticion('POST', '/api/cuenta/contrasena')), 401, 'sesion_invalida');
+    $limpiar();
+});
+
+prueba('contraseña propia: los datos personales (GET y PATCH /api/cuenta) SIGUEN limitados a cliente y empresario — administrador, transportista y gerente reciben 403', function () use ($limpiar) {
+    $limpiar();
+    [$auth, , , $servicioAuth] = escenarioContrasenas();
+    $propietarios = new RequiereRol([Roles::CLIENTE, Roles::EMPRESARIO], new RequiereSesion($servicioAuth)); // igual que en Cuenta/rutas.php
+    foreach ([1, 2, 6] as $id) {
+        $limpiar();
+        sesionDe($auth, $servicioAuth, $id);
+        foreach (['GET', 'PATCH'] as $metodo) {
+            esperarError(fn () => $propietarios(peticion($metodo, '/api/cuenta')), 403, 'acceso_denegado');
+        }
+    }
+    foreach ([4, 5] as $id) {
+        $limpiar();
+        sesionDe($auth, $servicioAuth, $id);
+        $propietarios(peticion('GET', '/api/cuenta')); // regresión: cliente y empresario conservan Mi cuenta
+    }
+    $limpiar();
+    $fuente = (string) file_get_contents(dirname(__DIR__) . '/src/Modules/Cuenta/rutas.php');
+    afirmar(preg_match("/post\('\/api\/cuenta\/contrasena', \[CuentaController::class, 'cambiarContrasena'\], \\\$autenticados\)/", $fuente) === 1, 'rutas.php: la contraseña usa solo $autenticados');
+    afirmar(str_contains($fuente, '$autenticados = [new RequiereSesion()];') && preg_match("/get\('\/api\/cuenta', .*\\\$propietarios\)/", $fuente) === 1 && preg_match("/patch\('\/api\/cuenta', .*\\\$propietarios\)/", $fuente) === 1, 'rutas.php: GET y PATCH siguen con $propietarios');
+});
+
+prueba('contraseña propia: cada rol cambia SOLO la suya, con bcrypt, y las demás sesiones de esa cuenta dejan de valer', function () use ($limpiar) {
+    foreach ([[1, 'gerente1', 'ClaveGerente#1'], [2, 'admin1', 'ClaveAdmin#1'], [6, 'transp1', 'ClaveTransp#1'], [4, 'cliente1', 'ClaveCliente#1'], [5, 'empresa1', 'ClaveEmpresa#1']] as [$id, $usuario, $actual]) {
+        $limpiar();
+        [$auth, , $servicio, $servicioAuth] = escenarioContrasenas();
+        $c = new CuentaController($servicio);
+        $guardia = new RequiereSesion($servicioAuth);
+        $hashesAntes = array_column($auth->registros, 'hashContrasena', 'idUsuario');
+
+        sesionDe($auth, $servicioAuth, $id);
+        $huellaVieja = Sesion::huella(); // la de una sesión abierta en otro dispositivo
+        // El cuerpo intenta apuntar a otra cuenta: se ignora, solo cuenta la de la sesión.
+        $r = leer($c->cambiarContrasena(peticion('POST', '/api/cuenta/contrasena', json_encode(['contrasenaActual' => $actual, 'contrasenaNueva' => 'NuevaClave#2026', 'idUsuario' => 1, 'usuario' => 'gerente1'])), []));
+        afirmar($r['estado'] === 200 && $r['cuerpo']['data'] === ['contrasenaCambiada' => true], "$usuario: respuesta 200");
+        $despues = array_column($auth->registros, 'hashContrasena', 'idUsuario');
+        foreach ($despues as $idOtro => $hash) {
+            if ($idOtro === $id) {
+                afirmar($hash !== $hashesAntes[$id] && str_starts_with($hash, '$2y$12$') && password_verify('NuevaClave#2026', $hash), "$usuario: hash bcrypt nuevo");
+            } else {
+                afirmar($hash === $hashesAntes[$idOtro], "$usuario: no tocó la contraseña de la cuenta $idOtro");
+            }
+        }
+        $guardia(peticion('GET', '/x')); // esta sesión sigue válida (huella renovada)
+        afirmar(Sesion::huella() === Credencial::huella($auth->buscarPorId($id)['hashContrasena']), "$usuario: esta sesión adopta la huella nueva");
+        $limpiar();
+        Sesion::abrir($servicioAuth->vigente($id), false, $huellaVieja);
+        esperarError(fn () => $guardia(peticion('GET', '/x')), 401, 'sesion_invalida');
+        esperarError(fn () => $servicioAuth->ingresar($usuario, $actual), 401, 'credenciales_invalidas');
+        afirmar($servicioAuth->ingresar($usuario, 'NuevaClave#2026')['nombreUsuario'] === $usuario, "$usuario: ingresa con la nueva");
+    }
+    $limpiar();
+});
+
+prueba('contraseña propia: exige la actual y cumple las reglas de la nueva para el personal igual que para el cliente', function () use ($limpiar) {
+    $limpiar();
+    [$auth, , $servicio, $servicioAuth] = escenarioContrasenas();
+    $c = new CuentaController($servicio);
+    sesionDe($auth, $servicioAuth, 2);
+    $hash = $auth->buscarPorId(2)['hashContrasena'];
+    $huella = Sesion::huella();
+    $e = esperarError(fn () => $c->cambiarContrasena(peticion('POST', '/x', json_encode(['contrasenaActual' => 'Equivocada#1', 'contrasenaNueva' => 'NuevaClave#2026'])), []), 422, 'contrasena_incorrecta');
+    afirmar(isset($e->campos['contrasenaActual']), 'señala contrasenaActual');
+    esperarError(fn () => $c->cambiarContrasena(peticion('POST', '/x', json_encode(['contrasenaNueva' => 'NuevaClave#2026'])), []), 422, 'contrasena_incorrecta');
+    foreach ([['corta', 'corta'], ['igual a la actual', 'ClaveAdmin#1'], ['igual al usuario', 'ADMIN1'], ['de 73 caracteres', str_repeat('x', 73)]] as [$cuando, $nueva]) {
+        $e = esperarError(fn () => $c->cambiarContrasena(peticion('POST', '/x', json_encode(['contrasenaActual' => 'ClaveAdmin#1', 'contrasenaNueva' => $nueva])), []), 422, 'datos_invalidos');
+        afirmar(array_keys($e->campos) === ['contrasenaNueva'], "$cuando: marca contrasenaNueva");
+    }
+    afirmar($auth->buscarPorId(2)['hashContrasena'] === $hash && Sesion::huella() === $huella, 'ningún intento fallido cambió el hash ni la huella');
+    $limpiar();
+    esperarError(fn () => $c->cambiarContrasena(peticion('POST', '/x', json_encode(['contrasenaActual' => 'ClaveAdmin#1', 'contrasenaNueva' => 'NuevaClave#2026'])), []), 401, 'no_autenticado');
 });

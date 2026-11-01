@@ -154,38 +154,62 @@ final class UsuariosRepository implements RepositorioGestionUsuarios
     public function cambiarEstado(string $nombreUsuario, bool $activo, callable $decidir): ?bool
     {
         $pdo = Database::conexion();
-        $pdo->beginTransaction();
-        try {
-            // Orden constante de bloqueos: primero los gerentes (todos), luego la cuenta.
-            $gerentes = $pdo->query("SELECT COUNT(*) FROM Usuario WITH (UPDLOCK, HOLDLOCK) WHERE rol = 'GERENTE' AND activo = 1");
-            $gerentesActivos = (int) ($gerentes === false ? 0 : $gerentes->fetchColumn());
-            $fila = $this->uno($pdo, 'SELECT idUsuario, rol, activo FROM Usuario WITH (UPDLOCK, HOLDLOCK) WHERE nombreUsuario = :usuario', [':usuario' => $nombreUsuario]);
-            if ($fila === null) {
-                $pdo->rollBack();
 
-                return null;
+        // Orden de bloqueos constante en todo el sistema: sucursal → (gerentes) → cuenta. La sucursal de la cuenta solo se conoce
+        // leyendo la cuenta, y otro gerente puede moverla entre esa lectura y el bloqueo: se comprueba con la cuenta ya bloqueada y,
+        // si cambió, se reintenta con la nueva sucursal.
+        for ($intento = 0; $intento < 3; $intento++) {
+            $pdo->beginTransaction();
+            try {
+                $candidata = $this->uno($pdo, 'SELECT idSucursal FROM Usuario WHERE nombreUsuario = :usuario', [':usuario' => $nombreUsuario]);
+                if ($candidata === null) {
+                    $pdo->rollBack();
+
+                    return null;
+                }
+                $idCandidata = $candidata['idSucursal'] === null ? null : (int) $candidata['idSucursal'];
+                $sucursal = $idCandidata === null ? null : $this->uno($pdo, 'SELECT codigoSucursal, activa FROM Sucursal WITH (UPDLOCK, HOLDLOCK) WHERE idSucursal = :id', [':id' => $idCandidata]);
+
+                $gerentes = $pdo->query("SELECT COUNT(*) FROM Usuario WITH (UPDLOCK, HOLDLOCK) WHERE rol = 'GERENTE' AND activo = 1");
+                $gerentesActivos = (int) ($gerentes === false ? 0 : $gerentes->fetchColumn());
+                $fila = $this->uno($pdo, 'SELECT idUsuario, rol, activo, idSucursal FROM Usuario WITH (UPDLOCK, HOLDLOCK) WHERE nombreUsuario = :usuario', [':usuario' => $nombreUsuario]);
+                if ($fila === null) {
+                    $pdo->rollBack();
+
+                    return null;
+                }
+                $idActual = $fila['idSucursal'] === null ? null : (int) $fila['idSucursal'];
+                if ($idActual !== $idCandidata) {
+                    $pdo->rollBack();
+
+                    continue; // la cuenta se movió de sucursal entre la lectura y el bloqueo
+                }
+
+                $id = (int) $fila['idUsuario'];
+                $decidir([
+                    'rol' => (string) $fila['rol'], 'activo' => (bool) $fila['activo'],
+                    'sucursalCodigo' => $sucursal === null ? null : (string) $sucursal['codigoSucursal'],
+                    'sucursalActiva' => $sucursal !== null && (bool) $sucursal['activa'],
+                    'viajesAbiertos' => $this->viajesAbiertos($pdo, $id), 'gerentesActivos' => $gerentesActivos,
+                ]);
+
+                $cambio = $pdo->prepare('UPDATE Usuario SET activo = :activo WHERE idUsuario = :id');
+                $cambio->bindValue(':activo', $activo ? 1 : 0, PDO::PARAM_INT);
+                $cambio->bindValue(':id', $id, PDO::PARAM_INT);
+                $cambio->execute();
+                $pdo->commit();
+
+                return $activo;
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
             }
-            $id = (int) $fila['idUsuario'];
-            $decidir([
-                'rol' => (string) $fila['rol'], 'activo' => (bool) $fila['activo'],
-                'viajesAbiertos' => $this->viajesAbiertos($pdo, $id), 'gerentesActivos' => $gerentesActivos,
-            ]);
-
-            $cambio = $pdo->prepare('UPDATE Usuario SET activo = :activo WHERE idUsuario = :id');
-            $cambio->bindValue(':activo', $activo ? 1 : 0, PDO::PARAM_INT);
-            $cambio->bindValue(':id', $id, PDO::PARAM_INT);
-            $cambio->execute();
-            $pdo->commit();
-
-            return $activo;
-        } catch (Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $e;
         }
-    }
 
+        throw new HttpException(409, 'cuenta_modificada', 'La cuenta cambió mientras se procesaba. Inténtalo de nuevo.');
+    }
     // ── Utilidades ──────────────────────────────────────────────────────────
 
     private function viajesAbiertos(PDO $pdo, int $idUsuario): int

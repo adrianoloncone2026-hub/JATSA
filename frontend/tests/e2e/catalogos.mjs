@@ -30,6 +30,7 @@ function reiniciar() {
   sim.fallas = { sucursales: false, rutas: false, vehiculos: false, cuentas: false }
   sim.vacio = false
   sim.cuentasLentas = null // texto de búsqueda cuya respuesta se retrasa
+  sim.bloqueoReactivar = null // usuario cuya reactivación el servidor rechaza (su sucursal está desactivada)
 }
 reiniciar()
 
@@ -171,6 +172,7 @@ const navegador = await iniciarNavegador(9349, ({ metodo, ruta, url, cuerpo }) =
         if (c.usuario === 'rquispe') return error(409, 'no_puede_desactivarse', 'No puedes desactivar tu propia cuenta.')
         if (c.usuario === 'pmamani') return error(409, 'transportista_con_viajes', 'No se puede desactivar: tiene 1 viaje(s) programado(s) o en ruta.')
       }
+      if (cuerpo.activo && sim.bloqueoReactivar === c.usuario) return error(409, 'sucursal_inactiva', 'No se puede reactivar: su sucursal (MOQ001) está desactivada. Reactiva la sucursal o muévela a una agencia activa con «Editar» y vuelve a intentarlo.')
       c.activa = cuerpo.activo
       return exito({ cuenta: { ...c, esUsted: false, editable: true } })
     }
@@ -347,6 +349,11 @@ try {
   await pulsar('input[aria-label="Elegir lflores"]'); await pulsar('.cuentas .acciones-formulario button'); await estable()
   await pulsar('.cuentas .acciones-formulario button.boton-peligro'); await estable()
   comprobar('una cuenta común se desactiva y la lista lo muestra', [await aviso(), (await tabla()).split(' || ')[1].includes('INACTIVA')], ['Cuenta lflores desactivada.', true])
+  sim.bloqueoReactivar = 'lflores'
+  await pulsar('.cuentas .acciones-formulario button'); await estable()
+  comprobar('reactivar personal de una sucursal desactivada: el servidor se niega, la pantalla explica qué hacer y la cuenta sigue inactiva', [await aviso(), (await tabla()).split(' || ')[1].includes('INACTIVA')],
+    ['No se puede reactivar: su sucursal (MOQ001) está desactivada. Reactiva la sucursal o muévela a una agencia activa con «Editar» y vuelve a intentarlo.', true])
+  sim.bloqueoReactivar = null
   comprobar('con una cuenta inactiva seleccionada el botón pasa a «Activar seleccionada»', await texto('.cuentas .acciones-formulario button'), 'Activar seleccionada')
   await pulsar('.cuentas .acciones-formulario button'); await estable()
   comprobar('activar la cuenta de nuevo', [await aviso(), (await tabla()).split(' || ')[1].includes('INACTIVA')], ['Cuenta lflores activada.', false])

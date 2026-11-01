@@ -193,7 +193,7 @@ try {
   estado.sesion = usuarioDe('GERENTE', 'Rosa María Quispe Mamani')
   await irA('/cliente/cuenta')
   comprobar('un gerente no entra a Mi cuenta: va a su área', await ruta(), '/gerente')
-  comprobar('el gerente ve su identidad sin enlace a Mi cuenta', [await texto('.identidad-nombre'), await existe('a.identidad')], ['Rosa María Quispe Mamani', false])
+  comprobar('el gerente NO tiene enlace a Mi cuenta: su nombre lleva solo a «Cambiar contraseña» (autorización del PR #11)', [await texto('.identidad-nombre'), await evaluar("document.querySelector('a.identidad')?.getAttribute('href') ?? null")], ['Rosa María Quispe Mamani', '/gerente/contrasena'])
   estado.sesion = usuarioDe('EMPRESARIO', 'Comercial Sur S.A.C.')
   estado.rol = 'EMPRESARIO'
   estado.persona = { tipoDocumento: 'RUC', numeroDocumento: '20123456789', nombreCompleto: 'Comercial Sur S.A.C.', telefono: '987654324', telefonoAuxiliar: null, correo: 'ventas@comercialsur.pe' }

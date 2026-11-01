@@ -32,7 +32,7 @@ Crea una cuenta. **No abre sesión**: después la persona ingresa con su usuario
 | 409 | `usuario_en_uso` | El usuario ya existe (`campos.usuario`) |
 
 ## GET `/api/cuenta` · PATCH `/api/cuenta` · POST `/api/cuenta/contrasena`
-Solo **CLIENTE** y **EMPRESARIO** (`RequiereRol`); otros roles reciben `403 acceso_denegado` y sin sesión `401`. Siempre actúan sobre **la cuenta de la sesión**: nunca se acepta un id en el cuerpo.
+**GET y PATCH `/api/cuenta`:** solo **CLIENTE** y **EMPRESARIO** (`RequiereRol`); otros roles reciben `403 acceso_denegado` y sin sesión `401`. **POST `/api/cuenta/contrasena`:** cualquier rol con **sesión vigente** (GERENTE, ADMINISTRADOR, TRANSPORTISTA, CLIENTE y EMPRESARIO; `RequiereSesion`, módulo 10): solo cambia **la propia** contraseña (el cuerpo no puede apuntar a otra cuenta), así que ampliarla no da al personal edición de teléfonos ni correo. Sin sesión `401`; con la cuenta desactivada `401 sesion_invalida`. Siempre actúan sobre **la cuenta de la sesión**: nunca se acepta un id en el cuerpo.
 
 - **GET** → `{ "persona": { tipoDocumento, numeroDocumento, nombreCompleto, telefono, telefonoAuxiliar, correo }, "usuario": { nombreUsuario, rol, activo, fechaCreacion } }`. No expone el hash.
 - **PATCH** `{ telefono, telefonoAuxiliar?, correo? }` → cuenta actualizada. Solo cambia esos tres campos de la persona; documento y nombre son de solo lectura. Mismas reglas que el registro; `422` con `campos` si no cumplen y no se guarda nada.

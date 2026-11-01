@@ -87,6 +87,7 @@ node frontend/tests/e2e/despacho.mjs   # Despacho, Mis viajes y Detalle del viaj
 node frontend/tests/e2e/entregas.mjs   # Llegadas y entregas (módulo 8)
 node frontend/tests/e2e/rastreo.mjs    # Rastreo, salidas e historial (módulo 9)
 node frontend/tests/e2e/catalogos.mjs  # Catálogos y cuentas del gerente (módulo 10)
+node frontend/tests/e2e/contrasena.mjs  # Cambiar la propia contraseña, todos los roles (módulo 10)
 # Con CAPTURAS=<carpeta> guarda capturas (escritorio y móvil) para revisar el diseño contra el prototipo.
 ```
 Abren Edge sin ventana (sin dependencias nuevas) y **interceptan las llamadas a `/api`** con respuestas fijas (arnés común en `frontend/tests/e2e/arnes.mjs`), así que no necesitan PHP ni base de datos. Cubren las pantallas, los errores del servidor y la carrera de respuestas lentas del Cotizador. Salen con código 1 si algo falla. Variables opcionales: `FRONTEND_URL` y `EDGE_PATH`.

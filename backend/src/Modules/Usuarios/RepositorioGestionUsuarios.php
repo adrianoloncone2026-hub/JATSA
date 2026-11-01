@@ -57,8 +57,11 @@ interface RepositorioGestionUsuarios
     public function cambiarPuesto(string $nombreUsuario, string $rol, string $codigoSucursal, callable $decidir): ?bool;
 
     /**
-     * Activa o desactiva una cuenta. Bloquea la cuenta y los gerentes activos y llama a $decidir con ['rol' => string,
-     * 'activo' => bool, 'viajesAbiertos' => int, 'gerentesActivos' => int]. null si la cuenta no existe.
+     * Activa o desactiva una cuenta. En UNA transacción bloquea, en este orden, la sucursal de la cuenta (si tiene), los gerentes
+     * activos y la cuenta (UPDLOCK, HOLDLOCK) y llama a $decidir con lo leído YA BLOQUEADO: ['rol' => string, 'activo' => bool,
+     * 'sucursalCodigo' => ?string, 'sucursalActiva' => bool (false si no tiene sucursal o está inactiva), 'viajesAbiertos' => int,
+     * 'gerentesActivos' => int]. Si la cuenta cambió de sucursal entre la lectura que eligió qué bloquear y el bloqueo de la cuenta,
+     * reintenta con la nueva; tras varios intentos lanza HttpException 409. null si la cuenta no existe.
      *
      * @param callable(array<string, mixed>): void $decidir
      */

@@ -183,7 +183,16 @@ final class UsuariosService
 
         $resultado = $this->usuarios->cambiarEstado($actual['nombreUsuario'], $activo, static function (array $ctx) use ($activo, $esUsted): void {
             if ($activo) {
-                return; // volver a activar siempre se puede
+                // Reactivar personal exige que su sucursal exista y esté ACTIVA (decidido con la sucursal bloqueada): crear cuenta y
+                // cambiar de puesto ya lo exigen, y esta vía no puede dejar personal activo en una agencia desactivada.
+                if (in_array($ctx['rol'], self::ROLES_PERSONAL, true) && !$ctx['activo'] && !$ctx['sucursalActiva']) {
+                    throw new HttpException(409, 'sucursal_inactiva', sprintf(
+                        'No se puede reactivar: su sucursal%s está desactivada. Reactiva la sucursal o muévela a una agencia activa con «Editar» y vuelve a intentarlo.',
+                        $ctx['sucursalCodigo'] === null ? '' : ' (' . $ctx['sucursalCodigo'] . ')',
+                    ));
+                }
+
+                return; // las demás reactivaciones (gerente, cliente, empresario) no dependen de una sucursal
             }
             if ($esUsted) {
                 throw new HttpException(409, 'no_puede_desactivarse', 'No puedes desactivar tu propia cuenta.');
