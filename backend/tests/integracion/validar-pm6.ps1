@@ -273,7 +273,7 @@ try {
     $mis = Llamar GET '/api/pagos' $null '8000' $cookieCliente
     $ids = @($mis.Json.data.pagos | % id)
     $debe = @(Leer "SELECT p.idPago FROM Pago p JOIN Envio e ON e.idEnvio=p.idEnvio JOIN Reserva r ON r.idReserva=e.idReserva JOIN Persona q ON q.numeroDocumento='90000061' WHERE p.pagadoPor='REMITENTE' AND r.idPersonaRemitente=q.idPersona" | % idPago)
-    V 'pm6_cliente (remitente) ve exactamente los pagos imputados al REMITENTE de sus envíos' ((($ids | Sort-Object) -join ',') -eq (($debe | Sort-Object) -join ',') -and $ids.Count -ge 6) "api=$($ids -join ',') bd=$($debe -join ',')"
+    V 'pm6_cliente (remitente) ve exactamente los pagos imputados al REMITENTE de sus envíos' ((@($ids | % { [int]$_ } | Sort-Object) -join ',') -eq (@($debe | % { [int]$_ } | Sort-Object) -join ',') -and $ids.Count -ge 6) "api=$($ids -join ',') bd=$($debe -join ',')"
     V 'pm6_cliente NO ve el pago imputado al DESTINATARIO (pago en destino)' ($ids -notcontains $idDestino)
     V 'total pagado = suma de los REGISTRADO imputados al remitente' ([decimal]$mis.Json.data.totalPagado -eq [decimal](Leer "SELECT COALESCE(SUM(p.monto),0) AS t FROM Pago p JOIN Envio e ON e.idEnvio=p.idEnvio JOIN Reserva r ON r.idReserva=e.idReserva JOIN Persona q ON q.numeroDocumento='90000061' WHERE p.estadoPago='REGISTRADO' AND p.pagadoPor='REMITENTE' AND r.idPersonaRemitente=q.idPersona")[0].t) $mis.Json.data.totalPagado
     V 'los pagos anulados se listan con su estado y no suman' ((@($mis.Json.data.pagos | ? estado -eq 'ANULADO').Count -ge 2))
