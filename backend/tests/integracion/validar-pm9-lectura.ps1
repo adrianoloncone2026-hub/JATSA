@@ -31,6 +31,7 @@ $php = 'C:\php\php.exe'
 $salida = Join-Path $env:TEMP ('pm9_' + (Get-Date -Format 'yyyyMMdd_HHmmss'))
 New-Item -ItemType Directory -Force $salida | Out-Null
 . "$aqui\api.ps1"
+. "$aqui\pm9-funciones.ps1"   # reglas puras de horarios y «programado» (probadas sin base en probar-pm9-funciones.ps1)
 
 $ok = 0; $mal = 0
 function V($nombre, $cond, $detalle = '') { if ($cond) { $script:ok++; "  OK    $nombre" } else { $script:mal++; "  FALLO $nombre  $detalle" } }
@@ -40,7 +41,7 @@ function Decimal($x) { [decimal]::Parse([string]$x, [Globalization.CultureInfo]:
 
 $sesionesPropias = @()
 $servidor = $null
-$cobertura = 'COMPLETA: parte pública y parte del cliente (historial y Mi panel) con una cuenta existente.'
+$cobertura = 'NO CONCLUYÓ: la validación se interrumpió antes de terminar; no hay cobertura que reportar.'
 # Abre sesión con una cuenta existente (POST /api/auth/ingresar no escribe en la base) y anota el id de SU archivo de sesión para borrarlo al final.
 function Ingresar-Cuenta($usuario, $clave) {
     $c = GalletaDe (Llamar POST '/api/auth/ingresar' @{ usuario = $usuario; contrasena = $clave })
@@ -111,12 +112,7 @@ try {
     # Horarios esperados: los últimos 10 viajes CON salida de cada par origen-destino del viaje (más reciente primero, desempate por idViaje),
     # horas HH:00 contadas; se eligen las 3 más frecuentes (a igual frecuencia, la más temprana) y se muestran en orden de reloj.
     $viajes = @(Leer "SELECT t.o, t.d, t.salida FROM (SELECT so.codigoSucursal AS o, sd.codigoSucursal AS d, CONVERT(VARCHAR(19), v.fechaHoraSalida, 120) AS salida, ROW_NUMBER() OVER (PARTITION BY v.idSucursalOrigen, v.idSucursalDestino ORDER BY v.fechaHoraSalida DESC, v.idViaje DESC) AS n FROM Viaje v JOIN Sucursal so ON so.idSucursal=v.idSucursalOrigen JOIN Sucursal sd ON sd.idSucursal=v.idSucursalDestino WHERE v.fechaHoraSalida IS NOT NULL) t WHERE t.n <= 10")
-    $horariosEsperados = @{}
-    foreach ($g in ($viajes | Group-Object { "$($_.o)-$($_.d)" })) {
-        $conteo = $g.Group | Group-Object { $_.salida.Substring(11, 2) + ':00' }
-        $elegidas = @($conteo | Sort-Object @{ e = { $_.Count }; Descending = $true }, @{ e = { $_.Name }; Descending = $false } | Select-Object -First 3 | % { $_.Name } | Sort-Object)
-        $horariosEsperados[$g.Name] = $elegidas
-    }
+    $horariosEsperados = Get-HorariosEsperados $viajes   # una ruta sin viajes con salida NO tiene clave
     $programadosBd = @{}
     foreach ($p in @(Leer "SELECT so.codigoSucursal AS o, sd.codigoSucursal AS d, COUNT(*) AS n FROM Viaje v JOIN Sucursal so ON so.idSucursal=v.idSucursalOrigen JOIN Sucursal sd ON sd.idSucursal=v.idSucursalDestino WHERE v.fechaHoraSalida IS NULL GROUP BY so.codigoSucursal, sd.codigoSucursal")) { $programadosBd["$($p.o)-$($p.d)"] = [int]$p.n }
 
@@ -128,11 +124,12 @@ try {
         V 'ningún id de ruta repetido' (@($api | Group-Object id | ? { $_.Count -gt 1 }).Count -eq 0)
         foreach ($ruta in $api) {
             $esp = $esperadas[$ruta.id]; if ($null -eq $esp) { continue }
-            $hEsp = @($horariosEsperados[$ruta.id])
-            V "$($ruta.id): horarios exactos = $(if ($hEsp.Count) { $hEsp -join ' ' } else { '(ninguno)' })" ((@($ruta.horarios) -join ',') -eq ($hEsp -join ',')) "api=$(@($ruta.horarios) -join ',')"
+            $esperado = Get-EsperadoDeRuta $ruta.id $horariosEsperados $programadosBd
+            $hEsp = $esperado.Horarios
+            $hApi = @($ruta.horarios | Where-Object { $_ })   # un null de la API no cuenta como horario
+            V "$($ruta.id): horarios exactos = $(if ($hEsp.Count) { $hEsp -join ' ' } else { '(ninguno)' })" (($hApi -join ',') -eq ($hEsp -join ',')) "api=$(@($ruta.horarios) -join ',')"
             V "$($ruta.id): tiempo = $($esp.horas) h (el mayor de las tarifas elegidas)" ([int]$ruta.horas -eq $esp.horas) "api=$($ruta.horas)"
-            $progEsp = ($hEsp.Count -eq 0) -and ($programadosBd[$ruta.id] -gt 0)
-            V "$($ruta.id): «programado» solo sin historial y con un viaje sin salida" ([bool]$ruta.programado -eq $progEsp) "api=$($ruta.programado) esperado=$progEsp"
+            V "$($ruta.id): «programado» solo sin historial y con un viaje sin salida (esperado: $($esperado.Programado))" ([bool]$ruta.programado -eq $esperado.Programado) "api=$($ruta.programado) esperado=$($esperado.Programado)"
         }
         foreach ($ruta in @($api | Select-Object -First 3)) {
             $esp = $esperadas[$ruta.id]; if ($null -eq $esp) { continue }
@@ -142,7 +139,7 @@ try {
             $x = $det.Json.data.ruta
             $tiposApi = @($x.tarifas | % { $_.tipo })
             V "  una tarifa por tipo, sin duplicados, y los mismos tipos que la base ($(@($esp.tipos.Keys | Sort-Object) -join ','))" ((@($tiposApi | Sort-Object) -join ',') -eq (@($esp.tipos.Keys | Sort-Object) -join ',') -and @($tiposApi | Select-Object -Unique).Count -eq $tiposApi.Count) "api=$($tiposApi -join ',')"
-            V '  horarios del detalle iguales a los de la lista' ((@($x.horarios) -join ',') -eq (@($ruta.horarios) -join ','))
+            V '  horarios del detalle iguales a los de la lista' ((@($x.horarios | Where-Object { $_ }) -join ',') -eq (@($ruta.horarios | Where-Object { $_ }) -join ','))
             V '  recientes: solo viajes con salida, a lo sumo 10' (@($x.recientes).Count -le 10 -and @($x.recientes | ? { -not $_.fechaHoraSalida }).Count -eq 0)
         }
     }
@@ -192,6 +189,7 @@ try {
         }
         $sin = Llamar GET '/api/mis-envios/resumen'
         V 'sin sesión: 401' ($sin.Estado -eq 401)
+        $script:cobertura = 'COMPLETA: parte pública y parte del cliente (historial y Mi panel) con una cuenta existente.'
     }
 }
 catch {
@@ -218,7 +216,7 @@ finally {
     }
     catch { $script:mal++; "  ERROR al comparar: $($_.Exception.Message)" }
     "Resultado: $ok correctas, $mal con fallo. Informes en $salida"
-    "COBERTURA: $cobertura"
+    "COBERTURA: $cobertura$(if ($mal -gt 0) { ' — CON FALLOS: no es una validación satisfactoria.' })"
 }
 if ($mal -gt 0 -or -not $limpio) { exit 1 }
 exit 0
