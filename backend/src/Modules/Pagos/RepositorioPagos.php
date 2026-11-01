@@ -37,11 +37,15 @@ interface RepositorioPagos
     public function buscarPago(int $idPago): ?array;
 
     /**
-     * Anula el pago SOLO si es de esa sucursal y sigue REGISTRADO (UPDATE condicional: es atómico).
+     * Anula un pago en UNA transacción. Primero bloquea el ENVÍO del pago (UPDLOCK + HOLDLOCK, el mismo bloqueo que toman
+     * registrar() y la entrega del módulo 8: cobrar, anular y entregar quedan en fila), vuelve a leer el pago con el envío
+     * bloqueado y llama a $decidir, que aplica las reglas y lanza HttpException si no procede (todo se deshace). Si procede,
+     * hace el UPDATE condicional (sucursal y REGISTRADO). Un pago nunca se borra.
      *
-     * @return bool true si lo anuló; false si no existe, es de otra sucursal o ya estaba anulado.
+     * @param callable(array<string, mixed>): void $decidir Recibe ['pago' => {idPago, idSucursal, estadoPago}, 'estadoEnvio' => string].
+     * @return bool|null null si el pago no existe; false si el UPDATE no cambió ninguna fila (otra caja se adelantó).
      */
-    public function anular(int $idPago, int $idSucursal): bool;
+    public function anular(int $idPago, int $idSucursal, callable $decidir): ?bool;
 
     /**
      * Pagos cobrados en la sucursal, el más reciente primero.

@@ -104,6 +104,13 @@ final class PagoService
             if ($estado['estado'] === 'ANULADO') {
                 throw new HttpException(409, 'envio_anulado', 'El envío está anulado: no admite pagos.');
             }
+            // Un envío ya cerrado no admite cobros (los reembolsos y devoluciones de dinero están fuera del alcance del sistema).
+            if ($estado['estado'] === 'ENTREGADO') {
+                throw new HttpException(409, 'envio_entregado', 'El envío ya fue entregado: no admite más pagos.');
+            }
+            if ($estado['estado'] === 'DEVUELTO') {
+                throw new HttpException(409, 'envio_devuelto', 'El envío fue devuelto: no admite pagos.');
+            }
             $saldo = $estado['importe'] - $estado['pagado'];
             if ($saldo <= 0) {
                 throw new HttpException(409, 'envio_pagado', 'El envío ya está pagado por completo.');
@@ -136,21 +143,36 @@ final class PagoService
     public function anular(array $usuario, string $id): array
     {
         $sucursal = VentanillaService::sucursalDe($usuario);
-        $pago = preg_match('/^[1-9]\d{0,8}$/', $id) === 1 ? $this->pagos->buscarPago((int) $id) : null;
-
-        if ($pago === null || $pago['idSucursal'] !== $sucursal['id']) {
-            throw new HttpException(404, 'pago_no_encontrado', 'No se encontró el pago en esta caja.');
-        }
-        if ($pago['estadoPago'] === 'ANULADO') {
-            throw new HttpException(409, 'pago_anulado', 'El pago ya estaba anulado.');
+        if (preg_match('/^[1-9]\d{0,8}$/', $id) !== 1) {
+            throw self::pagoNoEncontrado();
         }
 
-        // El UPDATE vuelve a comprobar en SQL que siga REGISTRADO y sea de esta sucursal (otra caja pudo adelantarse).
-        if (!$this->pagos->anular($pago['idPago'], $sucursal['id'])) {
-            throw new HttpException(409, 'pago_anulado', 'El pago ya estaba anulado.');
+        // Las reglas se aplican DENTRO de la transacción, con el envío bloqueado: así la entrega y la anulación no se cruzan
+        // (un envío ENTREGADO nunca queda con saldo por una anulación posterior).
+        $decidir = static function (array $contexto) use ($sucursal): void {
+            if ($contexto['pago']['idSucursal'] !== $sucursal['id']) {
+                throw self::pagoNoEncontrado(); // el pago de otra caja es, para esta, como si no existiera
+            }
+            if ($contexto['pago']['estadoPago'] === 'ANULADO') {
+                throw new HttpException(409, 'pago_anulado', 'El pago ya estaba anulado.');
+            }
+            if ($contexto['estadoEnvio'] === 'ENTREGADO') {
+                throw new HttpException(409, 'envio_entregado', 'El envío ya fue entregado: sus pagos ya no se anulan. Los reembolsos no se gestionan en este sistema.');
+            }
+            if ($contexto['estadoEnvio'] === 'DEVUELTO') {
+                throw new HttpException(409, 'envio_devuelto', 'El envío fue devuelto: sus pagos ya no se anulan. Los reembolsos no se gestionan en este sistema.');
+            }
+        };
+
+        $hecho = $this->pagos->anular((int) $id, $sucursal['id'], $decidir);
+        if ($hecho === null) {
+            throw self::pagoNoEncontrado();
+        }
+        if ($hecho === false) {
+            throw new HttpException(409, 'pago_anulado', 'El pago ya estaba anulado.'); // el UPDATE condicional no cambió nada: otra caja se adelantó
         }
 
-        $anulado = $this->pagos->buscarPago($pago['idPago']) ?? throw new HttpException(404, 'pago_no_encontrado', 'No se encontró el pago en esta caja.');
+        $anulado = $this->pagos->buscarPago((int) $id) ?? throw self::pagoNoEncontrado();
 
         return self::presentarPago($anulado);
     }
@@ -220,6 +242,11 @@ final class PagoService
     private static function esDeLaSucursal(array $envio, int $idSucursal): bool
     {
         return in_array($idSucursal, [$envio['idSucursalOrigen'], $envio['idSucursalDestino']], true);
+    }
+
+    private static function pagoNoEncontrado(): HttpException
+    {
+        return new HttpException(404, 'pago_no_encontrado', 'No se encontró el pago en esta caja.');
     }
 
     private static function envioNoEncontrado(): HttpException

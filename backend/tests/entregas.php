@@ -234,6 +234,14 @@ prueba('entregar: si se cobra el saldo justo antes de confirmar, la decisión ya
     afirmar($servicio->entregar(personal(), 'ENR5T6Y7U8I9', ['tipoDocumento' => 'RUC', 'numeroDocumento' => '20123456789'])['saldo'] === '0.00', 'entregado sin saldo');
 });
 
+prueba('entregar: si se anula un pago justo antes de confirmar (carrera con Caja), la decisión ve el saldo y NO entrega', function () {
+    [$r, $servicio] = escenarioEntregas();
+    // El envío estaba pagado (8.50); Caja anula ese pago antes de que la entrega, ya con el envío bloqueado, lea lo pagado.
+    $r->antesDeDecidir = function (EntregasFalso $falso): void { $falso->envios['ENM2P6T8R1WQ']['pagado'] = '0.00'; };
+    $e = esperarError(fn () => $servicio->entregar(personal(), 'ENM2P6T8R1WQ', ['tipoDocumento' => 'DNI', 'numeroDocumento' => '71889345']), 409, 'saldo_pendiente');
+    afirmar(str_contains($e->getMessage(), '8.50') && $r->envios['ENM2P6T8R1WQ']['estado'] === 'EN_DESTINO' && $r->envios['ENM2P6T8R1WQ']['entrega'] === null, 'no se entregó y el envío sigue EN_DESTINO');
+});
+
 prueba('entregar: estados que no se pueden entregar y envíos de otra agencia (409 / 404 igual que inexistente)', function () {
     [$r, $servicio] = escenarioEntregas();
     $dni = ['tipoDocumento' => 'DNI', 'numeroDocumento' => '70234561'];
