@@ -314,8 +314,10 @@ finally {
                 '{0,-20} filas {1,3} -> {2,3}  contenido {3,-10} IDENTITY {4} -> {5}' -f $t, $a.filas, $d.filas, $(if ($mismo) { 'idéntico' } else { 'DIFIERE' }), $a.ident, $d.ident
             }
             V 'las 12 tablas con las mismas filas y contenido que antes (incluida Pago)' $igual
-            V '0 registros pm6' (@($despues.restos.personas_pm6).Count -eq 0 -and @($despues.restos.usuarios_pm | ? { $_ -like 'pm6*' }).Count -eq 0)
-            $limpio = $true
+            $sinRestos = (@($despues.restos.personas_pm6).Count -eq 0 -and @($despues.restos.usuarios_pm | ? { $_ -like 'pm6*' }).Count -eq 0)
+            V '0 registros pm6' $sinRestos
+            # Solo se informa limpieza completa si se COMPROBÓ: tablas idénticas y sin restos pm6.
+            $limpio = ($igual -and $sinRestos)
         } catch { "ERROR en la limpieza: $($_.Exception.Message)" }
     }
     # Sesiones: solo los archivos sess_<id> de las sesiones que abrió ESTA prueba; ninguna otra sesión se toca.
@@ -329,4 +331,7 @@ finally {
     }
     "sesiones propias borradas: $borradas de $(@($sesionesPropias | Select-Object -Unique).Count) (ninguna otra se toca)"
     "RESUMEN: $ok correctas, $mal con fallo. Limpieza completa: $limpio. Manifiesto e instantáneas en $salida"
+    # Código de salida: 0 solo si no hubo ningún fallo y la limpieza quedó comprobada; en otro caso 1.
+    $codigoSalida = if ($mal -eq 0 -and $limpio) { 0 } else { 1 }
 }
+exit $codigoSalida
