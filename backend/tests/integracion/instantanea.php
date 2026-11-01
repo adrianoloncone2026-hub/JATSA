@@ -36,6 +36,7 @@ foreach ($tablas as $tabla) {
 $salida['restos'] = [
     'usuarios_pm' => $pdo->query("SELECT nombreUsuario FROM Usuario WHERE nombreUsuario LIKE 'pm%' ORDER BY 1")->fetchAll(PDO::FETCH_COLUMN),
     'personas_prueba' => $pdo->query("SELECT numeroDocumento FROM Persona WHERE numeroDocumento IN ('90000051','90000052','90000053','90000054') ORDER BY 1")->fetchAll(PDO::FETCH_COLUMN),
+    'personas_pm6' => $pdo->query("SELECT numeroDocumento FROM Persona WHERE numeroDocumento IN ('90000061','90000062','90000063','90000064') ORDER BY 1")->fetchAll(PDO::FETCH_COLUMN),
     'reservas_total' => (int) $pdo->query('SELECT COUNT(*) FROM Reserva')->fetchColumn(),
 ];
 $salida['reloj_sql'] = (string) $pdo->query('SELECT CONVERT(VARCHAR(19), SYSDATETIME(), 120)')->fetchColumn();
