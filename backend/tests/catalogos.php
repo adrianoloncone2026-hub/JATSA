@@ -1259,6 +1259,23 @@ prueba('altas de Ruta: el id sale del MISMO INSERT (OUTPUT INSERTED.idRuta), se 
     $ps = (string) file_get_contents($raiz . '/tests/integracion/validar-pm10.ps1');
     afirmar(str_contains($ps, '[int]$r.Json.data.ruta.id -gt 0') && str_contains($ps, "ruta.origen.codigo -eq 'PMX901'") && str_contains($ps, '[int]$r.Json.data.ruta.id -ne $idAntigua'), 'pm10 exige id positivo y origen/destino correctos en Nueva ruta y en Nuevo precio');
 });
+prueba('pm10 (validador): adopta la cookie renovada tras cambiar la contraseña y todos los conteos de tuberías van con @(...)', function () {
+    $ps = (string) file_get_contents(dirname(__DIR__) . '/tests/integracion/validar-pm10.ps1');
+    $cambio = strpos($ps, "cambia su propia contraseña (200)");
+    $cookie = strpos($ps, '$cookieNueva = GalletaDe $r');
+    $usa = strpos($ps, "la sesión que cambió la contraseña sigue válida");
+    afirmar($cambio !== false && $cookie > $cambio && $usa > $cookie, 'la cookie renovada se toma de la respuesta del cambio, antes de usar esa sesión');
+    afirmar(str_contains($ps, '$a = $cookieNueva') && str_contains($ps, 'el servidor entrega la cookie renovada'), 'la sesión que cambió la contraseña pasa a usar la cookie nueva y se exige que el servidor la entregue');
+    // Ningún ".Count" sobre una tubería con filtro sin envolver en @(...): un único resultado no tiene .Count en PowerShell 5.1.
+    $sinEnvolver = [];
+    foreach (preg_split('/\R/', $ps) as $n => $linea) {
+        if (preg_match('/(?<!@)\(\s*\$\w+\s*\|\s*(\?|Where-Object)\b[^()]*(\{[^{}]*\})?\s*\)\.Count/', $linea) === 1) {
+            $sinEnvolver[] = $n + 1;
+        }
+    }
+    afirmar($sinEnvolver === [], 'todos los conteos de tuberías con filtro usan @(...): líneas ' . implode(',', $sinEnvolver));
+    afirmar(str_contains($ps, '(@($res | ? { $_.Estado -in 200, 201 }).Count -ge 1)') && str_contains($ps, '(@($res | ? { $_.Estado -notin 200, 409, 401, 500 }).Count -eq 0)'), 'C2–C4 y C7 cuentan con @(...)');
+});
 prueba('pm10 aislado (revisión estática): cargar_bd_aislada nunca ejecuta el script original, no toca backend/.env, valida la copia y la estructura y carga solo una semilla sintética en una base vacía', function () {
     $d = dirname(__DIR__) . '/tests/integracion';
     $ps = (string) file_get_contents("$d/cargar_bd_aislada.ps1");

@@ -336,6 +336,10 @@ try {
         $nueva = Clave
         $r = Api POST '/api/cuenta/contrasena' @{ contrasenaActual = $pw[$c.k]; contrasenaNueva = $nueva } $a
         V "$($c.u): cambia su propia contraseña (200)" ($r.Estado -eq 200) $r.Texto
+        # El servidor rota el id de sesión (session_regenerate_id) al cambiar la contraseña y entrega la cookie nueva, como haría un navegador: se adopta.
+        $cookieNueva = GalletaDe $r
+        V "$($c.u): el servidor entrega la cookie renovada de la sesión que cambió la contraseña" ([bool]$cookieNueva)
+        if ($cookieNueva) { $script:sesionesPropias += ($cookieNueva -replace '^JATSA_SESION=', ''); $a = $cookieNueva }
         V "$($c.u): la OTRA sesión de la cuenta deja de valer (401)" ((Api GET '/api/auth/yo' $null $b '8001').Estado -eq 401)
         V "$($c.u): la sesión que cambió la contraseña sigue válida" ((Api GET '/api/auth/yo' $null $a).Estado -eq 200)
         V "$($c.u): ingresar con la anterior falla (401) y con la nueva funciona" ((Llamar POST '/api/auth/ingresar' @{ usuario = $c.u; contrasena = $pw[$c.k] } '8002').Estado -eq 401 -and ((GalletaDe (Llamar POST '/api/auth/ingresar' @{ usuario = $c.u; contrasena = $nueva } '8002')) -ne ''))
@@ -378,7 +382,7 @@ try {
         AnotarViajesTemporales
         $f = (Leer $caso.consulta)[0]
         V "$($caso.n): nunca queda un viaje abierto con el recurso desactivado (resultado: $(Resumen $res); desactivado=$(& $caso.inactivo $f), viajes abiertos=$($f.abiertos))" (-not ((& $caso.inactivo $f) -and [int]$f.abiertos -gt 0))
-        V "$($caso.n): al menos una de las dos solicitudes fue rechazada o el viaje se creó antes de la desactivación (consistente con las respuestas)" (($res | ? { $_.Estado -in 200, 201 }).Count -ge 1)
+        V "$($caso.n): al menos una de las dos solicitudes fue rechazada o el viaje se creó antes de la desactivación (consistente con las respuestas)" (@($res | ? { $_.Estado -in 200, 201 }).Count -ge 1)
     }
 
     # C5) Crear una cuenta en una sucursal a la vez que se desactiva esa sucursal (PMX903 sin personal ni viajes).
@@ -406,7 +410,7 @@ try {
     $res = EnParalelo @((Tarea 8000 $g1 POST '/api/usuarios/pm10_gerente2/estado' @{ activo = $false }), (Tarea 8001 $g2 POST '/api/usuarios/pm10_gerente/estado' @{ activo = $false }))
     $null = Evaluar500 $res $marca 'C7 gerentes cruzados'
     $activos = [int](Leer "SELECT COUNT(*) AS n FROM Usuario WHERE rol='GERENTE' AND activo=1")[0].n
-    V "C7 último gerente: nunca quedan CERO gerentes activos (resultado: $(Resumen $res); gerentes activos=$activos)" ($activos -ge 1 -and (($res | ? { $_.Estado -notin 200, 409, 401, 500 }).Count -eq 0))
+    V "C7 último gerente: nunca quedan CERO gerentes activos (resultado: $(Resumen $res); gerentes activos=$activos)" ($activos -ge 1 -and (@($res | ? { $_.Estado -notin 200, 409, 401, 500 }).Count -eq 0))
     $activosTemporales = [int](Leer "SELECT COUNT(*) AS n FROM Usuario WHERE nombreUsuario IN ('pm10_gerente','pm10_gerente2') AND activo=1")[0].n
     V 'C7: las respuestas coinciden con el estado final de cada gerente temporal' (@($res | ? { $_.Estado -eq 200 }).Count -eq (2 - $activosTemporales))
     $sobrevive = if ([int](Leer "SELECT activo AS n FROM Usuario WHERE nombreUsuario='pm10_gerente'")[0].n -eq 1) { $g1 } elseif ([int](Leer "SELECT activo AS n FROM Usuario WHERE nombreUsuario='pm10_gerente2'")[0].n -eq 1) { $g2 } else { $null }
