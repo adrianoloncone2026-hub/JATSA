@@ -13,6 +13,8 @@ import FormalizarEnvio from '../modules/administrador/FormalizarEnvio.jsx'
 import LlegadasEntregas from '../modules/administrador/LlegadasEntregas.jsx'
 import ReservaVentanilla from '../modules/administrador/ReservaVentanilla.jsx'
 import Ventanilla from '../modules/administrador/Ventanilla.jsx'
+import Catalogos from '../modules/gerente/Catalogos.jsx'
+import Cuentas from '../modules/gerente/Cuentas.jsx'
 import DetalleViaje from '../modules/transportista/DetalleViaje.jsx'
 import MisViajes from '../modules/transportista/MisViajes.jsx'
 import Agencias from '../modules/publico/Agencias.jsx'
@@ -50,6 +52,8 @@ const PANTALLAS_REALES = {
   'administrador/caja': Caja,
   'administrador/despacho': Despacho,
   'administrador/llegadas-entregas': LlegadasEntregas,
+  'gerente/catalogos': Catalogos,
+  'gerente/cuentas': Cuentas,
   'transportista/': MisViajes,
   'transportista/viajes/:codigo': DetalleViaje,
   'cliente/': MiPanel,

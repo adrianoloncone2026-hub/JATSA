@@ -54,6 +54,8 @@ El navegador llama a `http://localhost:5173/api/...`; Vite reenvía `/api` a `ht
 | POST · DELETE | `/api/despacho/viajes/{codigo}/carga` · `.../carga/{seguimiento}` | ADMINISTRADOR: cargar un envío en un viaje programado y quitarlo. |
 | GET | `/api/viajes` · `/api/viajes/{codigo}` | TRANSPORTISTA: «Mis viajes» y detalle con carga (el detalle también lo ve el administrador de origen o destino). |
 | POST | `/api/viajes/{codigo}/salida` · `/llegada` | TRANSPORTISTA: marca la salida y la llegada de su viaje. |
+| GET/POST/PUT | `/api/catalogos/sucursales` · `/rutas` (`/{id}/precio`) · `/vehiculos` (`/{placa}/estado`) | GERENTE: catálogos. Ver `docs/api/catalogos-cuentas.md`. |
+| GET/POST/PUT | `/api/usuarios` · `/api/usuarios/persona` · `/api/usuarios/{usuario}` (`/estado`) | GERENTE: cuentas de usuario. |
 | GET | `/api/rastreo/{codigo}` · `/api/salidas` · `/api/salidas/{id}` | Público: rastreo, salidas entre sucursales y detalle de ruta. Ver `docs/api/rastreo-historial.md`. |
 | GET | `/api/mis-envios` · `/api/mis-envios/{codigo}` · `/api/mis-envios/resumen` | CLIENTE / EMPRESARIO: historial de envíos y resumen de Mi panel. |
 | GET | `/api/entregas/pendientes` | ADMINISTRADOR: viajes en camino a su agencia y envíos listos para entregar. Ver `docs/api/entregas.md`. |
@@ -84,6 +86,7 @@ node frontend/tests/e2e/caja.mjs       # Caja y Mis pagos (módulo 6)
 node frontend/tests/e2e/despacho.mjs   # Despacho, Mis viajes y Detalle del viaje (módulo 7)
 node frontend/tests/e2e/entregas.mjs   # Llegadas y entregas (módulo 8)
 node frontend/tests/e2e/rastreo.mjs    # Rastreo, salidas e historial (módulo 9)
+node frontend/tests/e2e/catalogos.mjs  # Catálogos y cuentas del gerente (módulo 10)
 # Con CAPTURAS=<carpeta> guarda capturas (escritorio y móvil) para revisar el diseño contra el prototipo.
 ```
 Abren Edge sin ventana (sin dependencias nuevas) y **interceptan las llamadas a `/api`** con respuestas fijas (arnés común en `frontend/tests/e2e/arnes.mjs`), así que no necesitan PHP ni base de datos. Cubren las pantallas, los errores del servidor y la carrera de respuestas lentas del Cotizador. Salen con código 1 si algo falla. Variables opcionales: `FRONTEND_URL` y `EDGE_PATH`.

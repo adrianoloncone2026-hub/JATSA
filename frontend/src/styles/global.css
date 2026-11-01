@@ -1948,3 +1948,94 @@ input[readonly] {
   background: #fff7cc;
   border-color: var(--amarillo);
 }
+
+
+/* ── Catálogos y cuentas del gerente (módulo 10) ─────────────────────── */
+.pestanas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0 0 1rem;
+  border-bottom: 2px solid var(--borde);
+}
+
+.pestana {
+  padding: 0.55rem 1rem;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 0.4rem 0.4rem 0 0;
+  background: transparent;
+  color: var(--azul);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pestana.activa {
+  background: var(--marino);
+  color: var(--amarillo);
+}
+
+.formulario-catalogo {
+  margin: 0 0 1.25rem;
+}
+
+.rejilla-formulario {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.casilla {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tabla-catalogo .celda-accion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.fila-cerrada {
+  color: var(--gris);
+  background: #f6f8fb;
+}
+
+.fila-elegida {
+  outline: 2px solid var(--azul);
+  outline-offset: -2px;
+}
+
+.boton-peligro {
+  background: #a3261c;
+  color: #fff;
+}
+
+.insignia-activa,
+.insignia-vigente {
+  background: #d9f0e0;
+  border-color: #8fcba3;
+  color: #1b5e34;
+}
+
+.insignia-inactiva {
+  background: #eceff3;
+  border-color: #d3d9e2;
+  color: var(--gris);
+}
+
+@media (max-width: 800px) {
+  .pestanas {
+    flex-direction: column;
+    border-bottom: 0;
+  }
+
+  .pestana {
+    border: 1px solid var(--borde);
+    border-radius: 0.4rem;
+    text-align: left;
+  }
+}
