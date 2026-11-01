@@ -175,7 +175,7 @@ try {
     Exigir (Test-Path -LiteralPath "$backend\.env") 'la copia tiene su propio .env'
     $envCopia = Test-EnvDeCopia ([IO.File]::ReadAllText("$backend\.env", [Text.Encoding]::UTF8)) $BaseAislada
     Exigir $envCopia.Valido "el .env de la copia apunta a la base aislada, sin credenciales (autenticación integrada de Windows) ($($envCopia.Motivo))"
-    $destinoCli = (Leer "SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth")[0]
+    $destinoCli = (Leer "SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT MAX(auth_scheme) FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth")[0]
     $d = Test-DestinoAislado $destinoCli.bd $destinoCli.login $destinoCli.auth $BaseAislada $loginEsperado
     Exigir $d.Valido "la CLI (leer.php) está en la base aislada con la cuenta Windows esperada y autenticación integrada ($($d.Motivo))"
     "  AVISO: la cuenta Windows $loginEsperado es sysadmin; NO existe aislamiento por permisos (no se puede probar un «acceso denegado» a la base real). Solo valen la copia independiente y las verificaciones de DB_NAME(), cuenta y autenticación en cada conexión."
@@ -414,7 +414,7 @@ try {
     "== 9b. Reverificación del destino tras las carreras (la cuenta es sysadmin: solo estas comprobaciones separan la base aislada de la habitual)"
     $sondas2 = Get-ResultadoSondas @(ConsultarSondas) @('8000', '8001', '8002', '8003') $BaseAislada $loginEsperado
     V "los 4 servidores PHP siguen conectados SOLO a la base aislada tras las carreras ($($sondas2.Motivo))" $sondas2.Valido
-    $cli2 = (Leer "SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth")[0]
+    $cli2 = (Leer "SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT MAX(auth_scheme) FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth")[0]
     $d2 = Test-DestinoAislado $cli2.bd $cli2.login $cli2.auth $BaseAislada $loginEsperado
     V "la CLI sigue en la base aislada con la cuenta esperada tras las carreras ($($d2.Motivo))" $d2.Valido
     V "ningún 500 genérico en todas las carreras (genéricos: $errores500Genericos); interbloqueos reales comprobados en el registro y aceptados: $interbloqueos" ($errores500Genericos -eq 0)

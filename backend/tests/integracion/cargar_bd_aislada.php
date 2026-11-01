@@ -44,7 +44,7 @@ if (!is_file($ruta)) {
 Config::cargar($raiz);
 $pdo = Database::conexion();
 
-$actual = $pdo->query('SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth')->fetch(PDO::FETCH_ASSOC);
+$actual = $pdo->query('SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT MAX(auth_scheme) FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth')->fetch(PDO::FETCH_ASSOC);
 if ($actual['bd'] !== $base || strcasecmp((string) $actual['login'], $loginEsperado) !== 0 || !in_array(strtoupper((string) $actual['auth']), ['NTLM', 'KERBEROS', 'NEGOTIATE'], true) || stripos((string) $actual['bd'], 'encomiendas') !== false) {
     abortar('Esta conexión NO está en la base aislada con la cuenta Windows esperada y autenticación de Windows (' . $actual['bd'] . ' / ' . $actual['login'] . ' / ' . $actual['auth'] . '). No se carga nada.', 5);
 }

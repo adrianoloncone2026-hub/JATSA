@@ -8,7 +8,7 @@ $raiz = dirname(__DIR__);
 require $raiz . '/src/autoload.php';
 
 Jatsa\Core\Config::cargar($raiz);
-$fila = Jatsa\Core\Database::conexion()->query('SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth')->fetch(PDO::FETCH_ASSOC);
+$fila = Jatsa\Core\Database::conexion()->query('SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT MAX(auth_scheme) FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth')->fetch(PDO::FETCH_ASSOC);
 
 header('Content-Type: application/json');
 echo json_encode($fila);

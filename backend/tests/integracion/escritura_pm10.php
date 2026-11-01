@@ -98,7 +98,7 @@ $loginEsperado = (string) ($manifiesto['loginEsperado'] ?? '');
 if ($loginEsperado === '') {
     abortar('El manifiesto no trae la cuenta Windows esperada (loginEsperado).', 2);
 }
-$destino = $pdo->query('SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth')->fetch(PDO::FETCH_ASSOC);
+$destino = $pdo->query('SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT MAX(auth_scheme) FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth')->fetch(PDO::FETCH_ASSOC);
 if ($destino['bd'] !== $baseAislada || strcasecmp((string) $destino['login'], $loginEsperado) !== 0 || !in_array(strtoupper((string) $destino['auth']), ['NTLM', 'KERBEROS', 'NEGOTIATE'], true) || stripos((string) $destino['bd'], 'encomiendas') !== false) {
     abortar('Esta conexión NO es la base aislada del manifiesto con la cuenta Windows esperada y autenticación de Windows (' . $destino['bd'] . ' / ' . $destino['login'] . ' / ' . $destino['auth'] . '). No se escribe nada.', 5);
 }

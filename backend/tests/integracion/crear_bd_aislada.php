@@ -50,7 +50,7 @@ $servidorDsn = $servidor . ($puerto !== '' ? ',' . $puerto : '');
 
 try {
     $pdo = conectar($servidorDsn, 'master');
-    $yo = $pdo->query("SELECT ORIGINAL_LOGIN() AS login, IS_SRVROLEMEMBER('sysadmin') AS sysadmin, CAST(SERVERPROPERTY('IsIntegratedSecurityOnly') AS INT) AS soloWindows, (SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth")->fetch(PDO::FETCH_ASSOC);
+    $yo = $pdo->query("SELECT ORIGINAL_LOGIN() AS login, IS_SRVROLEMEMBER('sysadmin') AS sysadmin, CAST(SERVERPROPERTY('IsIntegratedSecurityOnly') AS INT) AS soloWindows, (SELECT MAX(auth_scheme) FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth")->fetch(PDO::FETCH_ASSOC);
     if (!in_array(strtoupper((string) $yo['auth']), ['NTLM', 'KERBEROS', 'NEGOTIATE'], true)) {
         abortar('La conexión NO usa autenticación de Windows (auth_scheme ' . $yo['auth'] . '). No se continúa.', 5);
     }
