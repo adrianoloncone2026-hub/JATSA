@@ -1200,6 +1200,174 @@ input[readonly] {
   }
 }
 
+/* ── Módulo 5: ventanilla y formalizar envío (diapositivas 18 y 19) ── */
+.ventanilla h2,
+.formalizar h2 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.buscar-reserva {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.buscar-reserva .campo {
+  flex: 1 1 14rem;
+  margin: 0;
+}
+
+.reserva-encontrada {
+  margin-top: 1rem;
+}
+
+.reserva-encontrada p {
+  margin: 0.35rem 0;
+}
+
+.reserva-encontrada-cabecera {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.codigo-reserva-chico {
+  font-size: 1.15rem;
+  letter-spacing: 0.03em;
+}
+
+.accesos-ventanilla {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.campo-persona {
+  border: 1px solid var(--borde, #d6dbe6);
+  border-radius: 10px;
+  padding: 0.75rem 1rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.campo-persona legend {
+  padding: 0 0.4rem;
+  font-weight: 600;
+}
+
+.formulario-formalizar {
+  margin-top: 1rem;
+}
+
+.tabla-bultos .fila-vacia td {
+  text-align: center;
+  color: var(--gris);
+  padding: 1rem;
+}
+
+.nuevo-bulto {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.4fr auto;
+  align-items: end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.nuevo-bulto .campo {
+  margin: 0;
+}
+
+.previa-bulto {
+  min-height: 2.5rem;
+  display: flex;
+  align-items: center;
+}
+
+.resumen-envio {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--borde, #d6dbe6);
+}
+
+.resumen-envio p {
+  margin: 0.25rem 0;
+}
+
+.importe {
+  font-size: 1.3rem;
+}
+
+.envio-registrado .etiqueta {
+  max-width: 22rem;
+}
+
+.etiqueta {
+  border: 2px dashed #1f2a44;
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  background: #fff;
+  color: #111;
+}
+
+.etiqueta p {
+  margin: 0.3rem 0;
+}
+
+.etiqueta-marca {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.etiqueta-codigo {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-family: ui-monospace, 'Courier New', monospace;
+}
+
+.etiqueta-ruta {
+  font-weight: 600;
+}
+
+.etiqueta-pie {
+  font-size: 0.8rem;
+  color: #444;
+}
+
+/* Al imprimir solo sale la etiqueta. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .etiqueta,
+  .etiqueta * {
+    visibility: visible;
+  }
+
+  .etiqueta {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+  }
+
+  .no-imprimir {
+    display: none !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .nuevo-bulto {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* En pantallas pequeñas, cada reserva pasa de fila de tabla a tarjeta con sus etiquetas. */
 @media (max-width: 700px) {
   .tabla-reservas thead {

@@ -51,7 +51,9 @@ export const SECCIONES = [
     roles: [ROLES.ADMINISTRADOR],
     pantallas: [
       { ruta: '', titulo: 'Ventanilla', modulo: 5, menu: true },
+      { ruta: 'sin-reserva', titulo: 'Cliente sin reserva', modulo: 5, menu: false },
       { ruta: 'formalizar-envio/:codigo', titulo: 'Formalizar envío', modulo: 5, menu: false },
+      { ruta: 'envio/:codigo', titulo: 'Envío registrado', modulo: 5, menu: false },
       { ruta: 'caja', titulo: 'Caja', modulo: 6, menu: true },
       { ruta: 'despacho', titulo: 'Despacho', modulo: 7, menu: true },
       { ruta: 'llegadas-entregas', titulo: 'Llegadas y entregas', modulo: 8, menu: true },

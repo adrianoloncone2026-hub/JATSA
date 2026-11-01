@@ -24,6 +24,7 @@ Criterio: primero la base técnica y el acceso, luego los catálogos de los que 
 
 - **Rastreo y salidas (módulo 9):** el rastreo muestra recorrido y llegada estimada, y las salidas se calculan con los viajes reales de cada ruta. Por eso dependen de que ya existan envíos, viajes y entregas. Si hace falta verlos antes, se pueden probar con datos de ejemplo.
 - **Módulo 2 (Agencias):** la sección «Salidas desde aquí» de la ficha de agencia necesita viajes reales y se completa en el módulo 9, junto con Salidas y Rastreo.
+- **Módulo 5 (Ventanilla y envíos):** el cobro (`Pago`) es del módulo 6: «Guardar y cobrar ahora» y «Guardar · paga en destino» guardan el envío igual y «cobrar» lleva a Caja. El código de seguimiento se genera al guardar. «Cliente sin reserva» es una pantalla propia. Detalle y decisiones en `docs/api/envios.md`.
 - **Módulo 4 (Reservas):** «Mi panel» queda con la parte de reservas; «Envíos en curso», «Saldo por pagar», «Por recoger» y «Próxima salida habitual» de «Nueva reserva» llegan con los módulos 6 y 9. Vencimiento a las 72 h decidido por el propietario: efecto inmediato en la API y comando `backend/bin/vencer-reservas.php` (no programado; ver `docs/api/reservas.md`). Las rutas sin tarifa vigente no admiten reservas.
 - **Módulo 3 (Mi cuenta):** la sección «Actividad reciente» de la diapositiva 17 necesita reservas y envíos y se completa en los módulos 4 y 9.
 - **Módulo 10:** es independiente del flujo operativo. Se puede adelantar si hace falta cargar sucursales, rutas, vehículos y personal reales antes de probar los módulos 4 a 8.
