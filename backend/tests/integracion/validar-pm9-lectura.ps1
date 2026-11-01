@@ -35,7 +35,7 @@ New-Item -ItemType Directory -Force $salida | Out-Null
 
 $ok = 0; $mal = 0
 function V($nombre, $cond, $detalle = '') { if ($cond) { $script:ok++; "  OK    $nombre" } else { $script:mal++; "  FALLO $nombre  $detalle" } }
-function Leer($sql) { $s = (& $php "$aqui\leer.php" $sql | Out-String); if ($LASTEXITCODE -ne 0) { throw "leer.php rechazó o falló: $sql" }; @($s | ConvertFrom-Json) }
+function Leer($sql) { $s = (& $php "$aqui\leer.php" $sql | Out-String); if ($LASTEXITCODE -ne 0) { throw "leer.php rechazó o falló: $sql" }; @(ConvertFrom-FilasJson $s) }   # arreglo plano en PS 5.1 (ver pm9-funciones.ps1)
 function Exigir($cond, $mensaje) { if ($cond) { "  OK    $mensaje" } else { throw "Precondición fallida: $mensaje" } }
 function Decimal($x) { [decimal]::Parse([string]$x, [Globalization.CultureInfo]::InvariantCulture) }
 
@@ -97,15 +97,7 @@ try {
     $hoySql = (Leer "SELECT CONVERT(VARCHAR(10), CAST(SYSDATETIME() AS DATE), 120) AS hoy")[0].hoy
     V "la fecha de hoy de esta máquina ($hoy) coincide con la del servidor SQL ($hoySql)" ($hoy -eq $hoySql) 'si difieren, las vigencias podrían compararse con otro día'
     $filasRuta = @(Leer "SELECT r.idRuta, so.codigoSucursal AS o, sd.codigoSucursal AS d, r.tipoEnvio, CONVERT(VARCHAR(10), r.vigenteDesde, 120) AS desde, r.tiempoHoras AS horas FROM Ruta r JOIN Sucursal so ON so.idSucursal=r.idSucursalOrigen JOIN Sucursal sd ON sd.idSucursal=r.idSucursalDestino WHERE so.activa=1 AND sd.activa=1 AND r.vigenteDesde <= CAST('$hoy' AS DATE) AND (r.vigenteHasta IS NULL OR r.vigenteHasta >= CAST('$hoy' AS DATE))")
-    $esperadas = @{}   # 'ORIGEN-DESTINO' -> @{ tipos = @{tipo = fila}; horas }
-    foreach ($fila in ($filasRuta | Sort-Object @{ e = { $_.desde }; Descending = $true }, @{ e = { [int]$_.idRuta }; Descending = $true })) {
-        $id = "$($fila.o)-$($fila.d)"
-        if (-not $esperadas.ContainsKey($id)) { $esperadas[$id] = @{ tipos = @{}; horas = 0 } }
-        if (-not $esperadas[$id].tipos.ContainsKey($fila.tipoEnvio)) {
-            $esperadas[$id].tipos[$fila.tipoEnvio] = $fila
-            $esperadas[$id].horas = [Math]::Max($esperadas[$id].horas, [int]$fila.horas)
-        }
-    }
+    $esperadas = Get-RutasEsperadas $filasRuta   # 'ORIGEN-DESTINO' -> @{ tipos; horas }
     $duplicadas = @($filasRuta | Group-Object { "$($_.o)-$($_.d)-$($_.tipoEnvio)" } | ? { $_.Count -gt 1 })
     "  (tarifas vigentes con más de una fila por ruta y tipo: $($duplicadas.Count); el backend usa solo la más reciente de cada una)"
 
