@@ -1,9 +1,12 @@
-// Estado de una reserva con su color (como en las diapositivas 11 y 15).
+// Estado de una reserva, un pago o un viaje con su color (diapositivas 11, 15, 16, 20, 21 y 24).
 const ETIQUETAS = {
   PENDIENTE: 'PENDIENTE',
   FORMALIZADA: 'FORMALIZADA',
   CANCELADA: 'CANCELADA',
   VENCIDA: 'VENCIDA',
+  PROGRAMADO: 'PROGRAMADO',
+  EN_RUTA: 'EN RUTA',
+  TERMINADO: 'TERMINADO',
 }
 
 export default function InsigniaEstado({ estado }) {

@@ -1491,6 +1491,7 @@ prueba('controlador de tarifas: lee la consulta y es público', function () use 
 
 require __DIR__ . '/envios.php'; // Módulo 5: ventanilla y envíos
 require __DIR__ . '/pagos.php'; // Módulo 6: pagos y caja
+require __DIR__ . '/viajes.php'; // Módulo 7: despacho, mis viajes y detalle del viaje
 
 // ── Informe ─────────────────────────────────────────────────────────────────
 ob_end_clean();
@@ -1500,3 +1501,4 @@ foreach ($resultados['fallos'] as $fallo) {
 }
 echo count($resultados['fallos']) === 0 ? 'RESULTADO: todas correctas' . PHP_EOL : 'RESULTADO: hay fallos' . PHP_EOL;
 exit(count($resultados['fallos']) === 0 ? 0 : 1);
+

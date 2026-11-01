@@ -40,6 +40,16 @@ export function fechaHoraBreve(fechaHoraIso) {
   return anio && mes && dia ? `${dia}/${mes}${hora ? ` ${hora}` : ''}` : texto
 }
 
+// "2026-10-14 19:00:00" → "19:00"
+export function horaCorta(fechaHoraIso) {
+  return String(fechaHoraIso).slice(11, 16)
+}
+
+// "1500.00" → "1500"; "18.50" → "18.50" (la capacidad entera sin decimales, el peso con ellos)
+export function kilosSinCeros(kg) {
+  return String(kg).replace(/\.00$/, '')
+}
+
 // "Av. Ejército 512, Cercado, Arequipa": dirección, distrito, provincia y departamento sin repetir nombres.
 export function direccionCompleta(agencia) {
   const vistos = new Set()

@@ -1559,3 +1559,115 @@ input[readonly] {
 .total-pagado strong {
   color: var(--marino);
 }
+
+/* ── Despacho y viajes (módulo 7) ──────────────────────────────────────── */
+.insignia-programado {
+  background: #b4d1ea;
+  border-color: #b4d1ea;
+}
+
+.insignia-en_ruta {
+  background: #fff7cc;
+  border-color: var(--amarillo);
+}
+
+.insignia-terminado {
+  background: #eceff3;
+  border-color: #d3d9e2;
+  color: var(--gris);
+}
+
+.barra-despacho {
+  margin-bottom: 1rem;
+}
+
+.programar-viaje {
+  margin-bottom: 1.25rem;
+}
+
+.programar-viaje h2 {
+  margin-top: 0;
+}
+
+.fila-triple {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.fila-abierta {
+  outline: 2px solid var(--marino);
+  outline-offset: -2px;
+}
+
+.carga-viaje {
+  margin: 1rem 0 1.5rem;
+}
+
+.carga-viaje-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.carga-viaje-cabecera h2 {
+  margin: 0;
+}
+
+.estado-vacio-texto {
+  margin: 0.5rem 0 0;
+}
+
+.tabla-espera select {
+  width: 100%;
+  min-width: 11rem;
+}
+
+.detalle-viaje-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.detalle-viaje-cabecera h1 {
+  margin: 0;
+}
+
+.datos-viaje {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.datos-viaje dt {
+  font-size: 0.8rem;
+  color: var(--gris);
+}
+
+.datos-viaje dd {
+  margin: 0.2rem 0 0;
+  font-weight: 700;
+}
+
+.peso-cargado {
+  margin: 0.75rem 0 1.25rem;
+}
+
+.peso-cargado strong {
+  color: var(--marino);
+}
+
+.confirmar-viaje p {
+  margin-top: 0;
+}
+
+@media (max-width: 700px) {
+  .fila-triple,
+  .datos-viaje {
+    grid-template-columns: 1fr;
+  }
+}

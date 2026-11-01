@@ -67,7 +67,7 @@ export const SECCIONES = [
     roles: [ROLES.TRANSPORTISTA],
     pantallas: [
       { ruta: '', titulo: 'Mis viajes', modulo: 7, menu: true },
-      { ruta: 'viajes/:id', titulo: 'Detalle del viaje', modulo: 7, menu: false },
+      { ruta: 'viajes/:codigo', titulo: 'Detalle del viaje', modulo: 7, menu: false },
     ],
   },
   {
