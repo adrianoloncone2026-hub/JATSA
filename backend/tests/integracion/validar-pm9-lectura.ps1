@@ -40,6 +40,7 @@ function Decimal($x) { [decimal]::Parse([string]$x, [Globalization.CultureInfo]:
 
 $sesionesPropias = @()
 $servidor = $null
+$cobertura = 'COMPLETA: parte pública y parte del cliente (historial y Mi panel) con una cuenta existente.'
 # Abre sesión con una cuenta existente (POST /api/auth/ingresar no escribe en la base) y anota el id de SU archivo de sesión para borrarlo al final.
 function Ingresar-Cuenta($usuario, $clave) {
     $c = GalletaDe (Llamar POST '/api/auth/ingresar' @{ usuario = $usuario; contrasena = $clave })
@@ -87,36 +88,72 @@ try {
     $c = Llamar POST '/api/rastreo/ENZZZZZZZZZZ'
     V 'el rastreo solo admite GET (POST rechazado, 404/405)' ($c.Estado -in 404, 405)
 
-    "== 3. Salidas (GET /api/salidas y /api/salidas/{id}) contra rutas y viajes reales"
-    $rutas = Leer "SELECT DISTINCT so.codigoSucursal AS o, sd.codigoSucursal AS d FROM Ruta r JOIN Sucursal so ON so.idSucursal=r.idSucursalOrigen JOIN Sucursal sd ON sd.idSucursal=r.idSucursalDestino WHERE so.activa=1 AND sd.activa=1 AND r.vigenteHasta IS NULL"
+    "== 3. Salidas (GET /api/salidas y /api/salidas/{id}) contra rutas, tarifas y viajes reales"
+    # Misma regla que el backend (SalidaRepository/SalidaService): sucursales activas, vigenteDesde <= hoy AND (vigenteHasta IS NULL OR vigenteHasta >= hoy),
+    # UNA tarifa por tipo (la de vigenteDesde más reciente y, a igual fecha, la de idRuta mayor) y tiempo = el mayor de esas tarifas elegidas.
+    # «hoy» es la fecha de esta máquina, la misma que usa el backend (date('Y-m-d')); se compara con la del servidor SQL y se avisa si difieren.
+    $hoy = Get-Date -Format 'yyyy-MM-dd'
+    $hoySql = (Leer "SELECT CONVERT(VARCHAR(10), CAST(SYSDATETIME() AS DATE), 120) AS hoy")[0].hoy
+    V "la fecha de hoy de esta máquina ($hoy) coincide con la del servidor SQL ($hoySql)" ($hoy -eq $hoySql) 'si difieren, las vigencias podrían compararse con otro día'
+    $filasRuta = @(Leer "SELECT r.idRuta, so.codigoSucursal AS o, sd.codigoSucursal AS d, r.tipoEnvio, CONVERT(VARCHAR(10), r.vigenteDesde, 120) AS desde, r.tiempoHoras AS horas FROM Ruta r JOIN Sucursal so ON so.idSucursal=r.idSucursalOrigen JOIN Sucursal sd ON sd.idSucursal=r.idSucursalDestino WHERE so.activa=1 AND sd.activa=1 AND r.vigenteDesde <= CAST('$hoy' AS DATE) AND (r.vigenteHasta IS NULL OR r.vigenteHasta >= CAST('$hoy' AS DATE))")
+    $esperadas = @{}   # 'ORIGEN-DESTINO' -> @{ tipos = @{tipo = fila}; horas }
+    foreach ($fila in ($filasRuta | Sort-Object @{ e = { $_.desde }; Descending = $true }, @{ e = { [int]$_.idRuta }; Descending = $true })) {
+        $id = "$($fila.o)-$($fila.d)"
+        if (-not $esperadas.ContainsKey($id)) { $esperadas[$id] = @{ tipos = @{}; horas = 0 } }
+        if (-not $esperadas[$id].tipos.ContainsKey($fila.tipoEnvio)) {
+            $esperadas[$id].tipos[$fila.tipoEnvio] = $fila
+            $esperadas[$id].horas = [Math]::Max($esperadas[$id].horas, [int]$fila.horas)
+        }
+    }
+    $duplicadas = @($filasRuta | Group-Object { "$($_.o)-$($_.d)-$($_.tipoEnvio)" } | ? { $_.Count -gt 1 })
+    "  (tarifas vigentes con más de una fila por ruta y tipo: $($duplicadas.Count); el backend usa solo la más reciente de cada una)"
+
+    # Horarios esperados: los últimos 10 viajes CON salida de cada par origen-destino del viaje (más reciente primero, desempate por idViaje),
+    # horas HH:00 contadas; se eligen las 3 más frecuentes (a igual frecuencia, la más temprana) y se muestran en orden de reloj.
+    $viajes = @(Leer "SELECT t.o, t.d, t.salida FROM (SELECT so.codigoSucursal AS o, sd.codigoSucursal AS d, CONVERT(VARCHAR(19), v.fechaHoraSalida, 120) AS salida, ROW_NUMBER() OVER (PARTITION BY v.idSucursalOrigen, v.idSucursalDestino ORDER BY v.fechaHoraSalida DESC, v.idViaje DESC) AS n FROM Viaje v JOIN Sucursal so ON so.idSucursal=v.idSucursalOrigen JOIN Sucursal sd ON sd.idSucursal=v.idSucursalDestino WHERE v.fechaHoraSalida IS NOT NULL) t WHERE t.n <= 10")
+    $horariosEsperados = @{}
+    foreach ($g in ($viajes | Group-Object { "$($_.o)-$($_.d)" })) {
+        $conteo = $g.Group | Group-Object { $_.salida.Substring(11, 2) + ':00' }
+        $elegidas = @($conteo | Sort-Object @{ e = { $_.Count }; Descending = $true }, @{ e = { $_.Name }; Descending = $false } | Select-Object -First 3 | % { $_.Name } | Sort-Object)
+        $horariosEsperados[$g.Name] = $elegidas
+    }
+    $programadosBd = @{}
+    foreach ($p in @(Leer "SELECT so.codigoSucursal AS o, sd.codigoSucursal AS d, COUNT(*) AS n FROM Viaje v JOIN Sucursal so ON so.idSucursal=v.idSucursalOrigen JOIN Sucursal sd ON sd.idSucursal=v.idSucursalDestino WHERE v.fechaHoraSalida IS NULL GROUP BY so.codigoSucursal, sd.codigoSucursal")) { $programadosBd["$($p.o)-$($p.d)"] = [int]$p.n }
+
     $s = Llamar GET '/api/salidas'
     V 'lista de salidas: 200' ($s.Estado -eq 200) $s.Texto
     if ($s.Estado -eq 200) {
-        V "una salida por ruta con tarifa vigente ($($rutas.Count) en la base)" (@($s.Json.data.salidas).Count -eq $rutas.Count) "api=$(@($s.Json.data.salidas).Count)"
-        $mal9 = @($s.Json.data.salidas | ? { $_.id -ne "$($_.origen.codigo)-$($_.destino.codigo)" -or @($_.horarios).Count -gt 3 -or [int]$_.horas -lt 0 })
-        V 'ids ORIGEN-DESTINO, a lo sumo 3 horas frecuentes y tiempo no negativo' ($mal9.Count -eq 0)
-        foreach ($ruta in @($s.Json.data.salidas | Select-Object -First 3)) {
+        $api = @($s.Json.data.salidas)
+        V "mismo conjunto de rutas que la base con la regla de vigencia ($($esperadas.Count))" ((($api | % { $_.id } | Sort-Object) -join ',') -eq (($esperadas.Keys | Sort-Object) -join ',')) "api=$(($api | % { $_.id }) -join ',')"
+        V 'ningún id de ruta repetido' (@($api | Group-Object id | ? { $_.Count -gt 1 }).Count -eq 0)
+        foreach ($ruta in $api) {
+            $esp = $esperadas[$ruta.id]; if ($null -eq $esp) { continue }
+            $hEsp = @($horariosEsperados[$ruta.id])
+            V "$($ruta.id): horarios exactos = $(if ($hEsp.Count) { $hEsp -join ' ' } else { '(ninguno)' })" ((@($ruta.horarios) -join ',') -eq ($hEsp -join ',')) "api=$(@($ruta.horarios) -join ',')"
+            V "$($ruta.id): tiempo = $($esp.horas) h (el mayor de las tarifas elegidas)" ([int]$ruta.horas -eq $esp.horas) "api=$($ruta.horas)"
+            $progEsp = ($hEsp.Count -eq 0) -and ($programadosBd[$ruta.id] -gt 0)
+            V "$($ruta.id): «programado» solo sin historial y con un viaje sin salida" ([bool]$ruta.programado -eq $progEsp) "api=$($ruta.programado) esperado=$progEsp"
+        }
+        foreach ($ruta in @($api | Select-Object -First 3)) {
+            $esp = $esperadas[$ruta.id]; if ($null -eq $esp) { continue }
             $det = Llamar GET "/api/salidas/$($ruta.id)"
             V "detalle $($ruta.id): 200" ($det.Estado -eq 200) $det.Texto
             if ($det.Estado -ne 200) { continue }
             $x = $det.Json.data.ruta
-            $tarifasBd = Leer "SELECT r.tipoEnvio, r.vigenteHasta FROM Ruta r JOIN Sucursal so ON so.idSucursal=r.idSucursalOrigen JOIN Sucursal sd ON sd.idSucursal=r.idSucursalDestino WHERE so.codigoSucursal='$($ruta.origen.codigo)' AND sd.codigoSucursal='$($ruta.destino.codigo)' AND r.vigenteHasta IS NULL"
-            V "  tantas tarifas vigentes como en la base ($(@($tarifasBd).Count))" (@($x.tarifas).Count -eq @($tarifasBd).Count)
-            $horasBd = @(Leer "SELECT TOP 10 DATEPART(HOUR, v.fechaHoraSalida) AS h FROM Viaje v JOIN Sucursal so ON so.idSucursal=v.idSucursalOrigen JOIN Sucursal sd ON sd.idSucursal=v.idSucursalDestino WHERE so.codigoSucursal='$($ruta.origen.codigo)' AND sd.codigoSucursal='$($ruta.destino.codigo)' AND v.fechaHoraSalida IS NOT NULL ORDER BY v.fechaHoraSalida DESC, v.idViaje DESC" | % { '{0:00}:00' -f [int]$_.h })
-            $fuera = @($x.horarios | ? { $horasBd -notcontains $_ })
-            V "  los horarios frecuentes salen de las salidas reales de los últimos 10 viajes ($($horasBd.Count) viajes con salida)" ($fuera.Count -eq 0 -and (($horasBd.Count -eq 0) -eq (@($x.horarios).Count -eq 0))) ($fuera -join ',')
-            V '  si no hay salidas reales, no inventa horarios' (($horasBd.Count -gt 0) -or @($x.horarios).Count -eq 0)
+            $tiposApi = @($x.tarifas | % { $_.tipo })
+            V "  una tarifa por tipo, sin duplicados, y los mismos tipos que la base ($(@($esp.tipos.Keys | Sort-Object) -join ','))" ((@($tiposApi | Sort-Object) -join ',') -eq (@($esp.tipos.Keys | Sort-Object) -join ',') -and @($tiposApi | Select-Object -Unique).Count -eq $tiposApi.Count) "api=$($tiposApi -join ',')"
+            V '  horarios del detalle iguales a los de la lista' ((@($x.horarios) -join ',') -eq (@($ruta.horarios) -join ','))
             V '  recientes: solo viajes con salida, a lo sumo 10' (@($x.recientes).Count -le 10 -and @($x.recientes | ? { -not $_.fechaHoraSalida }).Count -eq 0)
         }
     }
     $n = Llamar GET '/api/salidas/ZZZ999-AAA111'
     V 'ruta inexistente: 404 ruta_no_encontrada' ($n.Estado -eq 404 -and $n.Json.error.codigo -eq 'ruta_no_encontrada')
-    $f = Llamar GET '/api/salidas?tipo=MALO'
-    V 'filtro inválido: 422 con campos' ($f.Estado -eq 422)
-
+    $fl = Llamar GET '/api/salidas?tipo=MALO'
+    V 'filtro inválido: 422 con campos' ($fl.Estado -eq 422)
     "== 4. Historial y Mi panel (GET /api/mis-envios...) con una cuenta CLIENTE/EMPRESARIO existente"
     if (-not $UsuarioCliente -or -not $env:JATSA_PM9_CLAVE) {
         "  (omitida: no se indicó -UsuarioCliente y JATSA_PM9_CLAVE; la parte pública quedó comprobada)"
+        $script:cobertura = 'PARCIAL: solo la parte pública (rastreo y salidas). NO se validaron historial, detalle ni los totales de Mi panel.'
     } else {
         $cookie = Ingresar-Cuenta $UsuarioCliente $env:JATSA_PM9_CLAVE
         $env:JATSA_PM9_CLAVE = $null
@@ -181,6 +218,7 @@ finally {
     }
     catch { $script:mal++; "  ERROR al comparar: $($_.Exception.Message)" }
     "Resultado: $ok correctas, $mal con fallo. Informes en $salida"
+    "COBERTURA: $cobertura"
 }
 if ($mal -gt 0 -or -not $limpio) { exit 1 }
 exit 0

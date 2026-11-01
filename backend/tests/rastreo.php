@@ -215,6 +215,17 @@ prueba('salidas: solo cuenta la tarifa vigente más reciente de cada tipo y el t
     afirmar($d['horas'] === 4, 'la tarifa vieja (9 h) no cuenta');
 });
 
+prueba('salidas: horarios exactos — las 3 horas más frecuentes (empate: la más temprana), en orden de reloj; las demás se descartan', function () {
+    [$r, $servicio] = escenarioSalidas();
+    $s = static fn (string $f): array => ['origenCodigo' => 'MOQ001', 'destinoCodigo' => 'AQP001', 'fechaHoraSalida' => $f];
+    // 15h ×3, 14h ×2, 08h ×2 (empata con 14h y es más temprana), 09h ×1 (queda fuera: solo caben 3 horas)
+    $r->recientes = [$s('2026-10-14 15:00:00'), $s('2026-10-13 15:10:00'), $s('2026-10-12 15:20:00'), $s('2026-10-11 14:00:00'), $s('2026-10-10 14:30:00'),
+        $s('2026-10-09 08:00:00'), $s('2026-10-08 08:30:00'), $s('2026-10-07 09:00:00')];
+    afirmar($servicio->detalle('MOQ001-AQP001')['horarios'] === ['08:00', '14:00', '15:00'], 'horarios: ' . json_encode($servicio->detalle('MOQ001-AQP001')['horarios']));
+    $r->recientes = [$s('2026-10-14 16:00:00'), $s('2026-10-13 07:00:00'), $s('2026-10-12 11:00:00'), $s('2026-10-11 09:00:00')]; // todas con 1: gana la más temprana
+    afirmar($servicio->detalle('MOQ001-AQP001')['horarios'] === ['07:00', '09:00', '11:00'], 'con frecuencias iguales entran las 3 más tempranas');
+});
+
 prueba('salidas: filtros por origen, destino y tipo (con un tipo, solo las rutas que lo tienen y su precio)', function () {
     [, $servicio] = escenarioSalidas();
     afirmar(array_column($servicio->listar('moq001')['salidas'], 'id') === ['MOQ001-AQP001'], 'origen en minúsculas');
