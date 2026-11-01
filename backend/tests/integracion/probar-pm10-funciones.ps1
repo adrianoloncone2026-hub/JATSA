@@ -93,6 +93,42 @@ V '200 + 500 GENÉRICO es inválido' (-not (Get-ResultadoCarreraContrasena @((Re
 V '200 + 500 que ES un interbloqueo comprobado y solo sirve la del ganador: válido' (Get-ResultadoCarreraContrasena @((Resp 200 '' '8000'), (Resp 500 'error_interno' '8001')) '8000' $true $false $true).Valido
 V 'una sola respuesta (falta una) es inválido' (-not (Get-ResultadoCarreraContrasena @((Resp 200 '' '8000')) '8000' $true $false $false).Valido)
 
+'-- trabajos paralelos: finalización confirmada y una respuesta por tarea (sin Start-Job, sin red)'
+function Info($id, $estado, $respuestas, $falla = $null) { [pscustomobject]@{ Id = $id; Estado = $estado; Respuestas = $respuestas; Error = $falla } }
+function Http($estado, $codigo = '') { [pscustomobject]@{ Puerto = '8000'; Estado = $estado; Codigo = $codigo; Ruta = '/x' } }
+$ev = Get-EvaluacionTrabajos @((Info 1 'Completed' @((Http 201))), (Info 2 'Completed' @((Http 409 'sucursal_con_viajes')))) 2
+V 'dos trabajos Completed con una respuesta cada uno: confirmado' ($ev.Confirmado -and $ev.Motivo -eq '')
+$ev = Get-EvaluacionTrabajos @((Info 1 'Completed' @((Http 201))), (Info 2 'Running' @())) 2
+V 'un trabajo sigue Running tras el timeout: NO confirmado (y se identifica)' ((-not $ev.Confirmado) -and $ev.Pendientes -eq 1 -and $ev.Motivo -match 'siguen activos' -and $ev.Motivo -match 'ids: 2')
+V 'un trabajo Blocked o NotStarted también cuenta como pendiente' ((Get-EvaluacionTrabajos @((Info 1 'Blocked' @()), (Info 2 'NotStarted' @())) 2).Pendientes -eq 2)
+$ev = Get-EvaluacionTrabajos @((Info 1 'Completed' @((Http 200))), (Info 2 'Completed' @())) 2
+V 'un trabajo Completed SIN respuesta: NO confirmado' ((-not $ev.Confirmado) -and $ev.SinRespuesta -eq 1)
+$ev = Get-EvaluacionTrabajos @((Info 1 'Completed' @((Http 200), (Http 200))), (Info 2 'Completed' @((Http 200)))) 2
+V 'un trabajo con DOS respuestas (anomalía) no se acepta' ((-not $ev.Confirmado) -and $ev.SinRespuesta -eq 1)
+$ev = Get-EvaluacionTrabajos @((Info 1 'Completed' @([pscustomobject]@{ Estado = $null })), (Info 2 'Completed' @((Http 200)))) 2
+V 'una respuesta sin estado HTTP (null) no cuenta como respuesta' (-not $ev.Confirmado)
+V 'una respuesta con estado no numérico no cuenta' (-not (Get-EvaluacionTrabajos @((Info 1 'Completed' @([pscustomobject]@{ Estado = 'abc' })), (Info 2 'Completed' @((Http 200)))) 2).Confirmado)
+$ev = Get-EvaluacionTrabajos @((Info 1 'Completed' @((Http 200))), (Info 2 'Failed' @() 'No se pudo conectar con el servidor remoto')) 2
+V 'un trabajo Failed: NO confirmado y el error se captura en el motivo' ((-not $ev.Confirmado) -and $ev.Fallidos -eq 1 -and $ev.Motivo -match 'No se pudo conectar')
+V 'un trabajo Completed pero con un error registrado también falla' ((Get-EvaluacionTrabajos @((Info 1 'Completed' @((Http 200)) 'se produjo un error'), (Info 2 'Completed' @((Http 200)))) 2).Fallidos -eq 1)
+V 'un trabajo Stopped (detenido por el timeout) no se acepta' ((Get-EvaluacionTrabajos @((Info 1 'Completed' @((Http 200))), (Info 2 'Stopped' @())) 2).Fallidos -eq 1)
+V 'faltan trabajos (se lanzaron 2 y solo hay 1): NO confirmado' ((Get-EvaluacionTrabajos @((Info 1 'Completed' @((Http 200)))) 2).Motivo -match 'se esperaban 2 trabajos y hay 1')
+V 'sobran trabajos (hay 3 y se esperaban 2): NO confirmado' (-not (Get-EvaluacionTrabajos @((Info 1 'Completed' @((Http 200))), (Info 2 'Completed' @((Http 200))), (Info 3 'Completed' @((Http 200)))) 2).Confirmado)
+V 'ninguna información de trabajos: NO confirmado' (-not (Get-EvaluacionTrabajos @() 2).Confirmado)
+V 'los problemas se acumulan en un mismo motivo (pendiente + fallido)' ((Get-EvaluacionTrabajos @((Info 1 'Running' @()), (Info 2 'Failed' @() 'x')) 2).Motivo -match 'siguen activos.*fallaron')
+
+'-- decisión de limpieza automática: ante cualquier duda, NO'
+$d = Get-DecisionLimpieza @() @() @()
+V 'sin incidencias, sin procesos PHP vivos y sin trabajos vivos: se permite' ($d.Permitida -and $d.Motivos.Count -eq 0)
+$d = Get-DecisionLimpieza @('1 trabajo(s) siguen activos tras el límite de espera') @() @()
+V 'un timeout no confirmado en una carrera DETIENE la limpieza automática y lo reporta' ((-not $d.Permitida) -and $d.Motivos[0] -match 'incidencia en trabajos paralelos')
+$d = Get-DecisionLimpieza @() @(4321) @()
+V 'un proceso PHP de prueba que no terminó impide la limpieza (podría estar atendiendo una petición)' ((-not $d.Permitida) -and $d.Motivos[0] -match 'proceso\(s\) PHP' -and $d.Motivos[0] -match '4321')
+$d = Get-DecisionLimpieza @() @() @(7, 8)
+V 'un trabajo de PowerShell todavía vivo impide la limpieza' ((-not $d.Permitida) -and $d.Motivos[0] -match '2 trabajo')
+$d = Get-DecisionLimpieza @('a', 'b') @(1) @(2)
+V 'varias causas se reportan todas' ((-not $d.Permitida) -and $d.Motivos.Count -eq 4)
+V 'valores nulos o vacíos en las listas no cuentan como incidencias' ((Get-DecisionLimpieza @($null, '') @($null) @($null)).Permitida)
 "Resultado: $ok correctas, $mal con fallo."
 if ($mal -gt 0) { exit 1 }
 exit 0

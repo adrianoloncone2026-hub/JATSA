@@ -92,3 +92,35 @@ function Get-ResultadoCarreraContrasena($respuestas, [string]$puertoA, [bool]$en
     if (-not $correcto) { return [pscustomobject]@{ Valido = $false; Motivo = 'solo debe servir la contraseña de la solicitud que confirmó (y ninguna otra)' } }
     [pscustomobject]@{ Valido = $true; Motivo = 'una confirmó y solo sirve su contraseña' }
 }
+
+# ── Control de los trabajos paralelos de las carreras ────────────────────────────────────────────────────────────────────────────
+# Cada tarea de una carrera es un trabajo (Start-Job) que lanza UNA petición HTTP. Si un trabajo no termina (timeout) o no entrega su respuesta,
+# esa petición PHP puede seguir viva y escribiendo cuando empiece la limpieza: por eso la limpieza automática solo se permite con TODOS los trabajos
+# concluidos y con una respuesta por tarea.
+
+# $infos: un objeto por trabajo { Id; Estado (Completed, Running, Failed, Blocked, NotStarted, Stopped…); Respuestas (lo que entregó); Error }.
+# Confirmado solo si hay exactamente $esperados trabajos, TODOS en estado Completed, cada uno con EXACTAMENTE una respuesta con un Estado HTTP numérico.
+function Get-EvaluacionTrabajos($infos, [int]$esperados) {
+    $lista = @($infos | Where-Object { $null -ne $_ })
+    $problemas = @()
+    if ($lista.Count -ne $esperados) { $problemas += "se esperaban $esperados trabajos y hay $($lista.Count)" }
+    $pendientes = @($lista | Where-Object { $_.Estado -in 'Running', 'NotStarted', 'Blocked', 'Suspended', 'Suspending', 'Stopping' })
+    $fallidos = @($lista | Where-Object { $_.Estado -in 'Failed', 'Stopped', 'Disconnected' -or $_.Error })
+    $sinRespuesta = @($lista | Where-Object { $_.Estado -eq 'Completed' -and -not $_.Error -and (@($_.Respuestas).Count -ne 1 -or $null -eq @($_.Respuestas)[0] -or $null -eq @($_.Respuestas)[0].Estado -or -not ([string]@($_.Respuestas)[0].Estado -match '^\d+$')) })
+    if ($pendientes.Count -gt 0) { $problemas += "$($pendientes.Count) trabajo(s) siguen activos tras el límite de espera (ids: $(($pendientes | ForEach-Object { $_.Id }) -join ','))" }
+    if ($fallidos.Count -gt 0) { $problemas += "$($fallidos.Count) trabajo(s) fallaron o se detuvieron: $(($fallidos | ForEach-Object { "id $($_.Id) [$($_.Estado)] $($_.Error)" }) -join '; ')" }
+    if ($sinRespuesta.Count -gt 0) { $problemas += "$($sinRespuesta.Count) trabajo(s) terminaron sin entregar exactamente una respuesta HTTP válida (ids: $(($sinRespuesta | ForEach-Object { $_.Id }) -join ','))" }
+    [pscustomobject]@{ Confirmado = ($problemas.Count -eq 0); Pendientes = $pendientes.Count; Fallidos = $fallidos.Count; SinRespuesta = $sinRespuesta.Count; Motivo = ($problemas -join ' | ') }
+}
+
+# ¿Se puede empezar la limpieza automática? Solo si no hubo incidencias en trabajos paralelos, no queda ningún trabajo vivo y todos los procesos PHP
+# (servidores de prueba) están confirmados como terminados. Ante cualquier duda: NO, y se reporta para una recuperación controlada con el manifiesto.
+function Get-DecisionLimpieza($incidencias, $procesosPhpVivos, $trabajosVivos) {
+    $motivos = @()
+    foreach ($i in @($incidencias | Where-Object { $_ })) { $motivos += "incidencia en trabajos paralelos: $i" }
+    $php = @($procesosPhpVivos | Where-Object { $null -ne $_ })
+    $jobs = @($trabajosVivos | Where-Object { $null -ne $_ })
+    if ($php.Count -gt 0) { $motivos += "siguen vivos $($php.Count) proceso(s) PHP de prueba (ids: $($php -join ',')): podrían estar atendiendo una petición" }
+    if ($jobs.Count -gt 0) { $motivos += "siguen vivos $($jobs.Count) trabajo(s) de PowerShell (ids: $($jobs -join ','))" }
+    [pscustomobject]@{ Permitida = ($motivos.Count -eq 0); Motivos = $motivos }
+}

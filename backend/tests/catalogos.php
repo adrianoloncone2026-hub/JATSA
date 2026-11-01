@@ -1138,3 +1138,29 @@ prueba('pm10 (revisión estática): el orquestador se detiene ante un paso funda
     afirmar(str_contains($ps, 'Get-ResultadoCarreraContrasena $res') && str_contains($ps, "if (\$entraA) { \$pw.cliente = \$nA }"), 'C1 evalúa la carrera con quién confirmó y qué contraseña sirve');
     afirmar(str_contains($ps, '$manifiesto.idsAntes[$t] = $ids') && !str_contains($ps, 'identAntes.Viaje') && !str_contains($ps, 'identAntes.Ruta'), 'la autoría ya no usa IDENT_CURRENT (solo se anota para informar el avance)');
 });
+
+prueba('pm10 (revisión estática): los trabajos paralelos exigen finalización confirmada y respuesta por tarea, y sin ella NO hay limpieza automática', function () {
+    $ps = (string) file_get_contents(dirname(__DIR__) . '/tests/integracion/validar-pm10.ps1');
+    $enParalelo = substr($ps, (int) strpos($ps, 'function EnParalelo('), (int) strpos($ps, 'function Tarea(') - (int) strpos($ps, 'function EnParalelo('));
+    afirmar(!str_contains($enParalelo, '| Receive-Job') && !preg_match('/Wait-Job[^\n]*\|\s*Receive-Job/', $enParalelo), 'ya no hace «Wait-Job -Timeout | Receive-Job» (que descartaba en silencio los trabajos sin terminar)');
+    afirmar(str_contains($enParalelo, 'Get-EvaluacionTrabajos $infos') && str_contains($enParalelo, 'if (-not $evaluacion.Confirmado)') && str_contains($enParalelo, 'throw "INCIDENCIA'), 'evalúa todos los trabajos y lanza una incidencia si no están confirmados');
+    $final = substr($ps, (int) strpos($ps, "finally {\n    # 1)"));
+    $final = $final === '' ? substr($ps, (int) strpos($ps, 'finally {')) : $final;
+    $stop = strpos($final, 'Stop-Process -Id $s.Id');
+    $espera = strpos($final, 'WaitForExit(20000)');
+    $decision = strpos($final, 'Get-DecisionLimpieza');
+    $bloqueo = strpos($final, 'LIMPIEZA AUTOMÁTICA DETENIDA');
+    $limpiar = strpos($final, "escritura_pm10.php\" limpiar");
+    afirmar($stop !== false && $espera !== false && $decision !== false && $stop < $espera && $espera < $decision, 'detiene los servidores PHP, confirma que terminaron y solo entonces decide');
+    afirmar($bloqueo !== false && $limpiar !== false && $decision < $bloqueo && $bloqueo < $limpiar, 'la rama «limpieza detenida» precede a la que ejecuta el DELETE');
+    afirmar(str_contains($final, 'if ($escrituraIniciada -and -not $decision.Permitida)') && str_contains($final, 'NO se ejecutó ningún DELETE'), 'sin permiso explícito no se llama a escritura_pm10.php limpiar y se explica la recuperación controlada');
+    afirmar(str_contains($final, 'Get-Job') && str_contains($final, '$incidenciasParalelas'), 'también cuenta los trabajos aún vivos y las incidencias registradas');
+});
+
+prueba('plan de la base aislada (documento): cubre Env.php, la copia de trabajo, las sondas, el script original con USE/CREATE DATABASE y las autorizaciones', function () {
+    $d = (string) file_get_contents(dirname(__DIR__, 2) . '/docs/plan-pm10-bd-aislada.md');
+    foreach (['prioriza `backend/.env`', 'copia de trabajo', 'sonda_db.php', 'SELECT DB_NAME()', 'USE JATSA_Encomiendas', 'copia derivada', 'SHA-256', 'login dedicado', 'Win32_Process', 'Autorizaciones que se pedirían', 'nada de A–D está autorizado'] as $clave) {
+        afirmar(str_contains($d, $clave) || stripos($d, $clave) !== false, "el plan menciona «{$clave}»");
+    }
+    afirmar(!str_contains($d, 'CREATE DATABASE JATSA_pm10') && !preg_match('/^\s*(CREATE|DROP|ALTER)\s+(DATABASE|LOGIN)/mi', $d), 'el plan no contiene sentencias SQL ejecutables: es solo un plan');
+});

@@ -114,14 +114,32 @@ $trabajo = {
     $r = Llamar $metodo $ruta $cuerpo $puerto $galleta
     [pscustomobject]@{ Puerto = $puerto; Estado = $r.Estado; Codigo = $r.Json.error.codigo; Ruta = $ruta }
 }
-function EnParalelo($tareas, $segundos = 8) {
-    $hora = (Get-Date).AddSeconds($segundos).ToString('o')
-    $jobs = foreach ($t in $tareas) { Start-Job -ScriptBlock $trabajo -ArgumentList "$aqui\api.ps1", $t.Puerto, $t.Cookie, $hora, $t.Metodo, $t.Ruta, $t.Cuerpo }
-    $res = @($jobs | Wait-Job -Timeout 150 | Receive-Job)
-    $jobs | Remove-Job -Force
-    $res
+# Incidencias de los trabajos paralelos: mientras haya una sin resolver, la limpieza automática NO se ejecuta (ver el bloque final).
+$incidenciasParalelas = @()
+function Get-InfoTrabajo($job) {
+    $respuestas = @(); $falla = $null
+    try { $respuestas = @(Receive-Job -Job $job -ErrorAction Stop) } catch { $falla = $_.Exception.Message }
+    if ($job.State -eq 'Failed' -and -not $falla) { $falla = [string]$job.ChildJobs[0].JobStateInfo.Reason }
+    [pscustomobject]@{ Id = $job.Id; Estado = [string]$job.State; Respuestas = $respuestas; Error = $falla }
 }
-function Tarea($puerto, $cookie, $metodo, $ruta, $cuerpo = $null) { @{ Puerto = "$puerto"; Cookie = $cookie; Metodo = $metodo; Ruta = $ruta; Cuerpo = $cuerpo } }
+# Lanza las tareas a la vez y devuelve EXACTAMENTE una respuesta por tarea. Exige que TODOS los trabajos hayan concluido (Completed) y entregado su
+# respuesta; si no (timeout, fallo, falta de respuesta) NO sigue: registra la incidencia, detiene los trabajos que pueda y lanza una excepción que lleva
+# al bloque final sin limpieza automática, porque la petición PHP de un trabajo no confirmado podría seguir escribiendo.
+function EnParalelo($tareas, $segundos = 8, $limiteSegundos = 150) {
+    $hora = (Get-Date).AddSeconds($segundos).ToString('o')
+    $jobs = @(foreach ($t in $tareas) { Start-Job -ScriptBlock $trabajo -ArgumentList "$aqui\api.ps1", $t.Puerto, $t.Cookie, $hora, $t.Metodo, $t.Ruta, $t.Cuerpo })
+    $null = Wait-Job -Job $jobs -Timeout ($segundos + $limiteSegundos)
+    $infos = @($jobs | % { Get-InfoTrabajo $_ })
+    $evaluacion = Get-EvaluacionTrabajos $infos @($tareas).Count
+    if (-not $evaluacion.Confirmado) {
+        $script:incidenciasParalelas += $evaluacion.Motivo
+        $jobs | Stop-Job -ErrorAction SilentlyContinue          # el trabajo se detiene, pero la petición HTTP ya enviada podría seguir en el servidor
+        $jobs | Remove-Job -Force -ErrorAction SilentlyContinue
+        throw "INCIDENCIA en los trabajos paralelos (no se continúa ni se limpia automáticamente): $($evaluacion.Motivo)"
+    }
+    $jobs | Remove-Job -Force
+    @($infos | % { @($_.Respuestas)[0] })
+}function Tarea($puerto, $cookie, $metodo, $ruta, $cuerpo = $null) { @{ Puerto = "$puerto"; Cookie = $cookie; Metodo = $metodo; Ruta = $ruta; Cuerpo = $cuerpo } }
 function Resumen($res) { ($res | % { "$($_.Estado)/$($_.Codigo)" }) -join ' | ' }
 
 $servidores = @()
@@ -354,8 +372,22 @@ catch {
     "ERROR: se detiene la validación: $($_.Exception.Message)"
 }
 finally {
+    # 1) Detener los servidores PHP de prueba y CONFIRMAR que terminaron: un proceso vivo podría seguir atendiendo una petición y escribiendo.
     foreach ($s in $servidores) { try { Stop-Process -Id $s.Id -Force -ErrorAction SilentlyContinue } catch { } }
-    if (-not $escrituraIniciada) {
+    $procesosVivos = @()
+    foreach ($s in $servidores) { try { if (-not $s.WaitForExit(20000)) { $procesosVivos += $s.Id } } catch { $procesosVivos += $s.Id } }
+    $trabajosVivos = @(Get-Job -ErrorAction SilentlyContinue | ? { $_.State -in 'Running', 'NotStarted', 'Blocked' } | % { $_.Id })
+    $decision = Get-DecisionLimpieza $incidenciasParalelas $procesosVivos $trabajosVivos
+    if ($escrituraIniciada -and -not $decision.Permitida) {
+        $script:mal++
+        "== 10. LIMPIEZA AUTOMÁTICA DETENIDA: no se puede garantizar que cesó toda actividad contra la base"
+        $decision.Motivos | % { "   - $_" }
+        "   NO se ejecutó ningún DELETE. Qué hacer: (1) comprobar que no queda ningún proceso php.exe de esta prueba ni conexiones activas contra la base;"
+        "   (2) revisar el manifiesto y las instantáneas en $salida; (3) la limpieza se hace después, de forma controlada y con el propietario, con"
+        "   escritura_pm10.php limpiar <manifiesto> (que sigue verificando que cada fila es del manifiesto y que no hay filas ajenas)."
+        $limpio = $false
+    }
+    elseif (-not $escrituraIniciada) {
         "== Limpieza: no se escribió nada en la base (la validación se detuvo en las precondiciones). Nada que limpiar."
         $limpio = $true
     } else {
