@@ -6,12 +6,14 @@ import LayoutCliente from '../layouts/LayoutCliente.jsx'
 import LayoutGerente from '../layouts/LayoutGerente.jsx'
 import LayoutPublico from '../layouts/LayoutPublico.jsx'
 import LayoutTransportista from '../layouts/LayoutTransportista.jsx'
+import Caja from '../modules/administrador/Caja.jsx'
 import EnvioRegistrado from '../modules/administrador/EnvioRegistrado.jsx'
 import FormalizarEnvio from '../modules/administrador/FormalizarEnvio.jsx'
 import ReservaVentanilla from '../modules/administrador/ReservaVentanilla.jsx'
 import Ventanilla from '../modules/administrador/Ventanilla.jsx'
 import Agencias from '../modules/publico/Agencias.jsx'
 import MiPanel from '../modules/cliente/MiPanel.jsx'
+import MisPagos from '../modules/cliente/MisPagos.jsx'
 import MisReservas from '../modules/cliente/MisReservas.jsx'
 import NuevaReserva from '../modules/cliente/NuevaReserva.jsx'
 import ReservaRegistrada from '../modules/cliente/ReservaRegistrada.jsx'
@@ -37,7 +39,9 @@ const PANTALLAS_REALES = {
   'administrador/sin-reserva': ReservaVentanilla,
   'administrador/formalizar-envio/:codigo': FormalizarEnvio,
   'administrador/envio/:codigo': EnvioRegistrado,
+  'administrador/caja': Caja,
   'cliente/': MiPanel,
+  'cliente/pagos': MisPagos,
   'cliente/nueva-reserva': NuevaReserva,
   'cliente/reserva-registrada/:codigo': ReservaRegistrada,
   'cliente/reservas': MisReservas,
