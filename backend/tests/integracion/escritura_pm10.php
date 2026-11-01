@@ -27,8 +27,9 @@ declare(strict_types=1);
  *                              inicial: si una clave del manifiesto coincide con una fila ORIGINAL, o existe cualquier fila nueva que no sea del
  *                              manifiesto (otro proceso, o algo sin anotar), no borra nada (código 4). Verifica además que ninguna fila ajena
  *                              depende de lo temporal y que cada DELETE afecta exactamente lo contado.
- * TODAS las operaciones exigen que el manifiesto traiga baseAislada y que ESTA conexión (la de la copia de trabajo) sea esa base, con el login
- * aislado: si DB_NAME() es otra, o contiene «Encomiendas», se detiene (código 5) sin escribir nada. pm10 ya no se ejecuta contra la base habitual.
+ * TODAS las operaciones exigen que el manifiesto traiga baseAislada y que ESTA conexión (la de la copia de trabajo) sea esa base, con la cuenta
+ * Windows esperada (loginEsperado) y autenticación de Windows: si DB_NAME() es otra, o contiene «Encomiendas», se detiene (código 5) sin escribir nada. La cuenta es
+ * sysadmin: no hay aislamiento por permisos, solo esta verificación. pm10 ya no se ejecuta contra la base habitual.
  * Cualquier otra operación se rechaza. Sin DDL, sin DBCC CHECKIDENT: los contadores IDENTITY NO se restauran (se informan en el orquestador).
  */
 $raiz = dirname(__DIR__, 2);
@@ -93,9 +94,13 @@ if (preg_match('/^JATSA_pm10_aislada_\d{8}_\d{4}$/', $baseAislada) !== 1 || stri
     abortar('El manifiesto no trae una base aislada válida (baseAislada).', 2);
 }
 $pdo = Database::conexion();
-$destino = $pdo->query('SELECT DB_NAME() AS bd, SUSER_SNAME() AS login')->fetch(PDO::FETCH_ASSOC);
-if ($destino['bd'] !== $baseAislada || $destino['login'] !== 'jatsa_pm10_aislado' || stripos((string) $destino['bd'], 'encomiendas') !== false) {
-    abortar('Esta conexión NO es la base aislada del manifiesto con el login aislado (' . $destino['bd'] . ' / ' . $destino['login'] . '). No se escribe nada.', 5);
+$loginEsperado = (string) ($manifiesto['loginEsperado'] ?? '');
+if ($loginEsperado === '') {
+    abortar('El manifiesto no trae la cuenta Windows esperada (loginEsperado).', 2);
+}
+$destino = $pdo->query('SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth')->fetch(PDO::FETCH_ASSOC);
+if ($destino['bd'] !== $baseAislada || strcasecmp((string) $destino['login'], $loginEsperado) !== 0 || !in_array(strtoupper((string) $destino['auth']), ['NTLM', 'KERBEROS', 'NEGOTIATE'], true) || stripos((string) $destino['bd'], 'encomiendas') !== false) {
+    abortar('Esta conexión NO es la base aislada del manifiesto con la cuenta Windows esperada y autenticación de Windows (' . $destino['bd'] . ' / ' . $destino['login'] . ' / ' . $destino['auth'] . '). No se escribe nada.', 5);
 }
 $uno = static fn (string $sql): int => (int) $pdo->query($sql)->fetchColumn();
 $columna = static fn (string $sql): array => array_map('intval', $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN));

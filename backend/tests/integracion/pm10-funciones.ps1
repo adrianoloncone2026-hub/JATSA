@@ -38,6 +38,7 @@ function Get-AvanceIdentity($antes, $despues) {
 function Test-ManifiestoPm10($m) {
     $problemas = @()
     if ([string]$m.baseAislada -cnotmatch '^JATSA_pm10_aislada_\d{8}_\d{4}$' -or [string]$m.baseAislada -match '(?i)encomiendas') { $problemas += 'el manifiesto debe traer baseAislada (una base aislada válida, nunca la habitual)' }
+    if ([string]::IsNullOrWhiteSpace([string]$m.loginEsperado)) { $problemas += 'el manifiesto debe traer loginEsperado (la cuenta Windows con la que corren los procesos)' }
     $reglas = @{ sucursales = '^PMX9\d{2}$'; vehiculos = '^PM1-9\d{2}$'; documentos = '^(9000010\d|2000000010\d)$'; usuarios = '^pm10_[a-z0-9]{3,20}$'; viajes = '^VJ\d{10}$' }
     foreach ($clave in $reglas.Keys) {
         foreach ($valor in @($m[$clave])) {

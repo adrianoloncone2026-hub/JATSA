@@ -3,16 +3,21 @@
   PREPARADA PARA REVISIÓN ESTÁTICA. NO SE HA EJECUTADO y NO SE EJECUTA SIN AUTORIZACIÓN EXPRESA Y SEPARADA DEL PROPIETARIO (autorización C del plan:
   docs/plan-pm10-bd-aislada.md). pm10 YA NO SE EJECUTA CONTRA LA BASE HABITUAL: se niega a correr si no se le indica una base aislada válida.
 
+  MECANISMO DE ACCESO: AUTENTICACIÓN INTEGRADA DE WINDOWS. La instancia solo admite Windows y la cuenta Windows del propietario es SYSADMIN: no existe ningún login SQL
+  dedicado y NO HAY AISLAMIENTO POR PERMISOS. Cualquier proceso que corra con esa cuenta podría leer y escribir JATSA_Encomiendas si apuntara a ella. Lo único que
+  separa esta prueba de la base habitual es (1) la COPIA INDEPENDIENTE del backend con su propio .env y (2) las verificaciones estrictas de DB_NAME(), de la cuenta
+  Windows y del esquema de autenticación en CADA conexión: la CLI, cada uno de los 4 servidores (sonda), cada escritura (escritura_pm10.php) y una reverificación
+  tras las carreras. Por eso no existe la prueba de «acceso denegado» a la base real.
+
   CÓMO SE EJECUTA (después de las autorizaciones A y B): se ejecuta la COPIA DE TRABAJO de este script, que dejó preparada cargar_bd_aislada.ps1 en
-  %TEMP%\jatsa_pm10_<marca>\backend\tests\integracion. Esa copia tiene su propio .env (generado, con el login y la base aislados): así TODOS los procesos
+  %TEMP%\jatsa_pm10_<marca>\backend\tests\integracion. Esa copia tiene su propio .env (generado, con la base aislada y sin credenciales): así TODOS los procesos
   PHP (la CLI y los 4 servidores) leen esa configuración y no la de backend/.env, que además tiene prioridad sobre las variables del proceso.
     powershell -File <copia>\backend\tests\integracion\validar-pm10.ps1 -AutorizadoPorElPropietario -BaseAislada JATSA_pm10_aislada_AAAAMMDD_HHMM
 
-  FASE 0 (antes de escribir NADA, todo SELECT): el script está en una copia (jatsa_pm10_*), su .env tiene DB_NAME = la base aislada y DB_USER = el login
-  aislado; DB_NAME()/SUSER_SNAME() por la CLI son los esperados; el login aislado NO puede abrir la base habitual (debe fallar); tiene VIEW SERVER STATE
-  (para comprobar sesiones antes de limpiar); existe el gerente semilla activo; y, con los servidores arrancados, una sonda (sonda_db.php, que solo existe en
-  la copia) en CADA puerto devuelve la base y el login aislados, y la línea de comandos de cada php.exe está en la copia.
-
+  FASE 0 (antes de escribir NADA, todo SELECT): el script está en una copia (jatsa_pm10_*), su .env tiene DB_NAME = la base aislada y DB_USER/DB_PASSWORD vacíos;
+  por la CLI, DB_NAME() es la base aislada, ORIGINAL_LOGIN() es la cuenta Windows de este proceso y auth_scheme es NTLM/KERBEROS; la cuenta tiene VIEW SERVER STATE
+  (para comprobar sesiones antes de limpiar); existe el gerente semilla activo; y, con los servidores arrancados, una sonda (sonda_db.php, que solo existe en la
+  copia) en CADA puerto devuelve la base aislada, la cuenta Windows esperada y autenticación de Windows, y la línea de comandos de cada php.exe está en la copia.
   QUÉ ESCRIBE: Sucursal, Telefono_Sucursal, Ruta, Vehiculo, Persona, Usuario y Viaje (por los endpoints y por escritura_pm10.php); la carrera del «último
   gerente» desactiva y RESTAURA a «seed_gerente». DELETE solo en la limpieza y solo de lo anotado en el manifiesto. No toca Reserva, Envio, Bulto, Pago ni
   Envio_Viaje. Sin DDL, sin tocar el script SQL, sin DBCC CHECKIDENT.
@@ -38,7 +43,7 @@
   Interbloqueos y errores 500: un HTTP 500 solo se acepta en una carrera si el registro de la aplicación muestra, durante esa carrera, un interbloqueo real
   (SQL 1205 / «deadlock») y el estado final es consistente; un 500 genérico es un FALLO.
   Trabajos paralelos y limpieza: la limpieza automática solo se ejecuta con todos los trabajos concluidos y con una respuesta por tarea, con los servidores
-  PHP confirmados como terminados Y con la confirmación de SQL Server de que no quedan sesiones ni transacciones del login aislado; ante la duda, NO limpia
+  PHP confirmados como terminados Y con la confirmación de SQL Server de que no quedan sesiones ni transacciones en la base aislada; ante la duda, NO limpia
   y reporta para una recuperación controlada. Si un paso del que dependen las fases siguientes falla, la validación se DETIENE.
 #>
 param([switch]$AutorizadoPorElPropietario, [string]$BaseAislada = '')
@@ -61,10 +66,18 @@ New-Item -ItemType Directory -Force $salida | Out-Null
 . "$aqui\pm10-funciones.ps1"
 . "$aqui\pm10-aislamiento.ps1"   # reglas del aislamiento: nombre de la base, destino, sondas, procesos, sesiones SQL
 $backend = Split-Path (Split-Path $aqui -Parent) -Parent   # la carpeta backend de ESTA copia de trabajo (todo se resuelve desde aquí)
+$loginEsperado = Get-LoginWindowsActual                     # la cuenta Windows que heredan los procesos PHP: debe ser la que SQL Server vea en cada conexión
 
 $ok = 0; $mal = 0; $interbloqueos = 0; $errores500Genericos = 0
 function V($nombre, $cond, $detalle = '') { if ($cond) { $script:ok++; "  OK    $nombre" } else { $script:mal++; "  FALLO $nombre  $detalle" } }
 # Un paso del que dependen las fases siguientes: si falla, se registra el fallo y SE DETIENE la validación (la limpieza y el informe siguen).
+# Consulta la sonda de CADA servidor: base, cuenta Windows y esquema de autenticación del proceso servidor.
+function ConsultarSondas {
+    foreach ($p in 8000..8003) {
+        try { $w = Invoke-WebRequest -Uri "http://localhost:$p/sonda_db.php" -UseBasicParsing -TimeoutSec 20; $j = $w.Content | ConvertFrom-Json; [pscustomobject]@{ Puerto = "$p"; Estado = [int]$w.StatusCode; Bd = $j.bd; Login = $j.login; Auth = $j.auth } }
+        catch { [pscustomobject]@{ Puerto = "$p"; Estado = 0; Bd = ''; Login = ''; Auth = '' } }
+    }
+}
 function Critico($nombre, $cond, $detalle = '') { V $nombre $cond $detalle; if (-not $cond) { throw "Se detiene: falló una condición de la que dependen las fases siguientes ($nombre)" } }
 function Exigir($cond, $mensaje) { if ($cond) { "  OK    $mensaje" } else { throw "Precondición fallida: $mensaje" } }
 function Leer($sql) { $s = (& $php "$aqui\leer.php" $sql | Out-String); if ($LASTEXITCODE -ne 0) { throw "leer.php rechazó o falló: $sql" }; @(ConvertFrom-FilasJson $s) }
@@ -74,7 +87,7 @@ function Clave { $a = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 # MANIFIESTO de lo creado EN ESTA EJECUCIÓN: es lo único que escritura_pm10.php puede borrar. Se guarda en disco tras cada anotación
 # (y ANTES de crear), de modo que una interrupción deja la limpieza exacta.
 $manifiestoRuta = Join-Path $salida 'manifiesto.json'
-$manifiesto = @{ baseAislada = $BaseAislada; identAntes = @{}; idsAntes = @{}; sucursales = @(); vehiculos = @(); documentos = @(); usuarios = @(); viajes = @() }
+$manifiesto = @{ baseAislada = $BaseAislada; loginEsperado = $loginEsperado; identAntes = @{}; idsAntes = @{}; sucursales = @(); vehiculos = @(); documentos = @(); usuarios = @(); viajes = @() }
 function Anotar($clave, $valor) {
     if ($valor -and ($manifiesto[$clave] -notcontains $valor)) { $manifiesto[$clave] = @($manifiesto[$clave]) + @($valor) }
     $manifiesto | ConvertTo-Json -Depth 4 | Set-Content $manifiestoRuta -Encoding ascii
@@ -161,14 +174,12 @@ try {
     Exigir ($aqui -match '\\jatsa_pm10_\d{8}_\d{6}\\backend\\tests\\integracion$') 'este script se ejecuta desde una COPIA DE TRABAJO temporal (jatsa_pm10_*), no desde el repositorio ni desde el backend habitual'
     Exigir (Test-Path -LiteralPath "$backend\.env") 'la copia tiene su propio .env'
     $envCopia = Test-EnvDeCopia ([IO.File]::ReadAllText("$backend\.env", [Text.Encoding]::UTF8)) $BaseAislada
-    Exigir $envCopia.Valido "el .env de la copia apunta a la base y al login aislados ($($envCopia.Motivo))"
-    $destinoCli = (Leer "SELECT DB_NAME() AS bd, SUSER_SNAME() AS login")[0]
-    $d = Test-DestinoAislado $destinoCli.bd $destinoCli.login $BaseAislada
-    Exigir $d.Valido "la CLI (leer.php) está en la base aislada con el login aislado ($($d.Motivo))"
-    # El login aislado NO debe poder abrir la base habitual: si esta consulta funcionara, se detiene TODO antes de escribir.
-    & $php "$aqui\leer.php" 'SELECT TOP 1 1 AS x FROM JATSA_Encomiendas.dbo.Persona' 2>$null | Out-Null
-    Exigir ($LASTEXITCODE -ne 0) 'el login aislado NO puede leer la base habitual (acceso denegado, como debe ser)'
-    Exigir ([int](Leer "SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') AS puede")[0].puede -eq 1) 'el login aislado tiene VIEW SERVER STATE (hace falta para comprobar sesiones y transacciones antes de limpiar)'
+    Exigir $envCopia.Valido "el .env de la copia apunta a la base aislada, sin credenciales (autenticación integrada de Windows) ($($envCopia.Motivo))"
+    $destinoCli = (Leer "SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth")[0]
+    $d = Test-DestinoAislado $destinoCli.bd $destinoCli.login $destinoCli.auth $BaseAislada $loginEsperado
+    Exigir $d.Valido "la CLI (leer.php) está en la base aislada con la cuenta Windows esperada y autenticación integrada ($($d.Motivo))"
+    "  AVISO: la cuenta Windows $loginEsperado es sysadmin; NO existe aislamiento por permisos (no se puede probar un «acceso denegado» a la base real). Solo valen la copia independiente y las verificaciones de DB_NAME(), cuenta y autenticación en cada conexión."
+    Exigir ([int](Leer "SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') AS puede")[0].puede -eq 1) 'la cuenta tiene VIEW SERVER STATE (hace falta para comprobar sesiones y transacciones antes de limpiar)'
     Exigir ([int](Leer "SELECT COUNT(*) AS n FROM Usuario WHERE nombreUsuario = 'seed_gerente' AND rol = 'GERENTE' AND activo = 1")[0].n -eq 1) 'existe el gerente semilla «seed_gerente» activo (la carrera del último gerente lo usa y lo restaura)'
     Exigir ([int](Leer "SELECT COUNT(*) AS n FROM Persona WHERE numeroDocumento LIKE '9999990_'")[0].n -ge 1) 'la semilla sintética está cargada'
     foreach ($p in 8000..8003) { Exigir (-not (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue)) "el puerto $p está libre (no se toca ningún servidor ajeno)" }
@@ -208,12 +219,9 @@ try {
     foreach ($p in 8000..8003) { Exigir ([bool](Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue)) "servidor de prueba escuchando en $p" }
     # Cada PROCESO servidor debe estar conectado a la base aislada: la sonda (que solo existe en la copia) responde DB_NAME() y el login de ESE proceso.
     Copy-Item -LiteralPath "$aqui\sonda_db.plantilla" -Destination "$backend\public\sonda_db.php" -Force
-    $respuestas = foreach ($p in 8000..8003) {
-        try { $w = Invoke-WebRequest -Uri "http://localhost:$p/sonda_db.php" -UseBasicParsing -TimeoutSec 20; $j = $w.Content | ConvertFrom-Json; [pscustomobject]@{ Puerto = "$p"; Estado = [int]$w.StatusCode; Bd = $j.bd; Login = $j.login } }
-        catch { [pscustomobject]@{ Puerto = "$p"; Estado = 0; Bd = ''; Login = '' } }
-    }
-    $sondas = Get-ResultadoSondas $respuestas @('8000', '8001', '8002', '8003') $BaseAislada
-    Critico "los 4 servidores PHP están conectados SOLO a la base aislada ($($sondas.Motivo))" $sondas.Valido
+    $respuestas = @(ConsultarSondas)
+    $sondas = Get-ResultadoSondas $respuestas @('8000', '8001', '8002', '8003') $BaseAislada $loginEsperado
+    Critico "los 4 servidores PHP están conectados SOLO a la base aislada, con la cuenta Windows esperada y autenticación integrada ($($sondas.Motivo))" $sondas.Valido
     $lineasOk = $true
     foreach ($srv in $servidores) { $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$($srv.Id)"; if (-not (Test-LineaDeComandosEnCopia $proc.CommandLine $backend)) { $lineasOk = $false } }
     Critico 'ningún php.exe de la prueba se lanzó fuera de la copia de trabajo' $lineasOk
@@ -403,6 +411,12 @@ try {
     V 'C7: las respuestas coinciden con el estado final de cada gerente temporal' (@($res | ? { $_.Estado -eq 200 }).Count -eq (2 - $activosTemporales))
     $sobrevive = if ([int](Leer "SELECT activo AS n FROM Usuario WHERE nombreUsuario='pm10_gerente'")[0].n -eq 1) { $g1 } elseif ([int](Leer "SELECT activo AS n FROM Usuario WHERE nombreUsuario='pm10_gerente2'")[0].n -eq 1) { $g2 } else { $null }
     if ($sobrevive) { V 'C7: el gerente que sobrevivió restaura al gerente semilla' ((Api POST '/api/usuarios/seed_gerente/estado' @{ activo = $true } $sobrevive).Estado -eq 200) }    AnotarViajesTemporales
+    "== 9b. Reverificación del destino tras las carreras (la cuenta es sysadmin: solo estas comprobaciones separan la base aislada de la habitual)"
+    $sondas2 = Get-ResultadoSondas @(ConsultarSondas) @('8000', '8001', '8002', '8003') $BaseAislada $loginEsperado
+    V "los 4 servidores PHP siguen conectados SOLO a la base aislada tras las carreras ($($sondas2.Motivo))" $sondas2.Valido
+    $cli2 = (Leer "SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth")[0]
+    $d2 = Test-DestinoAislado $cli2.bd $cli2.login $cli2.auth $BaseAislada $loginEsperado
+    V "la CLI sigue en la base aislada con la cuenta esperada tras las carreras ($($d2.Motivo))" $d2.Valido
     V "ningún 500 genérico en todas las carreras (genéricos: $errores500Genericos); interbloqueos reales comprobados en el registro y aceptados: $interbloqueos" ($errores500Genericos -eq 0)
 }
 catch {
@@ -416,7 +430,7 @@ finally {
     foreach ($s in $servidores) { try { if (-not $s.WaitForExit(20000)) { $procesosVivos += $s.Id } } catch { $procesosVivos += $s.Id } }
     Remove-Item -LiteralPath "$backend\public\sonda_db.php" -Force -ErrorAction SilentlyContinue   # la sonda solo existe mientras dura la prueba
     $trabajosVivos = @(Get-Job -ErrorAction SilentlyContinue | ? { $_.State -in 'Running', 'NotStarted', 'Blocked' } | % { $_.Id })
-    # 2) Confirmar con SQL Server que no quedan sesiones ni transacciones del login aislado: WaitForExit prueba que terminó el PROCESO de Windows, no que el
+    # 2) Confirmar con SQL Server que no quedan sesiones ni transacciones en la base aislada (la cuenta Windows es la del propietario, así que se filtra por BASE, no por login): WaitForExit prueba que terminó el PROCESO de Windows, no que el
     #    servidor haya terminado el rollback. Se consulta hasta 30 s; sin VIEW SERVER STATE, o ante cualquier duda o error, NO se limpia.
     $problemasSql = @()
     if ($escrituraIniciada) {
@@ -424,7 +438,7 @@ finally {
         for ($intentoSql = 0; $intentoSql -lt 10; $intentoSql++) {
             try {
                 $puedeVer = (Leer "SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') AS puede")[0].puede
-                $filasSql = @(Leer "SELECT s.session_id, s.status, (SELECT COUNT(*) FROM sys.dm_tran_session_transactions t WHERE t.session_id = s.session_id) AS transacciones, (SELECT COUNT(*) FROM sys.dm_exec_requests r WHERE r.session_id = s.session_id) AS solicitudes FROM sys.dm_exec_sessions s WHERE s.is_user_process = 1 AND s.login_name = SUSER_SNAME() AND s.session_id <> @@SPID")
+                $filasSql = @(Leer "SELECT s.session_id, s.status, (SELECT COUNT(*) FROM sys.dm_tran_session_transactions t JOIN sys.dm_tran_database_transactions d ON d.transaction_id = t.transaction_id WHERE t.session_id = s.session_id AND d.database_id = DB_ID()) AS transacciones, (SELECT COUNT(*) FROM sys.dm_exec_requests r WHERE r.session_id = s.session_id) AS solicitudes FROM sys.dm_exec_sessions s WHERE s.is_user_process = 1 AND s.session_id <> @@SPID AND (s.database_id = DB_ID() OR EXISTS (SELECT 1 FROM sys.dm_tran_session_transactions t2 JOIN sys.dm_tran_database_transactions d2 ON d2.transaction_id = t2.transaction_id WHERE t2.session_id = s.session_id AND d2.database_id = DB_ID()))")
                 $evSql = Get-EvaluacionSesionesSql $puedeVer $filasSql
             } catch { $evSql = [pscustomobject]@{ Segura = $false; Motivos = @("no se pudo consultar a SQL Server: $($_.Exception.Message)") } }
             if ($evSql.Segura) { break }
@@ -437,7 +451,7 @@ finally {
         $script:mal++
         "== 10. LIMPIEZA AUTOMÁTICA DETENIDA: no se puede garantizar que cesó toda actividad contra la base (procesos PHP, trabajos, sesiones y transacciones SQL)"
         $decision.Motivos | % { "   - $_" }
-        "   NO se ejecutó ningún DELETE. Qué hacer: (1) comprobar que no queda ningún proceso php.exe de esta prueba ni sesiones del login aislado en SQL Server;"
+        "   NO se ejecutó ningún DELETE. Qué hacer: (1) comprobar que no queda ningún proceso php.exe de esta prueba ni sesiones en la base aislada en SQL Server (cierra también cualquier ventana de SSMS abierta sobre ella);"
         "   (2) revisar el manifiesto y las instantáneas en $salida; (3) la limpieza se hace después, de forma controlada y con el propietario, con"
         "   escritura_pm10.php limpiar <manifiesto> (que sigue verificando que cada fila es del manifiesto y que no hay filas ajenas)."
         $limpio = $false

@@ -1,8 +1,13 @@
 ﻿# Funciones del AISLAMIENTO de pm10 en una base SQL Server descartable. Casi todas son PURAS (sin base de datos, red ni archivos) y las comprueba
-# probar-pm10-funciones.ps1 con datos sintéticos. NADA de esto se ejecuta sin autorizaciones separadas del propietario (ver docs/plan-pm10-bd-aislada.md).
+# probar-pm10-funciones.ps1 con datos sintéticos. NADA de esto se ejecuta sin autorización expresa del propietario (ver docs/plan-pm10-bd-aislada.md).
+#
+# MECANISMO: AUTENTICACIÓN INTEGRADA DE WINDOWS (la instancia solo admite Windows: SoloWindows = 1). No existe ningún login SQL dedicado. La cuenta Windows del
+# propietario es SYSADMIN, así que NO HAY AISLAMIENTO POR PERMISOS: cualquier proceso que corra con esa cuenta podría leer y escribir JATSA_Encomiendas si
+# apuntara a ella. El aislamiento depende SOLO de la configuración (la copia de trabajo con su .env) y de las verificaciones estrictas de DB_NAME() en cada
+# conexión (CLI, cada servidor HTTP, cada escritura) y de que la conexión sea realmente de Windows (auth_scheme NTLM/KERBEROS).
 
 $script:PATRON_BD_AISLADA = '^JATSA_pm10_aislada_\d{8}_\d{4}$'
-$script:LOGIN_AISLADO = 'jatsa_pm10_aislado'
+$script:AUTENTICACIONES_WINDOWS = @('NTLM', 'KERBEROS', 'NEGOTIATE')
 $script:BASE_HABITUAL = 'JATSA_Encomiendas'
 $script:TABLAS_ESPERADAS = @('Persona', 'Sucursal', 'Usuario', 'Telefono_Sucursal', 'Ruta', 'Vehiculo', 'Reserva', 'Envio', 'Bulto', 'Viaje', 'Envio_Viaje', 'Pago')
 
@@ -11,19 +16,24 @@ function Test-NombreBdAislada([string]$nombre) {
     ($nombre -cmatch $script:PATRON_BD_AISLADA) -and ($nombre -notmatch '(?i)encomiendas') -and ($nombre -ne $script:BASE_HABITUAL)
 }
 
-# Resultado de «SELECT DB_NAME(), SUSER_SNAME()» en UNA conexión (CLI o servidor HTTP). Rechaza inequívocamente la base habitual.
-function Test-DestinoAislado($bdObtenida, $loginObtenido, [string]$baseEsperada, [string]$loginEsperado = $script:LOGIN_AISLADO) {
+# La cuenta Windows con la que se ejecuta ESTE proceso (la misma que heredan los procesos PHP): es el login que SQL Server debe ver en cada conexión.
+function Get-LoginWindowsActual { [Security.Principal.WindowsIdentity]::GetCurrent().Name }
+
+# Resultado de «SELECT DB_NAME(), ORIGINAL_LOGIN(), auth_scheme» en UNA conexión (CLI o servidor HTTP). Rechaza inequívocamente la base habitual y toda
+# conexión que no sea de Windows. El login (cuenta Windows) se compara sin distinguir mayúsculas.
+function Test-DestinoAislado($bdObtenida, $loginObtenido, $authObtenida, [string]$baseEsperada, [string]$loginEsperado) {
     if ([string]::IsNullOrWhiteSpace([string]$bdObtenida)) { return [pscustomobject]@{ Valido = $false; Motivo = 'la conexión no devolvió DB_NAME()' } }
     if ([string]$bdObtenida -match '(?i)^JATSA_Encomiendas$|encomiendas') { return [pscustomobject]@{ Valido = $false; Motivo = "LA CONEXIÓN APUNTA A LA BASE HABITUAL ($bdObtenida)" } }
     if (-not (Test-NombreBdAislada $baseEsperada)) { return [pscustomobject]@{ Valido = $false; Motivo = "el nombre esperado «$baseEsperada» no es una base aislada válida" } }
     if ([string]$bdObtenida -cne $baseEsperada) { return [pscustomobject]@{ Valido = $false; Motivo = "DB_NAME() es «$bdObtenida» y se esperaba «$baseEsperada»" } }
-    if ([string]$loginObtenido -cne $loginEsperado) { return [pscustomobject]@{ Valido = $false; Motivo = "el login es «$loginObtenido» y se esperaba «$loginEsperado»" } }
-    [pscustomobject]@{ Valido = $true; Motivo = 'conectado a la base aislada con el login aislado' }
+    if ([string]::IsNullOrWhiteSpace($loginEsperado)) { return [pscustomobject]@{ Valido = $false; Motivo = 'no se indicó la cuenta Windows esperada' } }
+    if ([string]$loginObtenido -ine $loginEsperado) { return [pscustomobject]@{ Valido = $false; Motivo = "la cuenta es «$loginObtenido» y se esperaba «$loginEsperado»" } }
+    if ($script:AUTENTICACIONES_WINDOWS -notcontains ([string]$authObtenida).ToUpperInvariant()) { return [pscustomobject]@{ Valido = $false; Motivo = "la conexión no usa autenticación de Windows (auth_scheme «$authObtenida»)" } }
+    [pscustomobject]@{ Valido = $true; Motivo = 'conectado a la base aislada con la cuenta Windows esperada (autenticación integrada)' }
 }
-
-# Las sondas de los servidores HTTP: una respuesta por puerto esperado, todas con HTTP 200 y todas conectadas a la base aislada.
-# $respuestas: objetos { Puerto; Estado; Bd; Login }.
-function Get-ResultadoSondas($respuestas, [string[]]$puertosEsperados, [string]$baseEsperada, [string]$loginEsperado = $script:LOGIN_AISLADO) {
+# Las sondas de los servidores HTTP: una respuesta por puerto esperado, todas con HTTP 200 y todas conectadas a la base aislada con la cuenta Windows esperada.
+# $respuestas: objetos { Puerto; Estado; Bd; Login; Auth }.
+function Get-ResultadoSondas($respuestas, [string[]]$puertosEsperados, [string]$baseEsperada, [string]$loginEsperado) {
     $r = @($respuestas | Where-Object { $null -ne $_ })
     $problemas = @()
     $vistos = @($r | ForEach-Object { [string]$_.Puerto })
@@ -31,13 +41,12 @@ function Get-ResultadoSondas($respuestas, [string[]]$puertosEsperados, [string]$
     foreach ($x in $r) {
         if ($puertosEsperados -notcontains [string]$x.Puerto) { $problemas += "respuesta de un puerto inesperado ($($x.Puerto))"; continue }
         if ([string]$x.Estado -ne '200') { $problemas += "puerto $($x.Puerto): HTTP $($x.Estado)"; continue }
-        $d = Test-DestinoAislado $x.Bd $x.Login $baseEsperada $loginEsperado
+        $d = Test-DestinoAislado $x.Bd $x.Login $x.Auth $baseEsperada $loginEsperado
         if (-not $d.Valido) { $problemas += "puerto $($x.Puerto): $($d.Motivo)" }
     }
     if (@($vistos | Select-Object -Unique).Count -ne $vistos.Count) { $problemas += 'hay puertos repetidos entre las respuestas' }
     [pscustomobject]@{ Valido = ($problemas.Count -eq 0); Motivo = ($problemas -join ' | ') }
 }
-
 # Un proceso PHP de la prueba debe ejecutarse DESDE la copia de trabajo y nunca desde el backend habitual.
 function Test-LineaDeComandosEnCopia([string]$lineaDeComandos, [string]$rutaCopia, [string[]]$rutasProhibidas = @()) {
     if ([string]::IsNullOrWhiteSpace($lineaDeComandos) -or [string]::IsNullOrWhiteSpace($rutaCopia)) { return $false }
@@ -54,19 +63,19 @@ function Test-LineaDeComandosEnCopia([string]$lineaDeComandos, [string]$rutaCopi
 
 # ── Configuración independiente ──────────────────────────────────────────────────────────────────────────────────────────────────
 # Contenido del .env de la COPIA: todas las claves de conexión definidas explícitamente (si faltara alguna, Env caería a las variables del proceso).
-function New-ContenidoEnvAislado([string]$servidor, [string]$puerto, [string]$base, [string]$usuario, [string]$clave) {
-    foreach ($valor in @($servidor, $puerto, $base, $usuario, $clave)) { if ($valor -match "[\r\n]") { throw 'un valor del .env contiene saltos de línea' } }
+# DB_USER y DB_PASSWORD van DEFINIDAS Y VACÍAS: Database.php usa entonces la autenticación integrada de Windows. No hay ninguna credencial en este archivo.
+function New-ContenidoEnvAislado([string]$servidor, [string]$puerto, [string]$base) {
+    foreach ($valor in @($servidor, $puerto, $base)) { if ($valor -match "[\r\n]") { throw 'un valor del .env contiene saltos de línea' } }
+    if ([string]::IsNullOrWhiteSpace($servidor)) { throw 'falta el servidor' }
     if (-not (Test-NombreBdAislada $base)) { throw "«$base» no es un nombre de base aislada válido" }
-    if ($usuario -cne $script:LOGIN_AISLADO) { throw "el login debe ser $($script:LOGIN_AISLADO)" }
-    if ([string]::IsNullOrEmpty($clave) -or $clave.Length -lt 16) { throw 'falta la contraseña del login aislado (mínimo 16 caracteres)' }
     @(
-        '# Generado por la preparación de la base aislada pm10. COPIA DE TRABAJO TEMPORAL: no es el .env habitual y se borra con la copia.',
+        '# Generado por la preparación de la base aislada pm10. COPIA DE TRABAJO TEMPORAL: no es el .env habitual y se borra con la copia. Autenticación integrada de Windows: sin credenciales.',
         'APP_ENV=prueba', 'APP_TZ=America/Lima', 'CORS_ORIGINS=http://localhost:5173', 'SESSION_HORAS=8', 'SESSION_DIAS_RECORDAR=14', 'SESSION_SECURE=false',
-        "DB_HOST=$servidor", "DB_PORT=$puerto", "DB_NAME=$base", "DB_USER=$usuario", "DB_PASSWORD=$clave", 'DB_ENCRYPT=false', 'DB_TRUST_CERT=true'
+        "DB_HOST=$servidor", "DB_PORT=$puerto", "DB_NAME=$base", 'DB_USER=', 'DB_PASSWORD=', 'DB_ENCRYPT=false', 'DB_TRUST_CERT=true'
     ) -join "`n"
 }
 
-# Lee las claves CLAVE=valor de un .env (para comprobar el de la copia). Nunca se imprime la contraseña.
+# Lee las claves CLAVE=valor de un .env (para comprobar el de la copia).
 function Get-ValoresEnv([string]$texto) {
     $v = @{}; $repetidas = @()
     foreach ($linea in ($texto -split "`r?`n")) {
@@ -79,17 +88,16 @@ function Get-ValoresEnv([string]$texto) {
     [pscustomobject]@{ Valores = $v; Repetidas = $repetidas }
 }
 
-function Test-EnvDeCopia([string]$texto, [string]$base, [string]$login = $script:LOGIN_AISLADO) {
+function Test-EnvDeCopia([string]$texto, [string]$base) {
     $e = Get-ValoresEnv $texto; $v = $e.Valores; $problemas = @()
     foreach ($k in 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD') { if (-not $v.ContainsKey($k)) { $problemas += "falta $k (sin ella, Env usaría las variables del proceso)" } }
     if ($e.Repetidas.Count -gt 0) { $problemas += "claves repetidas: $($e.Repetidas -join ', ')" }
     if ($v.ContainsKey('DB_NAME') -and $v['DB_NAME'] -cne $base) { $problemas += "DB_NAME es «$($v['DB_NAME'])» y debe ser «$base»" }
     if ($v.ContainsKey('DB_NAME') -and $v['DB_NAME'] -match '(?i)encomiendas') { $problemas += 'DB_NAME apunta a la base habitual' }
-    if ($v.ContainsKey('DB_USER') -and $v['DB_USER'] -cne $login) { $problemas += "DB_USER es «$($v['DB_USER'])» y debe ser «$login»" }
-    if ($v.ContainsKey('DB_PASSWORD') -and [string]::IsNullOrEmpty($v['DB_PASSWORD'])) { $problemas += 'DB_PASSWORD está vacía' }
+    if ($v.ContainsKey('DB_USER') -and $v['DB_USER'] -ne '') { $problemas += 'DB_USER debe estar VACÍO (autenticación integrada de Windows; no hay logins SQL)' }
+    if ($v.ContainsKey('DB_PASSWORD') -and $v['DB_PASSWORD'] -ne '') { $problemas += 'DB_PASSWORD debe estar VACÍA (el .env no guarda credenciales)' }
     [pscustomobject]@{ Valido = ($problemas.Count -eq 0); Motivo = ($problemas -join ' | ') }
 }
-
 # Compara dos inventarios { rutaRelativa = sha256 }: la copia de trabajo debe tener EXACTAMENTE el mismo código que el repositorio.
 function Get-DiferenciasHashes([hashtable]$origen, [hashtable]$copia) {
     $d = @()
@@ -152,12 +160,12 @@ function Test-DdlDerivado([string]$texto, [string]$base) {
 
 # ── Sesiones y transacciones SQL Server de la prueba, antes de limpiar ───────────────────────────────────────────────────────────
 # WaitForExit acredita que terminó el PROCESO de Windows, no que SQL Server haya terminado el rollback de sus transacciones. Se consulta al servidor
-# por las sesiones del login aislado distintas de la actual. $puedeVer = HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE'); sin ese permiso las
+# por las sesiones de usuario cuyo contexto es la base aislada, o con transacciones abiertas en ella, distintas de la actual (con autenticación de Windows el «login» es el del propietario: una ventana de SSMS suya abierta en esa base también cuenta, a propósito). $puedeVer = HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE'); sin ese permiso las
 # vistas solo muestran la sesión propia y la ausencia de filas NO prueba nada. Ante la duda: no se limpia.
 # $filas: { session_id; status; transacciones; solicitudes }.
 function Get-EvaluacionSesionesSql($puedeVer, $filas) {
     $motivos = @()
-    if ("$puedeVer" -ne '1') { return [pscustomobject]@{ Segura = $false; Motivos = @('no se puede verificar: el login aislado no tiene VIEW SERVER STATE y las vistas solo mostrarían su propia sesión') } }
+    if ("$puedeVer" -ne '1') { return [pscustomobject]@{ Segura = $false; Motivos = @('no se puede verificar: la cuenta no tiene VIEW SERVER STATE y las vistas solo mostrarían su propia sesión') } }
     foreach ($f in @($filas | Where-Object { $null -ne $_ })) {
         $detalle = "sesión $($f.session_id) [$($f.status)]"
         if ([int]$f.transacciones -gt 0) { $motivos += "$detalle con $($f.transacciones) transacción(es) abierta(s)" }

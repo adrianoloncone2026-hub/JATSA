@@ -45,7 +45,7 @@ V 'ninguna tabla repetida y ninguna que el módulo no cree' (($o | Select-Object
 
 '-- manifiesto'
 $id = @{ Sucursal = @(1, 2); Telefono_Sucursal = @(); Ruta = @(1); Vehiculo = @(1); Persona = @(1, 2, 3); Usuario = @(1, 2); Viaje = @(); Envio_Viaje = @() }   # varias tablas pueden estar inicialmente vacías
-$valido = @{ baseAislada = 'JATSA_pm10_aislada_20261101_1200'; idsAntes = $id; sucursales = @('PMX901'); vehiculos = @('PM1-901'); documentos = @('90000101', '20000000107'); usuarios = @('pm10_admin'); viajes = @('VJ2026110101') }
+$valido = @{ baseAislada = 'JATSA_pm10_aislada_20261101_1200'; loginEsperado = 'DESKTOP-PRUEBA\propietario'; idsAntes = $id; sucursales = @('PMX901'); vehiculos = @('PM1-901'); documentos = @('90000101', '20000000107'); usuarios = @('pm10_admin'); viajes = @('VJ2026110101') }
 V 'un manifiesto bien formado no tiene problemas' ((Test-ManifiestoPm10 $valido).Count -eq 0)
 foreach ($caso in @(@('sucursales', 'MOQ001'), @('vehiculos', 'B7K-210'), @('documentos', '71889345'), @('usuarios', 'lflores'), @('viajes', 'VJ12'))) {
     $m = @{} + $valido; $m[$caso[0]] = @($caso[1])
@@ -146,30 +146,57 @@ foreach ($malo in @('JATSA_Encomiendas', 'jatsa_encomiendas', 'JATSA_pm10_aislad
     V "rechaza «$malo»" (-not (Test-NombreBdAislada $malo))
 }
 
-'-- destino de cada conexión: DB_NAME() y el login'
+'-- destino de cada conexión: DB_NAME(), la cuenta Windows y el esquema de autenticación (la cuenta es sysadmin: solo valen estas verificaciones)'
 $base = 'JATSA_pm10_aislada_20261101_1200'
-V 'DB_NAME() y login aislados: válido' (Test-DestinoAislado $base 'jatsa_pm10_aislado' $base).Valido
-$d = Test-DestinoAislado 'JATSA_Encomiendas' 'jatsa_pm10_aislado' $base
-V 'DB_NAME() = JATSA_Encomiendas: se rechaza INEQUÍVOCAMENTE (aunque el login sea el aislado)' ((-not $d.Valido) -and $d.Motivo -match 'BASE HABITUAL')
-V 'DB_NAME() = jatsa_encomiendas en minúsculas también' (-not (Test-DestinoAislado 'jatsa_encomiendas' 'jatsa_pm10_aislado' $base).Valido)
-V 'otra base distinta de la esperada' (-not (Test-DestinoAislado 'JATSA_pm10_aislada_20261101_1300' 'jatsa_pm10_aislado' $base).Valido)
-V 'master' (-not (Test-DestinoAislado 'master' 'jatsa_pm10_aislado' $base).Valido)
-V 'login distinto (sa o el administrador)' (-not (Test-DestinoAislado $base 'sa' $base).Valido)
-V 'DB_NAME() vacío o nulo' ((-not (Test-DestinoAislado '' 'jatsa_pm10_aislado' $base).Valido) -and (-not (Test-DestinoAislado $null 'jatsa_pm10_aislado' $base).Valido))
-V 'si el nombre ESPERADO no es válido, nada es válido' (-not (Test-DestinoAislado 'JATSA_Encomiendas' 'jatsa_pm10_aislado' 'JATSA_Encomiendas').Valido)
+$yo = 'DESKTOP-PRUEBA\propietario'
+V 'DB_NAME() aislada + cuenta Windows esperada + NTLM: válido' (Test-DestinoAislado $base $yo 'NTLM' $base $yo).Valido
+V 'también con KERBEROS y con la cuenta en otra combinación de mayúsculas' ((Test-DestinoAislado $base $yo 'KERBEROS' $base $yo).Valido -and (Test-DestinoAislado $base 'desktop-prueba\PROPIETARIO' 'ntlm' $base $yo).Valido)
+$d = Test-DestinoAislado 'JATSA_Encomiendas' $yo 'NTLM' $base $yo
+V 'DB_NAME() = JATSA_Encomiendas: se rechaza INEQUÍVOCAMENTE (la cuenta sysadmin PODRÍA entrar: solo esta comprobación lo impide)' ((-not $d.Valido) -and $d.Motivo -match 'BASE HABITUAL')
+V 'DB_NAME() = jatsa_encomiendas en minúsculas también' (-not (Test-DestinoAislado 'jatsa_encomiendas' $yo 'NTLM' $base $yo).Valido)
+V 'otra base distinta de la esperada' (-not (Test-DestinoAislado 'JATSA_pm10_aislada_20261101_1300' $yo 'NTLM' $base $yo).Valido)
+V 'master' (-not (Test-DestinoAislado 'master' $yo 'NTLM' $base $yo).Valido)
+V 'una cuenta distinta de la esperada' (-not (Test-DestinoAislado $base 'OTRA\cuenta' 'NTLM' $base $yo).Valido)
+$d = Test-DestinoAislado $base 'sa' 'SQL' $base $yo
+V 'una conexión con login SQL («sa», auth_scheme SQL) se rechaza' (-not $d.Valido)
+$d = Test-DestinoAislado $base $yo 'SQL' $base $yo
+V 'la cuenta correcta pero con auth_scheme SQL (no integrada) se rechaza y lo explica' ((-not $d.Valido) -and $d.Motivo -match 'autenticación de Windows')
+V 'auth_scheme vacío o nulo se rechaza' ((-not (Test-DestinoAislado $base $yo '' $base $yo).Valido) -and (-not (Test-DestinoAislado $base $yo $null $base $yo).Valido))
+V 'DB_NAME() vacío o nulo' ((-not (Test-DestinoAislado '' $yo 'NTLM' $base $yo).Valido) -and (-not (Test-DestinoAislado $null $yo 'NTLM' $base $yo).Valido))
+V 'si el nombre ESPERADO no es válido, nada es válido' (-not (Test-DestinoAislado 'JATSA_Encomiendas' $yo 'NTLM' 'JATSA_Encomiendas' $yo).Valido)
+V 'sin cuenta esperada no se puede validar' (-not (Test-DestinoAislado $base $yo 'NTLM' $base '').Valido)
+V 'Get-LoginWindowsActual devuelve la cuenta del proceso (DOMINIO\usuario)' ((Get-LoginWindowsActual) -match '^[^\\]+\\[^\\]+$')
+
+'-- manifiesto: la base aislada y la cuenta Windows son obligatorias'
+$m = @{} + $valido; $m.baseAislada = 'JATSA_Encomiendas'
+V 'rechaza un manifiesto cuya base es la habitual' ((Test-ManifiestoPm10 $m).Count -ge 1)
+$m = @{} + $valido; $m.baseAislada = ''
+V 'rechaza un manifiesto sin base aislada' ((Test-ManifiestoPm10 $m).Count -ge 1)
+$m = @{} + $valido; $m.baseAislada = 'JATSA_pm10_aislada_20261101_1200_Encomiendas'
+V 'rechaza un nombre que se parezca al patrón pero contenga «Encomiendas»' ((Test-ManifiestoPm10 $m).Count -ge 1)
+$m = @{} + $valido; $m.loginEsperado = ''
+V 'rechaza un manifiesto sin la cuenta Windows esperada' ((Test-ManifiestoPm10 $m).Count -ge 1)
+
+'-- nombre de la base aislada'
+V 'acepta JATSA_pm10_aislada_20261101_1200' (Test-NombreBdAislada 'JATSA_pm10_aislada_20261101_1200')
+foreach ($malo in @('JATSA_Encomiendas', 'jatsa_encomiendas', 'JATSA_pm10_aislada', 'JATSA_pm10_aislada_2026110_1200', 'JATSA_pm10_aislada_20261101_12', 'xJATSA_pm10_aislada_20261101_1200', 'JATSA_pm10_aislada_20261101_1200 ', 'JATSA_pm10_aislada_20261101_1200;DROP', 'jatsa_pm10_aislada_20261101_1200', '', 'master')) {
+    V "rechaza «$malo»" (-not (Test-NombreBdAislada $malo))
+}
 
 '-- sondas de los 4 servidores HTTP'
-function Sonda($puerto, $estado = 200, $bd = $base, $login = 'jatsa_pm10_aislado') { [pscustomobject]@{ Puerto = $puerto; Estado = $estado; Bd = $bd; Login = $login } }
+function Sonda($puerto, $estado = 200, $bd = $base, $login = $yo, $auth = 'NTLM') { [pscustomobject]@{ Puerto = $puerto; Estado = $estado; Bd = $bd; Login = $login; Auth = $auth } }
 $puertos = @('8000', '8001', '8002', '8003')
-V 'los 4 servidores en la base aislada: válido' (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003')) $puertos $base).Valido
-$r = Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002' 200 'JATSA_Encomiendas'), (Sonda '8003')) $puertos $base
+V 'los 4 servidores en la base aislada con la cuenta y la autenticación esperadas: válido' (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003')) $puertos $base $yo).Valido
+$r = Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002' 200 'JATSA_Encomiendas'), (Sonda '8003')) $puertos $base $yo
 V 'UN servidor conectado a la base habitual invalida todo y se identifica' ((-not $r.Valido) -and $r.Motivo -match 'puerto 8002' -and $r.Motivo -match 'BASE HABITUAL')
-$r = Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002')) $puertos $base
+$r = Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002')) $puertos $base $yo
 V 'falta la respuesta de un puerto' ((-not $r.Valido) -and $r.Motivo -match 'puerto 8003 no respondió')
-V 'un servidor que responde HTTP 500 (sin conexión) invalida' (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003' 500 '' '')) $puertos $base).Valido)
-V 'un servidor sin respuesta (estado 0) invalida' (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003' 0 '' '')) $puertos $base).Valido)
-V 'un puerto repetido o inesperado invalida' ((-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003')) $puertos $base).Valido) -and (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003'), (Sonda '9999')) $puertos $base).Valido))
-V 'un login distinto en un servidor invalida' (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002' 200 $base 'sa'), (Sonda '8003')) $puertos $base).Valido)
+V 'un servidor que responde HTTP 500 (sin conexión) invalida' (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003' 500 '' '' '')) $puertos $base $yo).Valido)
+V 'un servidor sin respuesta (estado 0) invalida' (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003' 0 '' '' '')) $puertos $base $yo).Valido)
+V 'un puerto repetido o inesperado invalida' ((-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003')) $puertos $base $yo).Valido) -and (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002'), (Sonda '8003'), (Sonda '9999')) $puertos $base $yo).Valido))
+V 'una cuenta distinta en un servidor invalida' (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002' 200 $base 'OTRA\cuenta'), (Sonda '8003')) $puertos $base $yo).Valido)
+V 'un servidor con autenticación SQL (no integrada) invalida' (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001'), (Sonda '8002' 200 $base $yo 'SQL'), (Sonda '8003')) $puertos $base $yo).Valido)
+V 'la reverificación tras las carreras usa la misma regla: si un servidor derivó a la base habitual, se detecta' (-not (Get-ResultadoSondas @((Sonda '8000'), (Sonda '8001' 200 'JATSA_Encomiendas'), (Sonda '8002'), (Sonda '8003')) $puertos $base $yo).Valido)
 
 '-- procesos PHP: deben salir de la copia, nunca del backend habitual'
 $copia = 'C:\Users\Usuario\AppData\Local\Temp\jatsa_pm10_20261101_120000\backend'
@@ -180,22 +207,22 @@ V 'php -S … -t C:\Jatsa\backend\public (el habitual): INVÁLIDO' (-not (Test-L
 V 'una línea que menciona la copia Y el backend habitual: INVÁLIDA' (-not (Test-LineaDeComandosEnCopia "C:\php\php.exe -S localhost:8000 -t $copia\public -c C:\Jatsa\backend\php.ini" $copia @($habitual)))
 V 'una línea vacía o sin la copia no es válida' ((-not (Test-LineaDeComandosEnCopia '' $copia @($habitual))) -and (-not (Test-LineaDeComandosEnCopia 'C:\php\php.exe -v' $copia @($habitual))))
 
-'-- .env independiente de la copia'
-$clave = 'Aislada#Segura2026ab'
-$env1 = New-ContenidoEnvAislado 'localhost' '1433' $base 'jatsa_pm10_aislado' $clave
+'-- .env independiente de la copia: sin credenciales (autenticación integrada de Windows)'
+$env1 = New-ContenidoEnvAislado 'localhost' '1433' $base
 $ev = Test-EnvDeCopia $env1 $base
-V 'el .env generado es válido y trae TODAS las claves de conexión' ($ev.Valido -and $env1 -match 'DB_HOST=localhost' -and $env1 -match "DB_NAME=$base" -and $env1 -match 'DB_USER=jatsa_pm10_aislado' -and $env1 -match 'DB_PORT=1433')
+V 'el .env generado es válido y trae TODAS las claves de conexión' ($ev.Valido -and $env1 -match 'DB_HOST=localhost' -and $env1 -match "DB_NAME=$base" -and $env1 -match 'DB_PORT=1433')
+V 'DB_USER y DB_PASSWORD van DEFINIDAS y VACÍAS (no caen a variables del proceso y no hay credenciales)' (($env1 -split "`n") -contains 'DB_USER=' -and ($env1 -split "`n") -contains 'DB_PASSWORD=')
 V 'el .env no menciona la base habitual' ($env1 -notmatch '(?i)encomiendas')
-V 'se negó a generar un .env para la base habitual' ((Lanza { New-ContenidoEnvAislado 'localhost' '' 'JATSA_Encomiendas' 'jatsa_pm10_aislado' $clave }))
-V 'se negó a generar un .env con otro login (p. ej. sa)' ((Lanza { New-ContenidoEnvAislado 'localhost' '' $base 'sa' $clave }))
-V 'se negó con una contraseña vacía o corta' (((Lanza { New-ContenidoEnvAislado 'localhost' '' $base 'jatsa_pm10_aislado' '' })) -and ((Lanza { New-ContenidoEnvAislado 'localhost' '' $base 'jatsa_pm10_aislado' 'corta' })))
-V 'se negó con saltos de línea en un valor (inyección de claves)' ((Lanza { New-ContenidoEnvAislado 'localhost' '' $base 'jatsa_pm10_aislado' "$clave`nDB_NAME=JATSA_Encomiendas" }))
-V 'puerto vacío sigue definiendo DB_PORT (no cae a variables del proceso)' ((Test-EnvDeCopia (New-ContenidoEnvAislado 'localhost' '' $base 'jatsa_pm10_aislado' $clave) $base).Valido)
+V 'New-ContenidoEnvAislado ya no acepta credenciales (la firma tiene solo servidor, puerto y base)' (@((Get-Command New-ContenidoEnvAislado).Parameters.Keys | Where-Object { $_ -in 'usuario', 'clave' }).Count -eq 0)
+V 'se negó a generar un .env para la base habitual' ((Lanza { New-ContenidoEnvAislado 'localhost' '' 'JATSA_Encomiendas' }))
+V 'se negó con saltos de línea en un valor (inyección de claves)' ((Lanza { New-ContenidoEnvAislado "localhost`nDB_NAME=JATSA_Encomiendas" '' $base }))
+V 'se negó sin servidor' ((Lanza { New-ContenidoEnvAislado '' '' $base }))
+V 'puerto vacío sigue definiendo DB_PORT (no cae a variables del proceso)' ((Test-EnvDeCopia (New-ContenidoEnvAislado 'localhost' '' $base) $base).Valido)
 V 'Test-EnvDeCopia rechaza un .env al que le falta DB_NAME (Env usaría la variable del proceso)' (-not (Test-EnvDeCopia (($env1 -split "`n" | Where-Object { $_ -notmatch '^DB_NAME=' }) -join "`n") $base).Valido)
+V 'Test-EnvDeCopia rechaza que falten DB_USER o DB_PASSWORD (podrían heredarse de una variable de entorno con un login SQL)' (((-not (Test-EnvDeCopia (($env1 -split "`n" | Where-Object { $_ -ne 'DB_USER=' }) -join "`n") $base).Valido)) -and ((-not (Test-EnvDeCopia (($env1 -split "`n" | Where-Object { $_ -ne 'DB_PASSWORD=' }) -join "`n") $base).Valido)))
 V 'Test-EnvDeCopia rechaza un DB_NAME repetido' (-not (Test-EnvDeCopia ($env1 + "`nDB_NAME=$base") $base).Valido)
 V 'Test-EnvDeCopia rechaza DB_NAME = JATSA_Encomiendas' (-not (Test-EnvDeCopia ($env1.Replace("DB_NAME=$base", 'DB_NAME=JATSA_Encomiendas')) $base).Valido)
-V 'Test-EnvDeCopia rechaza otro DB_USER y una contraseña vacía' ((-not (Test-EnvDeCopia ($env1.Replace('DB_USER=jatsa_pm10_aislado', 'DB_USER=sa')) $base).Valido) -and (-not (Test-EnvDeCopia ($env1.Replace("DB_PASSWORD=$clave", 'DB_PASSWORD=')) $base).Valido))
-
+V 'Test-EnvDeCopia rechaza un DB_USER o una DB_PASSWORD con valor (el .env no guarda credenciales ni usa logins SQL)' (((-not (Test-EnvDeCopia ($env1.Replace('DB_USER=', 'DB_USER=sa')) $base).Valido)) -and ((-not (Test-EnvDeCopia ($env1.Replace('DB_PASSWORD=', 'DB_PASSWORD=secreta')) $base).Valido)))
 '-- la copia debe ser idéntica al repositorio (hashes)'
 V 'inventarios iguales: sin diferencias' ((Get-DiferenciasHashes @{ 'src\a.php' = 'AA'; 'config\b.php' = 'BB' } @{ 'src\a.php' = 'AA'; 'config\b.php' = 'BB' }).Count -eq 0)
 $dif = Get-DiferenciasHashes @{ 'src\a.php' = 'AA'; 'config\b.php' = 'BB' } @{ 'src\a.php' = 'XX'; 'public\sonda_db.php' = 'CC' }
@@ -231,7 +258,7 @@ if (Test-Path -LiteralPath $ruta) {
 
 '-- sesiones y transacciones de SQL Server antes de limpiar'
 function Ses($id, $estado, $tx, $sol) { [pscustomobject]@{ session_id = $id; status = $estado; transacciones = $tx; solicitudes = $sol } }
-V 'con permiso y SIN sesiones del login aislado: segura' (Get-EvaluacionSesionesSql 1 @()).Segura
+V 'con permiso y SIN sesiones en la base aislada: segura' (Get-EvaluacionSesionesSql 1 @()).Segura
 $e = Get-EvaluacionSesionesSql 1 @((Ses 61 'sleeping' 1 0))
 V 'una sesión con una transacción abierta: NO segura y lo explica' ((-not $e.Segura) -and $e.Motivos[0] -match 'transacción')
 $e = Get-EvaluacionSesionesSql 1 @((Ses 62 'running' 0 1))

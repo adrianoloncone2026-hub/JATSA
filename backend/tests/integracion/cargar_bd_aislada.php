@@ -4,9 +4,10 @@ declare(strict_types=1);
 /*
  * CARGA la estructura y la semilla SINTÉTICA en la base AISLADA (autorización B del plan; docs/plan-pm10-bd-aislada.md). NO SE HA EJECUTADO.
  *
- * Uso (desde la COPIA de trabajo del backend, con su .env aislado): php cargar_bd_aislada.php <base> <estructura-derivada.sql>
+ * Uso (desde la COPIA de trabajo del backend, con su .env aislado): php cargar_bd_aislada.php <base> <estructura-derivada.sql> <cuenta-windows-esperada>
  *
- *   1) comprueba que ESTA conexión (la de la copia) está en la base aislada y con el login aislado, y que NO es JATSA_Encomiendas;
+ *   1) comprueba que ESTA conexión (la de la copia) está en la base aislada, con la cuenta Windows esperada y autenticación de Windows, y que NO es JATSA_Encomiendas
+ *      (la cuenta es sysadmin: no hay aislamiento por permisos, solo esta verificación y la configuración de la copia);
  *   2) comprueba que la base está VACÍA (ninguna tabla): no carga nada sobre algo existente;
  *   3) revalida la estructura derivada (sin JATSA_Encomiendas, sin INSERT, sin DDL de bases/logins, 12 CREATE TABLE, USE de la base aislada) y la aplica
  *      lote por lote («GO»); el «USE» inicial se omite porque la conexión ya está en la base aislada;
@@ -30,6 +31,10 @@ function abortar(string $mensaje, int $codigo = 4): never
 
 $base = (string) ($argv[1] ?? '');
 $ruta = (string) ($argv[2] ?? '');
+$loginEsperado = (string) ($argv[3] ?? '');
+if ($loginEsperado === '') {
+    abortar('Falta la cuenta Windows esperada.', 2);
+}
 if (preg_match('/^JATSA_pm10_aislada_\d{8}_\d{4}$/', $base) !== 1 || stripos($base, 'encomiendas') !== false) {
     abortar('El nombre no es el de una base aislada válida.', 2);
 }
@@ -39,9 +44,9 @@ if (!is_file($ruta)) {
 Config::cargar($raiz);
 $pdo = Database::conexion();
 
-$actual = $pdo->query('SELECT DB_NAME() AS bd, SUSER_SNAME() AS login')->fetch(PDO::FETCH_ASSOC);
-if ($actual['bd'] !== $base || $actual['login'] !== 'jatsa_pm10_aislado' || stripos((string) $actual['bd'], 'encomiendas') !== false) {
-    abortar('Esta conexión NO está en la base aislada con el login aislado (' . $actual['bd'] . ' / ' . $actual['login'] . '). No se carga nada.', 5);
+$actual = $pdo->query('SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth')->fetch(PDO::FETCH_ASSOC);
+if ($actual['bd'] !== $base || strcasecmp((string) $actual['login'], $loginEsperado) !== 0 || !in_array(strtoupper((string) $actual['auth']), ['NTLM', 'KERBEROS', 'NEGOTIATE'], true) || stripos((string) $actual['bd'], 'encomiendas') !== false) {
+    abortar('Esta conexión NO está en la base aislada con la cuenta Windows esperada y autenticación de Windows (' . $actual['bd'] . ' / ' . $actual['login'] . ' / ' . $actual['auth'] . '). No se carga nada.', 5);
 }
 if ((int) $pdo->query('SELECT COUNT(*) FROM sys.tables')->fetchColumn() !== 0) {
     abortar('La base aislada NO está vacía: no se carga nada sobre algo existente.', 3);
