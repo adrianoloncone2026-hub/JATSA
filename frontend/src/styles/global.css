@@ -1753,3 +1753,198 @@ input[readonly] {
     margin-left: 0;
   }
 }
+
+/* ── Rastreo, salidas e historial (módulo 9) ──────────────────────────── */
+.rastreo-resultado {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-top: 1.25rem;
+}
+
+.rastreo-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.rastreo-cabecera h2 {
+  margin: 0;
+}
+
+.etapas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 1rem 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.etapa {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--gris);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.etapa-numero {
+  display: inline-grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--borde);
+}
+
+.etapa.cumplida,
+.etapa.actual {
+  color: var(--marino);
+}
+
+.etapa.cumplida .etapa-numero {
+  background: #d9f0e0;
+  border-color: var(--ok);
+}
+
+.etapa.actual .etapa-numero {
+  background: var(--marino);
+  border-color: var(--marino);
+  color: #fff;
+}
+
+.recorrido {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.hito {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--borde);
+}
+
+.hito.estimada {
+  color: var(--gris);
+  font-style: italic;
+}
+
+.hito time {
+  font-weight: 700;
+}
+
+.rastreo-viaje h2 {
+  margin-top: 0;
+}
+
+.filtros-salidas,
+.filtros-historial {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.lista-salidas,
+.lista-envios,
+.por-recoger {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.salida-fila,
+.envio-fila {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0;
+  padding: 0.7rem 1rem;
+}
+
+.envio-fila {
+  grid-template-columns: 11rem minmax(0, 1fr) auto auto;
+}
+
+.envio-fila.abierta {
+  outline: 2px solid var(--marino);
+}
+
+.llega-a-tiempo {
+  margin: 1rem 0 1.5rem;
+}
+
+.llega-a-tiempo h2 {
+  margin-top: 0;
+}
+
+.precios-ruta {
+  font-weight: 700;
+  color: var(--marino);
+}
+
+.barra-historial {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.detalle-envio {
+  margin: 1.25rem 0;
+}
+
+.total-historial {
+  margin: 0.75rem 0 1rem;
+  font-weight: 700;
+}
+
+.tarjeta-recoger {
+  margin: 0;
+}
+
+.proxima-salida {
+  display: flex;
+  flex-direction: column;
+  margin: 0.75rem 0;
+}
+
+.salidas-desde-aqui {
+  margin: 1rem 0;
+}
+
+.salidas-desde-aqui h3 {
+  margin: 0 0 0.5rem;
+}
+
+@media (max-width: 800px) {
+  .rastreo-resultado {
+    grid-template-columns: 1fr;
+  }
+
+  .salida-fila,
+  .envio-fila {
+    grid-template-columns: 1fr;
+  }
+
+  .hito {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
+  }
+}
+.insignia-en_transito {
+  background: #fff7cc;
+  border-color: var(--amarillo);
+}

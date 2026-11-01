@@ -1493,6 +1493,7 @@ require __DIR__ . '/envios.php'; // Módulo 5: ventanilla y envíos
 require __DIR__ . '/pagos.php'; // Módulo 6: pagos y caja
 require __DIR__ . '/viajes.php'; // Módulo 7: despacho, mis viajes y detalle del viaje
 require __DIR__ . '/entregas.php'; // Módulo 8: llegadas y entregas
+require __DIR__ . '/rastreo.php'; // Módulo 9: rastreo, salidas e historial
 
 // ── Informe ─────────────────────────────────────────────────────────────────
 ob_end_clean();

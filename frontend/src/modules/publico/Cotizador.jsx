@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { cotizar, obtenerAgencias } from '../../api/publico.js'
 import Moneda, { iconoDeDepartamento } from '../../components/Moneda.jsx'
 
@@ -9,7 +9,8 @@ const FORMATO_PESO = /^\d{1,6}([.,]\d{1,2})?$/
 export default function Cotizador() {
   const [agencias, setAgencias] = useState({ fase: 'cargando', lista: [], mensaje: '' })
   const [intento, setIntento] = useState(0)
-  const [campos, setCampos] = useState({ origen: '', destino: '', peso: '' })
+  const [parametros] = useSearchParams() // la ruta puede venir precargada desde «Salidas» (?origen=&destino=)
+  const [campos, setCampos] = useState({ origen: parametros.get('origen') ?? '', destino: parametros.get('destino') ?? '', peso: '' })
   const [error, setError] = useState('')
   const [calculando, setCalculando] = useState(false)
   const [resultado, setResultado] = useState(null)

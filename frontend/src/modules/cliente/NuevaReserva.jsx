@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { obtenerCuenta } from '../../api/cuenta.js'
-import { obtenerAgencias, obtenerTarifas } from '../../api/publico.js'
+import { obtenerAgencias, obtenerRuta, obtenerTarifas } from '../../api/publico.js'
 import { consultarDestinatario, crearReserva } from '../../api/reservas.js'
 import CampoTexto from '../../components/CampoTexto.jsx'
 import RutaMonedas from '../../components/RutaMonedas.jsx'
@@ -24,8 +24,9 @@ const ORDEN_CAMPOS = ['numeroDocumento', 'nombreDestinatario', 'telefonoDestinat
 export default function NuevaReserva() {
   const navegar = useNavigate()
   const formulario = useRef(null)
+  const [parametros] = useSearchParams() // la ruta puede venir precargada desde «Salidas» (?origen=&destino=)
 
-  const [campos, setCampos] = useState(INICIAL)
+  const [campos, setCampos] = useState({ ...INICIAL, sucursalOrigen: parametros.get('origen') ?? '', sucursalDestino: parametros.get('destino') ?? '' })
   const [errores, setErrores] = useState({})
   const [errorGeneral, setErrorGeneral] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -101,6 +102,22 @@ export default function NuevaReserva() {
         if (fallo.name === 'AbortError') return
         setTarifas({ fase: 'error', mensaje: fallo.message })
       })
+    return () => control.abort()
+  }, [campos.sucursalOrigen, campos.sucursalDestino])
+
+  // «Próxima salida habitual»: el horario de la ruta elegida (si no se puede consultar, se omite sin molestar).
+  const [salida, setSalida] = useState({ fase: 'inactivo' }) // inactivo | cargando | listo
+  useEffect(() => {
+    const { sucursalOrigen: origen, sucursalDestino: destino } = campos
+    if (!origen || !destino || origen === destino) {
+      setSalida({ fase: 'inactivo' })
+      return undefined
+    }
+    setSalida({ fase: 'cargando' })
+    const control = new AbortController()
+    obtenerRuta(`${origen}-${destino}`, control.signal)
+      .then((ruta) => setSalida({ fase: 'listo', ruta }))
+      .catch(() => setSalida({ fase: 'inactivo' }))
     return () => control.abort()
   }, [campos.sucursalOrigen, campos.sucursalDestino])
 
@@ -296,11 +313,29 @@ export default function NuevaReserva() {
             </>
           )}
 
-          <Link to="/salidas" className="boton boton-claro">
+          {salida.fase === 'listo' && <ProximaSalida ruta={salida.ruta} />}
+
+          <Link to={campos.sucursalOrigen && campos.sucursalDestino ? `/salidas/${campos.sucursalOrigen}-${campos.sucursalDestino}` : '/salidas'} className="boton boton-claro">
             Ver horarios de la ruta
           </Link>
         </aside>
       </div>
     </section>
+  )
+}
+
+// «Próxima salida habitual: 14:00 · llega aprox. 18:00 (4 h)»: la primera salida habitual que queda hoy, o la primera de mañana.
+function ProximaSalida({ ruta }) {
+  if (ruta.horarios.length === 0) return <p className="ayuda">Próxima salida habitual: todavía no hay salidas registradas en esta ruta.</p>
+  const ahora = new Date().getHours()
+  const hora = ruta.horarios.find((h) => Number(h.slice(0, 2)) > ahora) ?? ruta.horarios[0]
+  const llegada = `${String((Number(hora.slice(0, 2)) + ruta.horas) % 24).padStart(2, '0')}:00`
+  return (
+    <p className="proxima-salida">
+      <strong>Próxima salida habitual</strong>
+      <span>
+        {hora} · llega aprox. {llegada} ({ruta.horas} h)
+      </span>
+    </p>
   )
 }

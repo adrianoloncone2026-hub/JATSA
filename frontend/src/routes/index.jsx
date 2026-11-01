@@ -16,6 +16,7 @@ import Ventanilla from '../modules/administrador/Ventanilla.jsx'
 import DetalleViaje from '../modules/transportista/DetalleViaje.jsx'
 import MisViajes from '../modules/transportista/MisViajes.jsx'
 import Agencias from '../modules/publico/Agencias.jsx'
+import Historial from '../modules/cliente/Historial.jsx'
 import MiPanel from '../modules/cliente/MiPanel.jsx'
 import MisPagos from '../modules/cliente/MisPagos.jsx'
 import MisReservas from '../modules/cliente/MisReservas.jsx'
@@ -23,6 +24,9 @@ import NuevaReserva from '../modules/cliente/NuevaReserva.jsx'
 import ReservaRegistrada from '../modules/cliente/ReservaRegistrada.jsx'
 import MiCuenta from '../modules/cuenta/MiCuenta.jsx'
 import Cotizador from '../modules/publico/Cotizador.jsx'
+import DetalleSalida from '../modules/publico/DetalleSalida.jsx'
+import Rastreo from '../modules/publico/Rastreo.jsx'
+import Salidas from '../modules/publico/Salidas.jsx'
 import CrearCuenta from '../modules/publico/CrearCuenta.jsx'
 import Ingresar from '../modules/publico/Ingresar.jsx'
 import Inicio from '../modules/publico/Inicio.jsx'
@@ -50,6 +54,7 @@ const PANTALLAS_REALES = {
   'transportista/viajes/:codigo': DetalleViaje,
   'cliente/': MiPanel,
   'cliente/pagos': MisPagos,
+  'cliente/historial': Historial,
   'cliente/nueva-reserva': NuevaReserva,
   'cliente/reserva-registrada/:codigo': ReservaRegistrada,
   'cliente/reservas': MisReservas,
@@ -58,6 +63,9 @@ const PANTALLAS_REALES = {
   'publico/': Inicio,
   'publico/agencias': Agencias,
   'publico/cotizador': Cotizador,
+  'publico/rastreo': Rastreo,
+  'publico/salidas': Salidas,
+  'publico/salidas/:id': DetalleSalida,
   'publico/ingresar': Ingresar,
   'publico/prueba-conexion': PruebaConexion,
 }
