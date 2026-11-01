@@ -1038,15 +1038,16 @@ prueba('contraseña propia: el UPDATE es condicional sobre el hash anterior, con
 });
 
 // ── Validador real pm10: revisión estática (NO se ejecuta; no hay SQL en estas pruebas) ───────────────────────────────────────────
-prueba('pm10 (revisión estática): exige DOS aceptaciones antes de hacer nada, y no contiene DDL ni DBCC ejecutables', function () {
+prueba('pm10 (revisión estática): exige TRES aceptaciones antes de hacer nada, y no contiene DDL ni DBCC ejecutables', function () {
     $d = dirname(__DIR__) . '/tests/integracion';
     $ps = (string) file_get_contents("$d/validar-pm10.ps1");
     $sinComentarios = preg_replace(['/<#.*?#>/s', '/^\s*#.*$/m'], '', $ps);
     $g1 = strpos($sinComentarios, 'if (-not $AutorizadoPorElPropietario)');
     $g2 = strpos($sinComentarios, 'if (-not $AceptoAvanceIrreversibleDeIdentity)');
+    $g3 = strpos($sinComentarios, 'if (-not $ConfirmoUsoExclusivoDeLaBase)');
     $primeraAccion = strpos($sinComentarios, '. "$aqui\api.ps1"');
-    afirmar($g1 !== false && $g2 !== false && $g1 < $g2 && $g2 < $primeraAccion, 'las dos aceptaciones se exigen (y salen con código 2) antes de cualquier acción');
-    afirmar(substr_count($sinComentarios, 'exit 2') === 2, 'ambas rechazan con exit 2');
+    afirmar($g1 !== false && $g2 !== false && $g3 !== false && $g1 < $g2 && $g2 < $g3 && $g3 < $primeraAccion, 'las tres aceptaciones (autorización, avance de IDENTITY y uso exclusivo de la base) se exigen antes de cualquier acción');
+    afirmar(substr_count($sinComentarios, 'exit 2') === 3, 'las tres rechazan con exit 2');
     $sinTextos = preg_replace(["/'[^'\n]*'/", '/"[^"\n]*"/'], '', (string) $sinComentarios); // los mensajes de «Rechazado» mencionan DBCC solo para prohibirlo
     afirmar(preg_match('/\b(DROP|ALTER|TRUNCATE|DBCC|CHECKIDENT|CREATE\s+TABLE)\b/i', (string) $sinTextos) === 0, 'el PowerShell no ejecuta DDL ni DBCC');
     afirmar(preg_match('/Leer\s+"[^"]*\b(INSERT|UPDATE|DELETE|MERGE)\b/i', $ps) === 0, 'toda consulta directa del orquestador es SELECT');
@@ -1065,7 +1066,8 @@ prueba('pm10 (revisión estática): la limpieza solo borra tablas que el módulo
     }
     afirmar(substr_count($php, 'DELETE FROM') === 7 && preg_match_all('/DELETE FROM \w+ WHERE [^\']*IN \(/', $php) === 7, 'cada DELETE está acotado por una lista (IN) del manifiesto');
     afirmar(strpos($php, '$pdo->beginTransaction();', (int) strpos($php, "if (\$op === 'limpiar')")) < strpos($php, '$afectadas !== $esperadas') && str_contains($php, 'rollBack()'), 'borra dentro de una transacción y la deshace si algún DELETE no afecta lo esperado');
-    afirmar(str_contains($php, "<= {\$ident['Sucursal']}") && str_contains($php, "<= {\$ident['Persona']}") && str_contains($php, "<= {\$ident['Usuario']}") && str_contains($php, "<= {\$ident['Vehiculo']}") && str_contains($php, "<= {\$ident['Viaje']}"), 'verifica que cada fila a borrar es POSTERIOR a la instantánea (id mayor que IDENT_CURRENT inicial)');
+    afirmar(!preg_match('/<=\s*\{\$ident/', $php) && substr_count($php, 'pm10_clasificarFilas(') >= 8, 'ya NO decide la autoría con «id > IDENT_CURRENT»: clasifica cada tabla con el conjunto real de ids de la instantánea inicial');
+    afirmar(str_contains($php, "\$clasificacion['originales'] !== []") && str_contains($php, "\$clasificacion['ajenas'] !== []"), 'aborta si una clave del manifiesto coincide con una fila original o si hay filas nuevas ajenas');
     afirmar(str_contains($php, 'no se borra nada') || str_contains($php, 'No se borra nada'), 'ante cualquier divergencia no borra nada');
     afirmar(preg_match("/'(9000010\\\\d\|2000000010\\\\d)'/", $php) === 0 || str_contains($php, '9000010'), 'solo reconoce documentos temporales pm10');
 });
@@ -1081,4 +1083,58 @@ prueba('pm10 (revisión estática): separa DATOS ORIGINALES de CONTADORES IDENTI
     afirmar(str_contains($ps, 'NO se promete que coincidan') && str_contains($ps, 'carreras perdidas') && str_contains($ps, 'BASE DE PRUEBAS AISLADA'), 'el informe y la cabecera explican que el avance es irreversible, puede superar las altas y que se prefiere una base aislada');
     afirmar(str_contains($ps, '$codigoSalida = if ($mal -eq 0 -and $limpio) { 0 } else { 1 }'), 'exit 0 solo sin fallos y con los datos originales comprobados');
     afirmar(str_contains($ps, 'interbloqueos') && str_contains($ps, '1205'), 'cuenta e informa los interbloqueos (1205) sin suponerlos imposibles');
+});
+
+// ── pm10: identificación segura de filas temporales (revisión del PR #11) ───────────────────────────────────────────────────────
+require_once dirname(__DIR__) . '/tests/integracion/pm10_reglas.php';
+
+prueba('pm10: una tabla INICIALMENTE VACÍA — su primera fila (id = semilla) se reconoce como propia; el criterio anterior «id > IDENT_CURRENT» la habría rechazado', function () {
+    $identSemilla = 1; // IDENT_CURRENT de una tabla vacía que nunca recibió una fila
+    $creadas = [1, 2, 3];
+    afirmar(array_values(array_filter($creadas, static fn (int $id): bool => $id > $identSemilla)) === [2, 3], 'demostración: con el criterio viejo la fila id 1 NO se habría reconocido (la limpieza fallaría con una fila de prueba viva)');
+    $r = pm10_clasificarFilas([], [1, 2, 3], [1, 2, 3]);
+    afirmar($r === ['propias' => [1, 2, 3], 'originales' => [], 'ajenas' => []], 'con el conjunto real de ids (vacío) las tres filas son propias: ' . json_encode($r));
+    $r = pm10_clasificarFilas([], [], []);
+    afirmar($r === ['propias' => [], 'originales' => [], 'ajenas' => []], 'tabla vacía antes y después (nada se creó): nada que hacer');
+});
+
+prueba('pm10: una clave del manifiesto que coincide con una fila ORIGINAL se detecta y no se confunde con una propia', function () {
+    $r = pm10_clasificarFilas([1, 2, 3], [1, 2, 3, 4], [2, 4]);
+    afirmar($r['originales'] === [2] && $r['propias'] === [4] && $r['ajenas'] === [], 'el id 2 ya existía: original; el 4 es propio: ' . json_encode($r));
+    $r = pm10_clasificarFilas([5, 9], [5, 9], [9]);
+    afirmar($r['originales'] === [9] && $r['propias'] === [], 'una fila original con la clave del manifiesto no es borrable');
+    // El hueco de una fila borrada antes de la prueba no cambia nada: la decisión no depende del orden de los ids.
+    $r = pm10_clasificarFilas([1, 5], [1, 5, 3], [3]);
+    afirmar($r['propias'] === [3] && $r['originales'] === [], 'un id MENOR que el máximo original, pero que no existía, es propio (hueco reutilizado o semilla)');
+});
+
+prueba('pm10: cualquier fila nueva que no sea del manifiesto es AJENA (otro proceso escribió, o algo quedó sin anotar) y detiene la limpieza', function () {
+    $r = pm10_clasificarFilas([1, 2], [1, 2, 3, 4, 5], [3, 4]);
+    afirmar($r['propias'] === [3, 4] && $r['ajenas'] === [5], 'el id 5 es nuevo y no está anotado: ' . json_encode($r));
+    $r = pm10_clasificarFilas([], [1, 2], [1]);
+    afirmar($r['propias'] === [1] && $r['ajenas'] === [2], 'también en una tabla inicialmente vacía');
+    $r = pm10_clasificarFilas([1, 2], [1, 2, 3], []);
+    afirmar($r['propias'] === [] && $r['ajenas'] === [3], 'sin claves anotadas, una fila nueva es ajena (p. ej. una carga Envio_Viaje inesperada)');
+    $r = pm10_clasificarFilas([1, 2], [1, 2], [7]);
+    afirmar($r === ['propias' => [], 'originales' => [], 'ajenas' => []], 'una clave anotada que nunca llegó a crearse (el manifiesto se anota antes) no es un problema');
+    $r = pm10_clasificarFilas([1], [1, 2, 2], [2, 2]);
+    afirmar($r['propias'] === [2], 'los ids repetidos en la consulta no duplican');
+});
+
+prueba('pm10: las listas de ids del manifiesto se validan (vacía sí; textos, ceros, negativos y repetidos no)', function () {
+    afirmar(pm10_idsValidos([]) === [] && pm10_idsValidos([3, 7]) === [3, 7], 'listas válidas, incluida la vacía');
+    foreach ([null, 'x', [1, '2'], [0], [-4], [1, 1], [1.5], [[1]]] as $malo) {
+        afirmar(pm10_idsValidos($malo) === null, 'rechaza ' . json_encode($malo));
+    }
+});
+
+prueba('pm10 (revisión estática): el orquestador se detiene ante un paso fundamental fallido, distingue 500 genéricos de interbloqueos y no suma tablas hash con claves repetidas', function () {
+    $ps = (string) file_get_contents(dirname(__DIR__) . '/tests/integracion/validar-pm10.ps1');
+    afirmar(preg_match('/function Critico\(.*?throw "Se detiene/s', $ps) === 1, 'Critico lanza para detener la validación (la limpieza y el informe siguen en finally)');
+    afirmar(substr_count($ps, "Critico '") >= 10, 'las creaciones y los inicios de sesión de los que dependen las fases siguientes son críticos');
+    afirmar(!preg_match('/\(\$ruta \+ @\{/', $ps) && str_contains($ps, 'Get-ConCambios $ruta @{ destino'), 'la variante origen = destino se construye con una copia, no con «$ruta + @{ destino = … }»');
+    afirmar(str_contains($ps, 'Evaluar500') && substr_count($ps, 'Evaluar500 $res') >= 5 && str_contains($ps, 'Get-Clasificacion500'), 'todas las carreras clasifican sus 500 con la evidencia del registro');
+    afirmar(!preg_match('/Estado -eq 500 \}\) \{ \$script:interbloqueos\+\+/', $ps) && !str_contains($ps, '$interbloqueos++'), 'ya no se cuenta cada 500 como interbloqueo');
+    afirmar(str_contains($ps, 'Get-ResultadoCarreraContrasena $res') && str_contains($ps, "if (\$entraA) { \$pw.cliente = \$nA }"), 'C1 evalúa la carrera con quién confirmó y qué contraseña sirve');
+    afirmar(str_contains($ps, '$manifiesto.idsAntes[$t] = $ids') && !str_contains($ps, 'identAntes.Viaje') && !str_contains($ps, 'identAntes.Ruta'), 'la autoría ya no usa IDENT_CURRENT (solo se anota para informar el avance)');
 });

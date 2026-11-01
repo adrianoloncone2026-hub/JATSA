@@ -5,8 +5,11 @@ declare(strict_types=1);
  * ESCRITURA ACOTADA A LO CREADO POR ESTA EJECUCIÓN pm10 (solo con autorización expresa; ver validar-pm10.ps1). NO SE HA EJECUTADO.
  *
  * El orquestador lleva un MANIFIESTO (JSON) con lo que él mismo creó en esta ejecución. Es lo único que este script puede borrar:
- *   identAntes {Sucursal, Telefono_Sucursal, Ruta, Vehiculo, Persona, Usuario, Viaje, Envio_Viaje}   IDENT_CURRENT de la instantánea inicial:
- *                                       toda fila creada por la prueba tiene un id MAYOR; una fila con id menor o igual es ORIGINAL y nunca se toca
+ *   idsAntes {Sucursal, Telefono_Sucursal, Ruta, Vehiculo, Persona, Usuario, Viaje, Envio_Viaje}   TODOS los ids de cada tabla en la instantánea
+ *                                       inicial (listas, posiblemente vacías). Una fila es de la prueba solo si su clave está en el manifiesto Y su id
+ *                                       NO estaba en esa lista. (No se usa «id > IDENT_CURRENT»: con una tabla inicialmente vacía el contador vale la
+ *                                       semilla y la primera fila creada puede recibir ese mismo id; ver pm10_reglas.php.)
+ *   identAntes {…}                      IDENT_CURRENT inicial: solo informativo (el orquestador informa el avance irreversible).
  *   sucursales [...]  códigos PMX9nn          vehiculos [...]  placas PM1-9nn
  *   documentos [...]  90000101-90000108 y 20000000107       usuarios [...]  pm10_*       viajes [...]  códigos VJ
  *
@@ -17,13 +20,15 @@ declare(strict_types=1);
  *                              probar «Nuevo precio» (que se rechaza el mismo día). Imprime su idRuta.
  *   limpiar <manifiesto>       DELETE exacto de lo registrado, en una transacción y respetando las claves foráneas:
  *                              Viaje → Telefono_Sucursal → Ruta → Usuario → Persona → Vehiculo → Sucursal.
- *                              ANTES de borrar verifica que todo lo que existe con esas claves es posterior a la instantánea (id > identAntes), que
- *                              ninguna fila ORIGINAL ni ajena depende de lo temporal (viajes, cuentas, bultos, reservas, cargas) y que cada DELETE
- *                              afectará exactamente lo contado; si algo diverge, no borra nada (código 4) y pide revisión.
+ *                              ANTES de borrar clasifica cada tabla (propias / originales / ajenas) con el conjunto real de ids de la instantánea
+ *                              inicial: si una clave del manifiesto coincide con una fila ORIGINAL, o existe cualquier fila nueva que no sea del
+ *                              manifiesto (otro proceso, o algo sin anotar), no borra nada (código 4). Verifica además que ninguna fila ajena
+ *                              depende de lo temporal y que cada DELETE afecta exactamente lo contado.
  * Cualquier otra operación se rechaza. Sin DDL, sin DBCC CHECKIDENT: los contadores IDENTITY NO se restauran (se informan en el orquestador).
  */
 $raiz = dirname(__DIR__, 2);
 require $raiz . '/src/autoload.php';
+require __DIR__ . '/pm10_reglas.php';
 
 use Jatsa\Core\Config;
 use Jatsa\Core\Database;
@@ -62,14 +67,16 @@ Config::cargar($raiz);
 $op = (string) ($argv[1] ?? '');
 $ruta = (string) ($argv[2] ?? '');
 $manifiesto = is_file($ruta) ? json_decode((string) file_get_contents($ruta), true) : null;
-if (!is_array($manifiesto) || !isset($manifiesto['identAntes']) || !is_array($manifiesto['identAntes'])) {
+if (!is_array($manifiesto) || !isset($manifiesto['idsAntes']) || !is_array($manifiesto['idsAntes'])) {
     abortar('Falta el manifiesto (o es inválido).', 2);
 }
-$ident = array_map('intval', $manifiesto['identAntes']);
+$idsAntes = [];
 foreach (['Sucursal', 'Telefono_Sucursal', 'Ruta', 'Vehiculo', 'Persona', 'Usuario', 'Viaje', 'Envio_Viaje'] as $t) {
-    if (!isset($ident[$t])) {
-        abortar("El manifiesto no trae IDENT_CURRENT de $t.", 2);
+    $lista = pm10_idsValidos($manifiesto['idsAntes'][$t] ?? null);
+    if ($lista === null) {
+        abortar("El manifiesto no trae la lista de ids iniciales de $t (puede estar vacía, pero debe existir).", 2);
     }
+    $idsAntes[$t] = $lista;
 }
 $sucursales = textos($manifiesto['sucursales'] ?? [], '/^PMX9\d{2}$/', 'sucursales');
 $vehiculos = textos($manifiesto['vehiculos'] ?? [], '/^PM1-9\d{2}$/', 'vehículos');
@@ -122,9 +129,10 @@ if ($op === 'ruta-antigua') {
     if (!in_array($origen, $sucursales, true) || !in_array($destino, $sucursales, true) || $origen === $destino || !in_array($tipo, ['SOBRE', 'PAQUETE', 'CARGA'], true)) {
         abortar('La tarifa antigua solo se crea entre dos sucursales temporales del manifiesto y un tipo válido.', 2);
     }
-    $ids = $columna("SELECT idSucursal FROM Sucursal WHERE codigoSucursal IN (" . enLista([$origen, $destino]) . ") AND idSucursal > {$ident['Sucursal']}");
-    if (count($ids) !== 2) {
-        abortar('Las sucursales temporales no existen o no son posteriores a la instantánea.', 3);
+    $ids = $columna("SELECT idSucursal FROM Sucursal WHERE codigoSucursal IN (" . enLista([$origen, $destino]) . ')');
+    $clasificadas = pm10_clasificarFilas($idsAntes['Sucursal'], $columna('SELECT idSucursal FROM Sucursal'), $ids);
+    if (count($clasificadas['propias']) !== 2 || $clasificadas['originales'] !== []) {
+        abortar('Las sucursales temporales no existen, o alguna ya existía antes de la prueba.', 3);
     }
     $alta = $pdo->prepare(
         'INSERT INTO Ruta (idSucursalOrigen, idSucursalDestino, tipoEnvio, precioBase, precioPorKm, distanciaKm, tiempoHoras, vigenteDesde, vigenteHasta)
@@ -139,44 +147,45 @@ if ($op === 'ruta-antigua') {
 }
 
 if ($op === 'limpiar') {
-    // 1) Todo lo que existe con las claves del manifiesto debe ser POSTERIOR a la instantánea (id > identAntes). Puede haber menos de
-    //    lo anotado (el manifiesto se anota antes de crear), nunca una fila original ni ajena.
-    $idsSucursal = $columna("SELECT idSucursal FROM Sucursal WHERE codigoSucursal IN (" . enLista($sucursales) . ')');
-    if ($uno('SELECT COUNT(*) FROM Sucursal WHERE idSucursal IN (' . enEnteros($idsSucursal) . ") AND idSucursal <= {$ident['Sucursal']}") !== 0) {
-        abortar('Una sucursal del manifiesto es anterior a la prueba (¿dato original?).');
-    }
-    $idsPersona = $columna("SELECT idPersona FROM Persona WHERE numeroDocumento IN (" . enLista($documentos) . ')');
-    if ($uno('SELECT COUNT(*) FROM Persona WHERE idPersona IN (' . enEnteros($idsPersona) . ") AND idPersona <= {$ident['Persona']}") !== 0) {
-        abortar('Una persona del manifiesto es anterior a la prueba (¿dato original?).');
-    }
-    $idsUsuario = $columna("SELECT idUsuario FROM Usuario WHERE nombreUsuario IN (" . enLista($usuarios) . ')');
-    if ($uno('SELECT COUNT(*) FROM Usuario WHERE idUsuario IN (' . enEnteros($idsUsuario) . ") AND (idUsuario <= {$ident['Usuario']} OR idPersona NOT IN (" . enEnteros($idsPersona) . '))') !== 0) {
-        abortar('Una cuenta del manifiesto es anterior a la prueba o no pertenece a una persona del manifiesto.');
-    }
-    $idsVehiculo = $columna("SELECT idVehiculo FROM Vehiculo WHERE placa IN (" . enLista($vehiculos) . ')');
-    if ($uno('SELECT COUNT(*) FROM Vehiculo WHERE idVehiculo IN (' . enEnteros($idsVehiculo) . ") AND idVehiculo <= {$ident['Vehiculo']}") !== 0) {
-        abortar('Un vehículo del manifiesto es anterior a la prueba (¿dato original?).');
-    }
-    $idsViaje = $columna("SELECT idViaje FROM Viaje WHERE codigoViaje IN (" . enLista($viajes) . ')');
-    if ($uno('SELECT COUNT(*) FROM Viaje WHERE idViaje IN (' . enEnteros($idsViaje) . ") AND idViaje <= {$ident['Viaje']}") !== 0) {
-        abortar('Un viaje del manifiesto es anterior a la prueba (¿dato original?).');
+    // 1) Clasificación de cada tabla con el CONJUNTO REAL de ids de la instantánea inicial. Puede haber menos filas de las anotadas (el
+    //    manifiesto se anota antes de crear), nunca una fila ORIGINAL que coincida con una clave del manifiesto ni filas nuevas AJENAS.
+    $c = [];
+    $c['Sucursal'] = pm10_clasificarFilas($idsAntes['Sucursal'], $columna('SELECT idSucursal FROM Sucursal'), $columna('SELECT idSucursal FROM Sucursal WHERE codigoSucursal IN (' . enLista($sucursales) . ')'));
+    $idsSucursal = $c['Sucursal']['propias'];
+    $lSuc = enEnteros($idsSucursal);
+    $c['Persona'] = pm10_clasificarFilas($idsAntes['Persona'], $columna('SELECT idPersona FROM Persona'), $columna('SELECT idPersona FROM Persona WHERE numeroDocumento IN (' . enLista($documentos) . ')'));
+    $idsPersona = $c['Persona']['propias'];
+    $c['Usuario'] = pm10_clasificarFilas($idsAntes['Usuario'], $columna('SELECT idUsuario FROM Usuario'), $columna('SELECT idUsuario FROM Usuario WHERE nombreUsuario IN (' . enLista($usuarios) . ')'));
+    $idsUsuario = $c['Usuario']['propias'];
+    $c['Vehiculo'] = pm10_clasificarFilas($idsAntes['Vehiculo'], $columna('SELECT idVehiculo FROM Vehiculo'), $columna('SELECT idVehiculo FROM Vehiculo WHERE placa IN (' . enLista($vehiculos) . ')'));
+    $idsVehiculo = $c['Vehiculo']['propias'];
+    $c['Viaje'] = pm10_clasificarFilas($idsAntes['Viaje'], $columna('SELECT idViaje FROM Viaje'), $columna('SELECT idViaje FROM Viaje WHERE codigoViaje IN (' . enLista($viajes) . ')'));
+    $idsViaje = $c['Viaje']['propias'];
+    $c['Ruta'] = pm10_clasificarFilas($idsAntes['Ruta'], $columna('SELECT idRuta FROM Ruta'), $columna("SELECT idRuta FROM Ruta WHERE idSucursalOrigen IN ($lSuc) OR idSucursalDestino IN ($lSuc)"));
+    $c['Telefono_Sucursal'] = pm10_clasificarFilas($idsAntes['Telefono_Sucursal'], $columna('SELECT idTelefono FROM Telefono_Sucursal'), $columna("SELECT idTelefono FROM Telefono_Sucursal WHERE idSucursal IN ($lSuc)"));
+    $c['Envio_Viaje'] = pm10_clasificarFilas($idsAntes['Envio_Viaje'], $columna('SELECT idEnvioViaje FROM Envio_Viaje'), []); // la prueba no carga envíos: no debe haber ninguna nueva
+    foreach ($c as $tabla => $clasificacion) {
+        if ($clasificacion['originales'] !== []) {
+            abortar("$tabla: una clave del manifiesto coincide con una fila que YA existía antes de la prueba (dato original). No se borra nada.");
+        }
+        if ($clasificacion['ajenas'] !== []) {
+            abortar("$tabla: hay filas nuevas que no son del manifiesto (ids " . implode(',', array_slice($clasificacion['ajenas'], 0, 10)) . '): otro proceso escribió durante la prueba o quedó algo sin anotar. No se borra nada.');
+        }
     }
 
-    // 2) Ninguna fila ajena puede depender de lo temporal: viajes con un vehículo, conductor o sucursal temporal que NO estén en el manifiesto,
-    //    cuentas de personal en una sucursal temporal que no sean del manifiesto, cargas, reservas o bultos.
-    $lSuc = enEnteros($idsSucursal);
+    // 2) Ninguna fila ajena puede depender de lo temporal; las tarifas deben unir SOLO sucursales temporales.
     $lVeh = enEnteros($idsVehiculo);
     $lUsu = enEnteros($idsUsuario);
     $lVia = enEnteros($idsViaje);
+    $lPer = enEnteros($idsPersona);
     $ajenos = [
         'viajes que usan un vehículo, conductor o sucursal temporal y no están en el manifiesto' => "SELECT COUNT(*) FROM Viaje WHERE (idVehiculo IN ($lVeh) OR idUsuarioTransportista IN ($lUsu) OR idSucursalOrigen IN ($lSuc) OR idSucursalDestino IN ($lSuc)) AND idViaje NOT IN ($lVia)",
         'cuentas en una sucursal temporal que no son del manifiesto' => "SELECT COUNT(*) FROM Usuario WHERE idSucursal IN ($lSuc) AND idUsuario NOT IN ($lUsu)",
+        'cuentas del manifiesto ligadas a personas que no son del manifiesto' => "SELECT COUNT(*) FROM Usuario WHERE idUsuario IN ($lUsu) AND idPersona NOT IN ($lPer)",
         'cargas de envíos en los viajes temporales' => "SELECT COUNT(*) FROM Envio_Viaje WHERE idViaje IN ($lVia)",
-        'reservas en una sucursal temporal' => "SELECT COUNT(*) FROM Reserva WHERE idSucursalOrigen IN ($lSuc) OR idSucursalDestino IN ($lSuc)",
+        'reservas en una sucursal temporal o de personas temporales' => "SELECT COUNT(*) FROM Reserva WHERE idSucursalOrigen IN ($lSuc) OR idSucursalDestino IN ($lSuc) OR idPersonaRemitente IN ($lPer) OR idPersonaDestinatario IN ($lPer)",
         'bultos con una tarifa de una sucursal temporal' => "SELECT COUNT(*) FROM Bulto WHERE idRuta IN (SELECT idRuta FROM Ruta WHERE idSucursalOrigen IN ($lSuc) OR idSucursalDestino IN ($lSuc))",
-        'tarifas que unen una sucursal temporal con una original o anteriores a la prueba' => "SELECT COUNT(*) FROM Ruta WHERE (idSucursalOrigen IN ($lSuc) OR idSucursalDestino IN ($lSuc)) AND (idRuta <= {$ident['Ruta']} OR idSucursalOrigen NOT IN ($lSuc) OR idSucursalDestino NOT IN ($lSuc))",
-        'teléfonos de una sucursal temporal anteriores a la prueba' => "SELECT COUNT(*) FROM Telefono_Sucursal WHERE idSucursal IN ($lSuc) AND idTelefono <= {$ident['Telefono_Sucursal']}",
-        'personas del manifiesto con reservas' => 'SELECT COUNT(*) FROM Reserva WHERE idPersonaRemitente IN (' . enEnteros($idsPersona) . ') OR idPersonaDestinatario IN (' . enEnteros($idsPersona) . ')',
+        'tarifas que unen una sucursal temporal con una original' => "SELECT COUNT(*) FROM Ruta WHERE (idSucursalOrigen IN ($lSuc) OR idSucursalDestino IN ($lSuc)) AND (idSucursalOrigen NOT IN ($lSuc) OR idSucursalDestino NOT IN ($lSuc))",
     ];
     foreach ($ajenos as $descripcion => $sql) {
         if ($uno($sql) !== 0) {
@@ -184,13 +193,13 @@ if ($op === 'limpiar') {
         }
     }
 
-    // 3) Conteo previo de lo que se borrará, y borrado en UNA transacción verificando que cada DELETE afecta exactamente eso.
+    // 3) Conteo previo de lo que se borrará (las filas PROPIAS ya clasificadas) y borrado en UNA transacción verificando cada DELETE.
     $plan = [
         ['Viaje', 'DELETE FROM Viaje WHERE idViaje IN (' . $lVia . ')', count($idsViaje)],
-        ['Telefono_Sucursal', "DELETE FROM Telefono_Sucursal WHERE idSucursal IN ($lSuc)", $uno("SELECT COUNT(*) FROM Telefono_Sucursal WHERE idSucursal IN ($lSuc)")],
-        ['Ruta', "DELETE FROM Ruta WHERE idSucursalOrigen IN ($lSuc) AND idSucursalDestino IN ($lSuc)", $uno("SELECT COUNT(*) FROM Ruta WHERE idSucursalOrigen IN ($lSuc) AND idSucursalDestino IN ($lSuc)")],
+        ['Telefono_Sucursal', 'DELETE FROM Telefono_Sucursal WHERE idTelefono IN (' . enEnteros($c['Telefono_Sucursal']['propias']) . ')', count($c['Telefono_Sucursal']['propias'])],
+        ['Ruta', 'DELETE FROM Ruta WHERE idRuta IN (' . enEnteros($c['Ruta']['propias']) . ')', count($c['Ruta']['propias'])],
         ['Usuario', "DELETE FROM Usuario WHERE idUsuario IN ($lUsu)", count($idsUsuario)],
-        ['Persona', 'DELETE FROM Persona WHERE idPersona IN (' . enEnteros($idsPersona) . ')', count($idsPersona)],
+        ['Persona', 'DELETE FROM Persona WHERE idPersona IN (' . $lPer . ')', count($idsPersona)],
         ['Vehiculo', "DELETE FROM Vehiculo WHERE idVehiculo IN ($lVeh)", count($idsVehiculo)],
         ['Sucursal', "DELETE FROM Sucursal WHERE idSucursal IN ($lSuc)", count($idsSucursal)],
     ];
