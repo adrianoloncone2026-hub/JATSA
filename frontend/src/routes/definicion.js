@@ -58,6 +58,7 @@ export const SECCIONES = [
       { ruta: 'despacho', titulo: 'Despacho', modulo: 7, menu: true },
       { ruta: 'llegadas-entregas', titulo: 'Llegadas y entregas', modulo: 8, menu: true },
       { ruta: 'reportes', titulo: 'Reportes', modulo: 12, menu: true },
+      { ruta: 'contrasena', titulo: 'Cambiar contraseña', modulo: 10, menu: false },
     ],
   },
   {
@@ -68,6 +69,7 @@ export const SECCIONES = [
     pantallas: [
       { ruta: '', titulo: 'Mis viajes', modulo: 7, menu: true },
       { ruta: 'viajes/:codigo', titulo: 'Detalle del viaje', modulo: 7, menu: false },
+      { ruta: 'contrasena', titulo: 'Cambiar contraseña', modulo: 10, menu: false },
     ],
   },
   {
@@ -81,6 +83,7 @@ export const SECCIONES = [
       { ruta: 'viajes-flota', titulo: 'Viajes y flota', modulo: 11, menu: false },
       { ruta: 'catalogos', titulo: 'Catálogos', modulo: 10, menu: true },
       { ruta: 'cuentas', titulo: 'Cuentas', modulo: 10, menu: true },
+      { ruta: 'contrasena', titulo: 'Cambiar contraseña', modulo: 10, menu: false },
     ],
   },
 ]

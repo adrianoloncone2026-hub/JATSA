@@ -32,12 +32,13 @@ Crea una cuenta. **No abre sesión**: después la persona ingresa con su usuario
 | 409 | `usuario_en_uso` | El usuario ya existe (`campos.usuario`) |
 
 ## GET `/api/cuenta` · PATCH `/api/cuenta` · POST `/api/cuenta/contrasena`
-Solo **CLIENTE** y **EMPRESARIO** (`RequiereRol`); otros roles reciben `403 acceso_denegado` y sin sesión `401`. Siempre actúan sobre **la cuenta de la sesión**: nunca se acepta un id en el cuerpo.
+**GET y PATCH `/api/cuenta`:** solo **CLIENTE** y **EMPRESARIO** (`RequiereRol`); otros roles reciben `403 acceso_denegado` y sin sesión `401`. **POST `/api/cuenta/contrasena`:** cualquier rol con **sesión vigente** (GERENTE, ADMINISTRADOR, TRANSPORTISTA, CLIENTE y EMPRESARIO; `RequiereSesion`, módulo 10): solo cambia **la propia** contraseña (el cuerpo no puede apuntar a otra cuenta), así que ampliarla no da al personal edición de teléfonos ni correo. Sin sesión `401`; con la cuenta desactivada `401 sesion_invalida`. Siempre actúan sobre **la cuenta de la sesión**: nunca se acepta un id en el cuerpo.
 
 - **GET** → `{ "persona": { tipoDocumento, numeroDocumento, nombreCompleto, telefono, telefonoAuxiliar, correo }, "usuario": { nombreUsuario, rol, activo, fechaCreacion } }`. No expone el hash.
 - **PATCH** `{ telefono, telefonoAuxiliar?, correo? }` → cuenta actualizada. Solo cambia esos tres campos de la persona; documento y nombre son de solo lectura. Mismas reglas que el registro; `422` con `campos` si no cumplen y no se guarda nada.
 - **POST contrasena** `{ contrasenaActual, contrasenaNueva }` → `{ "contrasenaCambiada": true }`.
   - `422 contrasena_incorrecta` (`campos.contrasenaActual`) si la actual no coincide.
+- 409 contrasena_modificada si OTRA petición cambió la contraseña entre la verificación y el guardado: el cambio es una **actualización condicional** (UPDATE ... WHERE idUsuario = :id AND hashContrasena = :anterior, comparación binaria) y se comprueba que afectó una fila. De dos cambios simultáneos con la misma contraseña anterior solo uno confirma; el perdedor no escribe nada y **no renueva la huella** de su sesión; puede repetir con la contraseña vigente.
   - `422 datos_invalidos` (`campos.contrasenaNueva`) si la nueva incumple las reglas, es igual a la actual o al usuario.
   - **Cierra las demás sesiones de la cuenta** (ver más abajo).
 

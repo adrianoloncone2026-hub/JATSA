@@ -143,14 +143,21 @@ final class CuentaRepository implements RepositorioCuentas
         return $hash === false ? null : (string) $hash;
     }
 
-    public function actualizarHash(int $idUsuario, string $hashContrasena): void
+    public function actualizarHash(int $idUsuario, string $hashAnterior, string $hashContrasena): bool
     {
-        $sentencia = Database::conexion()->prepare('UPDATE Usuario SET hashContrasena = :hash WHERE idUsuario = :id');
-        $sentencia->bindValue(':hash', $hashContrasena, PDO::PARAM_STR);
+        // Actualización condicional: la fila solo cambia si todavía tiene el hash que se verificó con la contraseña actual. La
+        // comparación es binaria (un bcrypt distingue mayúsculas de minúsculas y la intercalación de la base no). Una sola sentencia:
+        // SQL Server bloquea la fila mientras la evalúa y escribe, así que de dos cambios simultáneos solo uno afecta una fila.
+        $sentencia = Database::conexion()->prepare(
+            'UPDATE Usuario SET hashContrasena = :nuevo WHERE idUsuario = :id AND hashContrasena COLLATE Latin1_General_BIN2 = :anterior',
+        );
+        $sentencia->bindValue(':nuevo', $hashContrasena, PDO::PARAM_STR);
         $sentencia->bindValue(':id', $idUsuario, PDO::PARAM_INT);
+        $sentencia->bindValue(':anterior', $hashAnterior, PDO::PARAM_STR);
         $sentencia->execute();
-    }
 
+        return $sentencia->rowCount() === 1;
+    }
     /**
      * Convierte la violación de una clave única en un 409 comprensible; cualquier otro error se relanza.
      */

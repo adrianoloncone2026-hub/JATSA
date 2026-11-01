@@ -13,6 +13,8 @@ import FormalizarEnvio from '../modules/administrador/FormalizarEnvio.jsx'
 import LlegadasEntregas from '../modules/administrador/LlegadasEntregas.jsx'
 import ReservaVentanilla from '../modules/administrador/ReservaVentanilla.jsx'
 import Ventanilla from '../modules/administrador/Ventanilla.jsx'
+import Catalogos from '../modules/gerente/Catalogos.jsx'
+import Cuentas from '../modules/gerente/Cuentas.jsx'
 import DetalleViaje from '../modules/transportista/DetalleViaje.jsx'
 import MisViajes from '../modules/transportista/MisViajes.jsx'
 import Agencias from '../modules/publico/Agencias.jsx'
@@ -22,6 +24,7 @@ import MisPagos from '../modules/cliente/MisPagos.jsx'
 import MisReservas from '../modules/cliente/MisReservas.jsx'
 import NuevaReserva from '../modules/cliente/NuevaReserva.jsx'
 import ReservaRegistrada from '../modules/cliente/ReservaRegistrada.jsx'
+import CambiarContrasena from '../modules/cuenta/CambiarContrasena.jsx'
 import MiCuenta from '../modules/cuenta/MiCuenta.jsx'
 import Cotizador from '../modules/publico/Cotizador.jsx'
 import DetalleSalida from '../modules/publico/DetalleSalida.jsx'
@@ -50,6 +53,11 @@ const PANTALLAS_REALES = {
   'administrador/caja': Caja,
   'administrador/despacho': Despacho,
   'administrador/llegadas-entregas': LlegadasEntregas,
+  'administrador/contrasena': CambiarContrasena,
+  'transportista/contrasena': CambiarContrasena,
+  'gerente/contrasena': CambiarContrasena,
+  'gerente/catalogos': Catalogos,
+  'gerente/cuentas': Cuentas,
   'transportista/': MisViajes,
   'transportista/viajes/:codigo': DetalleViaje,
   'cliente/': MiPanel,

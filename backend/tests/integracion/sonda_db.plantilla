@@ -1,0 +1,14 @@
+<?php
+declare(strict_types=1);
+
+// SONDA de la validación pm10 en base aislada. Esta es la PLANTILLA: el orquestador la copia a <copia>\backend\public\sonda_db.php SOLO en la copia de
+// trabajo (nunca existe en el repositorio ni en el backend habitual) y la borra al terminar. Responde, por cada proceso servidor, a qué base y con qué
+// login está conectado: es la prueba directa de que el PROCESO HTTP (no solo la CLI) usa la configuración aislada.
+$raiz = dirname(__DIR__);
+require $raiz . '/src/autoload.php';
+
+Jatsa\Core\Config::cargar($raiz);
+$fila = Jatsa\Core\Database::conexion()->query('SELECT DB_NAME() AS bd, ORIGINAL_LOGIN() AS login, (SELECT MAX(auth_scheme) FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth')->fetch(PDO::FETCH_ASSOC);
+
+header('Content-Type: application/json');
+echo json_encode($fila);

@@ -88,27 +88,50 @@ final class DespachoRepository implements RepositorioDespacho
         );
     }
 
-    public function idVehiculoActivo(string $placa): ?int
-    {
-        return $this->unId('SELECT idVehiculo FROM Vehiculo WHERE placa = :valor AND activo = 1', $placa);
-    }
-
-    public function idTransportistaActivo(string $nombreUsuario): ?int
-    {
-        return $this->unId("SELECT idUsuario FROM Usuario WHERE nombreUsuario = :valor AND rol = 'TRANSPORTISTA' AND activo = 1", $nombreUsuario);
-    }
-
-    public function idSucursalActiva(string $codigoSucursal): ?int
-    {
-        return $this->unId('SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :valor AND activa = 1', $codigoSucursal);
-    }
-
-    public function crearViaje(int $idVehiculo, int $idTransportista, int $idSucursalOrigen, int $idSucursalDestino): string
+    public function crearViaje(string $placa, string $nombreTransportista, int $idSucursalOrigen, string $codigoDestino, callable $decidir): string
     {
         $pdo = Database::conexion();
         $pdo->beginTransaction();
 
         try {
+            // Orden de bloqueos constante en todo el sistema: sucursales (por id ascendente) → vehículo → usuario. Todo se lee ya
+            // bloqueado (UPDLOCK, HOLDLOCK): una desactivación concurrente espera a que este viaje confirme (y entonces ve que el
+            // recurso tiene un viaje abierto y se niega) o llega antes (y entonces $decidir ve el recurso inactivo y se niega).
+            $idDestino = $this->unId('SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :valor', $codigoDestino); // el id no cambia; su estado se lee abajo, bloqueado
+            $ids = array_values(array_unique(array_filter([$idSucursalOrigen, $idDestino])));
+            sort($ids);
+            $sucursalActiva = [];
+            foreach ($ids as $id) {
+                $s = $pdo->prepare('SELECT activa FROM Sucursal WITH (UPDLOCK, HOLDLOCK) WHERE idSucursal = :id');
+                $s->bindValue(':id', $id, PDO::PARAM_INT);
+                $s->execute();
+                $activa = $s->fetchColumn();
+                $s->closeCursor();
+                $sucursalActiva[$id] = $activa !== false && (bool) $activa;
+            }
+
+            $v = $pdo->prepare('SELECT idVehiculo, activo FROM Vehiculo WITH (UPDLOCK, HOLDLOCK) WHERE placa = :placa');
+            $v->bindValue(':placa', $placa, PDO::PARAM_STR);
+            $v->execute();
+            $vehiculo = $v->fetch(PDO::FETCH_ASSOC);
+            $v->closeCursor();
+
+            $u = $pdo->prepare('SELECT idUsuario, rol, activo FROM Usuario WITH (UPDLOCK, HOLDLOCK) WHERE nombreUsuario = :usuario');
+            $u->bindValue(':usuario', $nombreTransportista, PDO::PARAM_STR);
+            $u->execute();
+            $transportista = $u->fetch(PDO::FETCH_ASSOC);
+            $u->closeCursor();
+
+            $decidir([
+                'origenActiva' => $sucursalActiva[$idSucursalOrigen] ?? false,
+                'destinoExiste' => $idDestino !== null,
+                'destinoActiva' => $idDestino !== null && ($sucursalActiva[$idDestino] ?? false),
+                'vehiculoExiste' => $vehiculo !== false,
+                'vehiculoActivo' => $vehiculo !== false && (bool) $vehiculo['activo'],
+                'transportistaExiste' => $transportista !== false,
+                'transportistaActivo' => $transportista !== false && (bool) $transportista['activo'] && $transportista['rol'] === 'TRANSPORTISTA',
+            ]);
+
             // Prefijo del día con la fecha de la base. El rango de códigos del día queda bloqueado hasta confirmar.
             $prefijo = (string) $pdo->query("SELECT 'VJ' + CONVERT(CHAR(8), SYSDATETIME(), 112)")->fetchColumn();
             $ultimo = $pdo->prepare('SELECT MAX(codigoViaje) FROM Viaje WITH (UPDLOCK, HOLDLOCK) WHERE codigoViaje LIKE :patron');
@@ -126,10 +149,10 @@ final class DespachoRepository implements RepositorioDespacho
                 'INSERT INTO Viaje (idVehiculo, idUsuarioTransportista, idSucursalOrigen, idSucursalDestino, codigoViaje)
                  VALUES (:vehiculo, :transportista, :origen, :destino, :codigo)',
             );
-            $alta->bindValue(':vehiculo', $idVehiculo, PDO::PARAM_INT);
-            $alta->bindValue(':transportista', $idTransportista, PDO::PARAM_INT);
+            $alta->bindValue(':vehiculo', (int) $vehiculo['idVehiculo'], PDO::PARAM_INT);
+            $alta->bindValue(':transportista', (int) $transportista['idUsuario'], PDO::PARAM_INT);
             $alta->bindValue(':origen', $idSucursalOrigen, PDO::PARAM_INT);
-            $alta->bindValue(':destino', $idSucursalDestino, PDO::PARAM_INT);
+            $alta->bindValue(':destino', (int) $idDestino, PDO::PARAM_INT);
             $alta->bindValue(':codigo', $codigo, PDO::PARAM_STR);
             $alta->execute();
 
@@ -143,7 +166,6 @@ final class DespachoRepository implements RepositorioDespacho
             throw $excepcion;
         }
     }
-
     public function cargar(string $codigoViaje, string $codigoSeguimiento, callable $decidir): ?bool
     {
         $pdo = Database::conexion();
