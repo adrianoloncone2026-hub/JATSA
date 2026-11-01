@@ -139,22 +139,23 @@ final class CatalogoService
         $precio = $this->validarPrecio($datos, $errores);
         $this->exigirValidos($errores);
 
-        $idOrigen = $this->catalogo->idSucursalActiva($origen);
-        $idDestino = $this->catalogo->idSucursalActiva($destino);
-        if ($idOrigen === null) {
-            $errores['origen'] = 'Elige una agencia activa.';
-        }
-        if ($idDestino === null) {
-            $errores['destino'] = 'Elige una agencia activa.';
-        }
-        $this->exigirValidos($errores);
-
-        $ruta = $this->catalogo->crearRuta((int) $idOrigen, (int) $idDestino, ['tipoEnvio' => $tipo] + $precio, ($this->hoy)(), static function (array $ctx): void {
+        // Que las dos agencias existan y estén ACTIVAS, y que no haya ya una tarifa vigente, se decide DENTRO de la transacción del
+        // repositorio con las filas bloqueadas: una desactivación simultánea no puede intercalarse entre la validación y el alta.
+        $ruta = $this->catalogo->crearRuta($origen, $destino, ['tipoEnvio' => $tipo] + $precio, ($this->hoy)(), static function (array $ctx): void {
+            $errores = [];
+            if (!$ctx['origenActiva']) {
+                $errores['origen'] = 'Elige una agencia activa.';
+            }
+            if (!$ctx['destinoActiva']) {
+                $errores['destino'] = 'Elige una agencia activa.';
+            }
+            if ($errores !== []) {
+                throw self::datosInvalidos($errores);
+            }
             if ($ctx['vigentes'] > 0) {
                 throw new HttpException(409, 'tarifa_vigente_existente', 'Esa ruta ya tiene una tarifa vigente para ese tipo. Usa «Nuevo precio» sobre la fila actual.');
             }
         });
-
         return self::presentarRuta($ruta);
     }
 

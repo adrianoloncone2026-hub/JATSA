@@ -43,9 +43,6 @@ interface RepositorioCatalogo
      */
     public function cambiarEstadoSucursal(string $codigo, bool $activa, callable $decidir): ?bool;
 
-    /** id de la sucursal ACTIVA con ese código, o null. */
-    public function idSucursalActiva(string $codigo): ?int;
-
     // ── Rutas y precios ─────────────────────────────────────────────────────
 
     /**
@@ -57,15 +54,16 @@ interface RepositorioCatalogo
     public function rutas(): array;
 
     /**
-     * Inserta una ruta nueva con vigenteDesde = $hoy. Antes, bloquea las filas de ese origen, destino y tipo y llama a
-     * $decidir con ['vigentes' => int] (filas con vigenteHasta NULL). Devuelve la fila creada.
+     * Inserta una ruta nueva con vigenteDesde = $hoy. En UNA transacción bloquea las dos sucursales (por id ascendente, UPDLOCK, HOLDLOCK)
+     * y las filas de ese origen, destino y tipo, y llama a $decidir con ['origenActiva' => bool, 'destinoActiva' => bool (false si no
+     * existen) , 'vigentes' => int (filas con vigenteHasta NULL)]. Así una desactivación de una de las sucursales, que bloquea la misma
+     * fila, no puede intercalarse entre la validación y el INSERT. Devuelve la fila creada.
      *
      * @param array{tipoEnvio: string, precioBase: string, precioPorKm: string, distanciaKm: string, tiempoHoras: int} $datos
      * @param callable(array<string, mixed>): void $decidir
      * @return array<string, mixed>
      */
-    public function crearRuta(int $idOrigen, int $idDestino, array $datos, string $hoy, callable $decidir): array;
-
+    public function crearRuta(string $codigoOrigen, string $codigoDestino, array $datos, string $hoy, callable $decidir): array;
     /**
      * «Nuevo precio»: en UNA transacción bloquea la fila, llama a $decidir con ['vigenteDesde' => string, 'vigenteHasta' => ?string],
      * cierra la vigencia (vigenteHasta = el día anterior a $hoy) e inserta la fila nueva con vigenteDesde = $hoy. Los bultos ya

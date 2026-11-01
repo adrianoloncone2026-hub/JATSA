@@ -156,27 +156,33 @@ final class DespachoService
             $errores['destino'] = 'El destino debe ser otra agencia.';
         }
 
-        $idVehiculo = isset($errores['placa']) ? null : $this->despacho->idVehiculoActivo($placa);
-        $idTransportista = isset($errores['transportista']) ? null : $this->despacho->idTransportistaActivo($transportista);
-        $idDestino = isset($errores['destino']) ? null : $this->despacho->idSucursalActiva($destino);
-        if (!isset($errores['placa']) && $idVehiculo === null) {
-            $errores['placa'] = 'No hay un vehículo activo con esa placa.';
-        }
-        if (!isset($errores['transportista']) && $idTransportista === null) {
-            $errores['transportista'] = 'No hay un transportista activo con ese usuario.';
-        }
-        if (!isset($errores['destino']) && $idDestino === null) {
-            $errores['destino'] = 'No hay una agencia activa con ese código.';
-        }
         if ($errores !== []) {
             throw new HttpException(422, 'datos_invalidos', 'Revisa los datos del viaje.', [], $errores);
         }
 
-        $codigo = $this->despacho->crearViaje((int) $idVehiculo, (int) $idTransportista, $sucursal['id'], (int) $idDestino);
+        // Que el vehículo, el transportista y las agencias existan y estén ACTIVOS se decide DENTRO de la transacción del repositorio,
+        // con las filas bloqueadas: una desactivación del gerente no puede intercalarse entre la validación y el alta del viaje.
+        $codigo = $this->despacho->crearViaje($placa, $transportista, $sucursal['id'], $destino, static function (array $ctx): void {
+            if (!$ctx['origenActiva']) {
+                throw new HttpException(409, 'sucursal_inactiva', 'Tu agencia está desactivada: no se pueden programar viajes desde ella.');
+            }
+            $errores = [];
+            if (!$ctx['vehiculoActivo']) {
+                $errores['placa'] = 'No hay un vehículo activo con esa placa.';
+            }
+            if (!$ctx['transportistaActivo']) {
+                $errores['transportista'] = 'No hay un transportista activo con ese usuario.';
+            }
+            if (!$ctx['destinoActiva']) {
+                $errores['destino'] = 'No hay una agencia activa con ese código.';
+            }
+            if ($errores !== []) {
+                throw new HttpException(422, 'datos_invalidos', 'Revisa los datos del viaje.', [], $errores);
+            }
+        });
 
         return $this->detalle($codigo);
     }
-
     /**
      * Carga un envío en un viaje programado de la agencia.
      *

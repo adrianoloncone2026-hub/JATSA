@@ -81,38 +81,38 @@ final class CatalogoFalso implements RepositorioCatalogo
         return null;
     }
 
-    public function idSucursalActiva(string $codigo): ?int
+    public function rutas(): array
     {
-        foreach ($this->sucursales as $i => $s) {
-            if ($s['codigoSucursal'] === $codigo && $s['activa']) {
-                return $i + 1;
+        return $this->rutas;
+    }
+
+    /** Si se asigna, se ejecuta DENTRO de crearRuta antes de leer las sucursales bloqueadas: simula una desactivación que se intercala. */
+    public mixed $alIniciarCrearRuta = null;
+
+    private function sucursal(string $codigo): ?array
+    {
+        foreach ($this->sucursales as $s) {
+            if ($s['codigoSucursal'] === $codigo) {
+                return $s;
             }
         }
 
         return null;
     }
 
-    public function rutas(): array
+    public function crearRuta(string $codigoOrigen, string $codigoDestino, array $datos, string $hoy, callable $decidir): array
     {
-        return $this->rutas;
-    }
-
-    private function sucursalPorId(int $id): array
-    {
-        return $this->sucursales[$id - 1];
-    }
-
-    public function crearRuta(int $idOrigen, int $idDestino, array $datos, string $hoy, callable $decidir): array
-    {
-        $o = $this->sucursalPorId($idOrigen);
-        $d = $this->sucursalPorId($idDestino);
-        $vigentes = count(array_filter($this->rutas, static fn (array $r): bool => $r['origenCodigo'] === $o['codigoSucursal'] && $r['destinoCodigo'] === $d['codigoSucursal'] && $r['tipoEnvio'] === $datos['tipoEnvio'] && $r['vigenteHasta'] === null));
-        $decidir(['vigentes' => $vigentes]);
+        if ($this->alIniciarCrearRuta !== null) {
+            ($this->alIniciarCrearRuta)($this);
+        }
+        $o = $this->sucursal($codigoOrigen);
+        $d = $this->sucursal($codigoDestino);
+        $vigentes = count(array_filter($this->rutas, static fn (array $r): bool => $r['origenCodigo'] === $codigoOrigen && $r['destinoCodigo'] === $codigoDestino && $r['tipoEnvio'] === $datos['tipoEnvio'] && $r['vigenteHasta'] === null));
+        $decidir(['origenActiva' => $o !== null && $o['activa'], 'destinoActiva' => $d !== null && $d['activa'], 'vigentes' => $vigentes]);
         $this->escrituras[] = 'crearRuta';
 
         return $this->rutas[] = $this->fila($this->siguienteRuta++, $o, $d, $datos, $hoy, null);
     }
-
     public function nuevoPrecio(int $idRuta, array $datos, string $hoy, callable $decidir): ?array
     {
         foreach ($this->rutas as $i => $r) {
@@ -366,8 +366,11 @@ final class UsuariosFalso implements RepositorioGestionUsuarios
     public array $cuentas = [];
     /** @var list<array<string, mixed>> idPersona, tipoDocumento, numeroDocumento, nombreCompleto, tieneUsuario */
     public array $personas = [];
-    /** @var array<string, int> código → id (solo sucursales activas) */
-    public array $sucursales = ['AQP001' => 1, 'MOQ001' => 2];
+    /** @var array<string, bool> código → activa (el id es la posición + 1) */
+    public array $sucursales = ['AQP001' => true, 'MOQ001' => true];
+    /** Se ejecutan DENTRO de crearCuenta / cambiarPuesto, antes de leer lo bloqueado: simulan un cambio de otro gerente que se intercala. */
+    public mixed $alIniciarCrearCuenta = null;
+    public mixed $alIniciarCambiarPuesto = null;
     /** @var list<array<string, mixed>> */
     public array $altas = [];
     public ?array $ultimosFiltros = null;
@@ -400,18 +403,16 @@ final class UsuariosFalso implements RepositorioGestionUsuarios
         return $this->cuenta($nombreUsuario) !== null;
     }
 
-    public function idSucursalActiva(string $codigo): ?int
+    public function crearCuenta(int $idPersona, string $codigoSucursal, string $nombreUsuario, string $hashContrasena, string $rol, callable $decidir): void
     {
-        return $this->sucursales[$codigo] ?? null;
-    }
-
-    public function crearCuenta(int $idPersona, ?int $idSucursal, string $nombreUsuario, string $hashContrasena, string $rol): void
-    {
+        if ($this->alIniciarCrearCuenta !== null) {
+            ($this->alIniciarCrearCuenta)($this);
+        }
+        $decidir(['sucursalActiva' => $this->sucursales[$codigoSucursal] ?? false]);
+        $idSucursal = array_search($codigoSucursal, array_keys($this->sucursales), true) + 1;
         $this->altas[] = ['idPersona' => $idPersona, 'idSucursal' => $idSucursal, 'usuario' => $nombreUsuario, 'hash' => $hashContrasena, 'rol' => $rol];
-        $codigo = $idSucursal === null ? null : (array_search($idSucursal, $this->sucursales, true) ?: null);
-        $this->cuentas[] = ['nombreUsuario' => $nombreUsuario, 'nombreCompleto' => 'Persona nueva', 'rol' => $rol, 'sucursalCodigo' => $codigo, 'sucursalNombre' => $codigo === null ? null : 'Agencia ' . $codigo, 'activo' => true, 'viajesAbiertos' => 0];
+        $this->cuentas[] = ['nombreUsuario' => $nombreUsuario, 'nombreCompleto' => 'Persona nueva', 'rol' => $rol, 'sucursalCodigo' => $codigoSucursal, 'sucursalNombre' => 'Agencia ' . $codigoSucursal, 'activo' => true, 'viajesAbiertos' => 0];
     }
-
     public function cuenta(string $nombreUsuario): ?array
     {
         foreach ($this->cuentas as $c) {
@@ -423,15 +424,17 @@ final class UsuariosFalso implements RepositorioGestionUsuarios
         return null;
     }
 
-    public function cambiarPuesto(string $nombreUsuario, string $rol, ?int $idSucursal, callable $decidir): ?bool
+    public function cambiarPuesto(string $nombreUsuario, string $rol, string $codigoSucursal, callable $decidir): ?bool
     {
+        if ($this->alIniciarCambiarPuesto !== null) {
+            ($this->alIniciarCambiarPuesto)($this);
+        }
         foreach ($this->cuentas as $i => $c) {
             if (strcasecmp($c['nombreUsuario'], $nombreUsuario) === 0) {
-                $decidir(['rol' => $c['rol'], 'activo' => $c['activo'], 'viajesAbiertos' => $c['viajesAbiertos']]);
-                $codigo = array_search($idSucursal, $this->sucursales, true);
+                $decidir(['rolActual' => $c['rol'], 'sucursalActual' => $c['sucursalCodigo'], 'activo' => $c['activo'], 'sucursalActiva' => $this->sucursales[$codigoSucursal] ?? false, 'viajesAbiertos' => $c['viajesAbiertos']]);
                 $this->cuentas[$i]['rol'] = $rol;
-                $this->cuentas[$i]['sucursalCodigo'] = $codigo === false ? null : $codigo;
-                $this->cuentas[$i]['sucursalNombre'] = $codigo === false ? null : 'Agencia ' . $codigo;
+                $this->cuentas[$i]['sucursalCodigo'] = $codigoSucursal;
+                $this->cuentas[$i]['sucursalNombre'] = 'Agencia ' . $codigoSucursal;
 
                 return true;
             }
@@ -439,7 +442,6 @@ final class UsuariosFalso implements RepositorioGestionUsuarios
 
         return null;
     }
-
     public function cambiarEstado(string $nombreUsuario, bool $activo, callable $decidir): ?bool
     {
         $gerentes = count(array_filter($this->cuentas, static fn (array $c): bool => $c['rol'] === Roles::GERENTE && $c['activo']));
@@ -663,4 +665,131 @@ prueba('repositorios reales: solo SQL parametrizado y sin borrados (revisión es
     afirmar(!str_contains($catalogo, 'DELETE FROM Ruta') && !str_contains($catalogo, 'DELETE FROM Vehiculo') && !str_contains($catalogo, 'DELETE FROM Sucursal'), 'las tarifas, vehículos y sucursales nunca se borran');
     $usuarios = (string) file_get_contents("$raiz/Usuarios/UsuariosRepository.php");
     afirmar(!str_contains($usuarios, 'DELETE') && !str_contains($usuarios, 'hashContrasena AS') && !str_contains($usuarios, 'pe.numeroDocumento AS') && !str_contains($usuarios, 'pe.telefono'), 'las cuentas no se borran y las consultas de lista no seleccionan hash, documento ni teléfono');
+});
+
+// ── Carreras (revisión del PR #11): la validación de «activo» y la diferencia de puesto se deciden CON LAS FILAS BLOQUEADAS ──────────
+// Los repositorios simulados ejecutan un gancho al empezar la «transacción» para reproducir un cambio de otro gerente que se
+// intercala justo antes de leer lo bloqueado. Si el servicio decidiera con una lectura anterior, estas pruebas fallarían.
+
+prueba('despacho: programar un viaje revalida DENTRO de la transacción — un vehículo, transportista o agencia desactivados a la vez lo impiden', function () {
+    $casos = [
+        'vehículo' => [static function (ViajesFalso $r): void { $r->inactivos['vehiculos'][] = 'B7K-210'; }, 'placa'],
+        'transportista' => [static function (ViajesFalso $r): void { $r->inactivos['transportistas'][] = 'pmamani'; }, 'transportista'],
+        'agencia de destino' => [static function (ViajesFalso $r): void { $r->inactivos['sucursales'][] = 'ILO001'; }, 'destino'],
+    ];
+    foreach ($casos as $nombre => [$desactivar, $campo]) {
+        [$r, $despacho] = escenarioViajes();
+        $antes = count($r->viajes);
+        $r->alIniciarCrearViaje = $desactivar; // el gerente desactiva JUSTO después de que el servicio validó el formato y antes del alta
+        $e = esperarError(fn () => $despacho->programar(personal(), ['placa' => 'B7K-210', 'transportista' => 'pmamani', 'destino' => 'ILO001']), 422, 'datos_invalidos');
+        afirmar(isset($e->campos[$campo]), "$nombre desactivado a la vez: marca $campo (" . implode(',', array_keys($e->campos)) . ')');
+        afirmar(count($r->viajes) === $antes, "$nombre desactivado a la vez: no se creó ningún viaje");
+    }
+    [$r, $despacho] = escenarioViajes();
+    $r->alIniciarCrearViaje = static function (ViajesFalso $r): void { $r->inactivos['sucursales'][] = 'MOQ001'; };
+    esperarError(fn () => $despacho->programar(personal(), ['placa' => 'B7K-210', 'transportista' => 'pmamani', 'destino' => 'ILO001']), 409, 'sucursal_inactiva');
+    [$r, $despacho] = escenarioViajes();
+    $r->alIniciarCrearViaje = static function (ViajesFalso $r): void { /* nadie desactiva nada */ };
+    $antes = count($r->viajes);
+    $despacho->programar(personal(), ['placa' => 'B7K-210', 'transportista' => 'pmamani', 'destino' => 'ILO001']);
+    afirmar(count($r->viajes) === $antes + 1, 'control: sin desactivaciones el viaje se crea');
+});
+
+prueba('despacho: los tres recursos y todas las agencias se bloquean en un orden constante y se validan antes del INSERT (revisión estática)', function () {
+    $fuente = (string) file_get_contents(dirname(__DIR__) . '/src/Modules/Despacho/DespachoRepository.php');
+    $cuerpo = substr($fuente, (int) strpos($fuente, 'function crearViaje'), (int) strpos($fuente, 'function cargar') - (int) strpos($fuente, 'function crearViaje'));
+    $s = strpos($cuerpo, 'FROM Sucursal WITH (UPDLOCK, HOLDLOCK)');
+    $v = strpos($cuerpo, 'FROM Vehiculo WITH (UPDLOCK, HOLDLOCK)');
+    $u = strpos($cuerpo, 'FROM Usuario WITH (UPDLOCK, HOLDLOCK)');
+    $d = strpos($cuerpo, '$decidir([');
+    $i = strpos($cuerpo, 'INSERT INTO Viaje');
+    afirmar($s !== false && $v !== false && $u !== false && $s < $v && $v < $u, 'orden de bloqueos: sucursales → vehículo → usuario');
+    afirmar($d !== false && $u < $d && $d < $i, 'se decide con lo leído bloqueado y recién después se inserta');
+    afirmar(str_contains($cuerpo, 'sort($ids)'), 'las sucursales se bloquean por id ascendente');
+    afirmar(!str_contains((string) file_get_contents(dirname(__DIR__) . '/src/Modules/Despacho/RepositorioDespacho.php'), 'idVehiculoActivo'), 'ya no existen las consultas de «activo» fuera de la transacción');
+});
+
+prueba('cuentas: crear cuenta revalida la sucursal DENTRO de la transacción — una sucursal desactivada a la vez no recibe la cuenta', function () {
+    [$r, $servicio] = escenarioCuentas();
+    $r->alIniciarCrearCuenta = static function (UsuariosFalso $r): void { $r->sucursales['AQP001'] = false; };
+    $e = esperarError(fn () => $servicio->crear(SESION_GERENTE, cuentaPersonalValida()), 422, 'datos_invalidos');
+    afirmar(isset($e->campos['sucursal']) && $r->altas === [], 'no se creó la cuenta y se marca la sucursal');
+    $r->alIniciarCrearCuenta = null;
+    $r->sucursales['AQP001'] = true;
+    afirmar($servicio->crear(SESION_GERENTE, cuentaPersonalValida())['sucursal']['codigo'] === 'AQP001', 'control: con la sucursal activa se crea');
+});
+
+prueba('cuentas: editar calcula el cambio de puesto con la fila BLOQUEADA — datos obsoletos no deciden', function () {
+    // A) Antes del bloqueo la cuenta estaba en AQP001 (sin viajes) y se pide AQP001 («sin cambios»), pero otro gerente la movió a MOQ001
+    //    y le asignó un viaje: con la fila bloqueada SÍ hay cambio y el viaje lo impide. Con la lectura anterior se habría permitido.
+    [$r, $servicio] = escenarioCuentas();
+    $r->cuentas[4]['viajesAbiertos'] = 0;
+    $r->alIniciarCambiarPuesto = static function (UsuariosFalso $r): void {
+        $r->cuentas[4]['sucursalCodigo'] = 'MOQ001';
+        $r->cuentas[4]['viajesAbiertos'] = 1;
+    };
+    esperarError(fn () => $servicio->editar(SESION_GERENTE, 'pmamani', ['rol' => 'TRANSPORTISTA', 'sucursal' => 'AQP001']), 409, 'transportista_con_viajes');
+    afirmar($r->cuentas[4]['sucursalCodigo'] === 'MOQ001', 'la cuenta no se tocó');
+
+    // B) Antes del bloqueo había un cambio (AQP001 → MOQ001) con un viaje abierto, pero otro gerente ya la dejó en MOQ001: con la fila
+    //    bloqueada NO hay cambio y guardar no es un error. Con la lectura anterior se habría rechazado.
+    [$r, $servicio] = escenarioCuentas();
+    $r->alIniciarCambiarPuesto = static function (UsuariosFalso $r): void { $r->cuentas[4]['sucursalCodigo'] = 'MOQ001'; };
+    $c = $servicio->editar(SESION_GERENTE, 'pmamani', ['rol' => 'TRANSPORTISTA', 'sucursal' => 'MOQ001']);
+    afirmar($c['sucursal']['codigo'] === 'MOQ001' && $c['rol'] === 'TRANSPORTISTA', 'sin cambio real: se acepta aunque tenga un viaje abierto');
+
+    // C) El rol también se compara con el bloqueado: otro gerente cambió a un administrador a TRANSPORTISTA con un viaje abierto.
+    [$r, $servicio] = escenarioCuentas();
+    $r->alIniciarCambiarPuesto = static function (UsuariosFalso $r): void {
+        $r->cuentas[1]['rol'] = 'TRANSPORTISTA';
+        $r->cuentas[1]['viajesAbiertos'] = 2;
+    };
+    esperarError(fn () => $servicio->editar(SESION_GERENTE, 'lflores', ['rol' => 'ADMINISTRADOR', 'sucursal' => 'MOQ001']), 409, 'transportista_con_viajes');
+
+    // D) Otro gerente convirtió la cuenta en no editable (un cliente no es personal) entre medias.
+    [$r, $servicio] = escenarioCuentas();
+    $r->alIniciarCambiarPuesto = static function (UsuariosFalso $r): void { $r->cuentas[1]['rol'] = 'CLIENTE'; };
+    esperarError(fn () => $servicio->editar(SESION_GERENTE, 'lflores', ['rol' => 'ADMINISTRADOR', 'sucursal' => 'AQP001']), 409, 'cuenta_no_editable');
+
+    // E) La sucursal de destino se desactivó a la vez: solo importa si hay cambio de puesto.
+    [$r, $servicio] = escenarioCuentas();
+    $r->alIniciarCambiarPuesto = static function (UsuariosFalso $r): void { $r->sucursales['AQP001'] = false; };
+    $e = esperarError(fn () => $servicio->editar(SESION_GERENTE, 'lflores', ['rol' => 'ADMINISTRADOR', 'sucursal' => 'AQP001']), 422, 'datos_invalidos');
+    afirmar(isset($e->campos['sucursal']) && $r->cuentas[1]['sucursalCodigo'] === 'MOQ001', 'sucursal inactiva: se rechaza el cambio y la cuenta no se mueve');
+});
+
+prueba('catálogos: «Nueva ruta» revalida las dos agencias DENTRO de la transacción — una desactivada a la vez impide el alta', function () {
+    foreach (['ILO001' => 'origen', 'AQP001' => 'destino'] as $desactivada => $campo) {
+        [$r, $servicio] = escenarioCatalogo();
+        $antes = count($r->rutas);
+        $r->alIniciarCrearRuta = static function (CatalogoFalso $r) use ($desactivada): void {
+            foreach ($r->sucursales as $i => $s) {
+                if ($s['codigoSucursal'] === $desactivada) {
+                    $r->sucursales[$i]['activa'] = false;
+                }
+            }
+        };
+        $e = esperarError(fn () => $servicio->crearRuta(['origen' => 'ILO001', 'destino' => 'AQP001', 'tipoEnvio' => 'PAQUETE', 'precioBase' => '12', 'precioPorKm' => '0.02', 'distanciaKm' => '330', 'tiempoHoras' => 5]), 422, 'datos_invalidos');
+        afirmar(isset($e->campos[$campo]) && count($r->rutas) === $antes, "agencia $desactivada desactivada a la vez: marca $campo y no se crea la ruta");
+    }
+});
+
+prueba('orden de bloqueos del sistema: sucursales → vehículo → usuario → rutas; cada operación del gerente lo respeta (revisión estática)', function () {
+    $raiz = dirname(__DIR__) . '/src/Modules';
+    $cuerpoDe = static function (string $archivo, string $desde, string $hasta) use ($raiz): string {
+        $f = (string) file_get_contents("$raiz/$archivo");
+        $i = (int) strpos($f, $desde);
+        $j = strpos($f, $hasta, $i + 1);
+
+        return substr($f, $i, ($j === false ? strlen($f) : $j) - $i);
+    };
+    $crearCuenta = $cuerpoDe('Usuarios/UsuariosRepository.php', 'function crearCuenta', 'function cuenta(');
+    afirmar(strpos($crearCuenta, 'FROM Sucursal WITH (UPDLOCK, HOLDLOCK)') < strpos($crearCuenta, '$decidir(') && strpos($crearCuenta, '$decidir(') < strpos($crearCuenta, 'INSERT INTO Usuario'), 'crearCuenta: bloquea la sucursal, decide y recién inserta');
+    $puesto = $cuerpoDe('Usuarios/UsuariosRepository.php', 'function cambiarPuesto', 'function cambiarEstado');
+    afirmar(strpos($puesto, 'FROM Sucursal WITH (UPDLOCK, HOLDLOCK)') < strpos($puesto, 'FROM Usuario AS u WITH (UPDLOCK, HOLDLOCK)') && strpos($puesto, 'FROM Usuario AS u WITH (UPDLOCK, HOLDLOCK)') < strpos($puesto, '$decidir(') && strpos($puesto, '$decidir(') < strpos($puesto, 'UPDATE Usuario'), 'cambiarPuesto: sucursal → cuenta → decide → UPDATE');
+    $ruta = $cuerpoDe('Catalogos/CatalogoRepository.php', 'function crearRuta', 'function nuevoPrecio');
+    afirmar(strpos($ruta, 'FROM Sucursal WITH (UPDLOCK, HOLDLOCK)') < strpos($ruta, 'FROM Ruta WITH (UPDLOCK, HOLDLOCK)') && strpos($ruta, 'FROM Ruta WITH (UPDLOCK, HOLDLOCK)') < strpos($ruta, '$decidir(') && str_contains($ruta, 'asort($ordenados)'), 'crearRuta: sucursales por id → rutas → decide → INSERT');
+    foreach (['Usuarios/UsuariosService.php', 'Catalogos/CatalogoService.php', 'Despacho/DespachoService.php'] as $servicio) {
+        afirmar(!str_contains((string) file_get_contents("$raiz/$servicio"), 'idSucursalActiva') && !str_contains((string) file_get_contents("$raiz/$servicio"), 'idVehiculoActivo'), "$servicio: no consulta «activo» fuera de la transacción");
+    }
 });

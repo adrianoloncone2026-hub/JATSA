@@ -133,13 +133,6 @@ final class CatalogoRepository implements RepositorioCatalogo
         }
     }
 
-    public function idSucursalActiva(string $codigo): ?int
-    {
-        $fila = $this->uno(Database::conexion(), 'SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :codigo AND activa = 1', [':codigo' => $codigo]);
-
-        return $fila === null ? null : (int) $fila['idSucursal'];
-    }
-
     // ── Rutas y precios ─────────────────────────────────────────────────────
 
     public function rutas(): array
@@ -147,19 +140,37 @@ final class CatalogoRepository implements RepositorioCatalogo
         return array_map([self::class, 'aRuta'], Database::conexion()->query(self::SELECT_RUTA . ' ORDER BY so.nombre, sd.nombre, r.tipoEnvio, r.vigenteDesde DESC, r.idRuta DESC')->fetchAll(PDO::FETCH_ASSOC));
     }
 
-    public function crearRuta(int $idOrigen, int $idDestino, array $datos, string $hoy, callable $decidir): array
+    public function crearRuta(string $codigoOrigen, string $codigoDestino, array $datos, string $hoy, callable $decidir): array
     {
         $pdo = Database::conexion();
         $pdo->beginTransaction();
         try {
-            // Bloquea las filas de ese origen, destino y tipo: dos «Nueva ruta» a la vez no pueden dejar dos vigentes.
-            $existentes = $this->contar(
+            // Orden de bloqueos constante en todo el sistema: sucursales por id ascendente, luego las filas de Ruta. Las sucursales se
+            // leen YA BLOQUEADAS: si el gerente desactiva una a la vez, o este alta ve la sucursal inactiva, o la desactivación espera.
+            $ids = [];
+            foreach ([$codigoOrigen, $codigoDestino] as $codigo) {
+                $fila = $this->uno($pdo, 'SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :codigo', [':codigo' => $codigo]); // el id no cambia
+                $ids[$codigo] = $fila === null ? null : (int) $fila['idSucursal'];
+            }
+            $activas = [];
+            $ordenados = array_filter($ids, static fn (?int $id): bool => $id !== null);
+            asort($ordenados);
+            foreach ($ordenados as $id) {
+                $activas[$id] = (bool) ($this->uno($pdo, 'SELECT activa FROM Sucursal WITH (UPDLOCK, HOLDLOCK) WHERE idSucursal = :id', [':id' => $id])['activa'] ?? false);
+            }
+            $idOrigen = $ids[$codigoOrigen];
+            $idDestino = $ids[$codigoDestino];
+            $vigentes = $idOrigen === null || $idDestino === null ? 0 : $this->contar(
                 $pdo,
                 'SELECT COUNT(*) FROM Ruta WITH (UPDLOCK, HOLDLOCK) WHERE idSucursalOrigen = :o AND idSucursalDestino = :d AND tipoEnvio = :t AND vigenteHasta IS NULL',
                 [':o' => $idOrigen, ':d' => $idDestino, ':t' => $datos['tipoEnvio']],
             );
-            $decidir(['vigentes' => $existentes]);
-            $id = $this->insertarRuta($pdo, $idOrigen, $idDestino, $datos, $hoy);
+            $decidir([
+                'origenActiva' => $idOrigen !== null && ($activas[$idOrigen] ?? false),
+                'destinoActiva' => $idDestino !== null && ($activas[$idDestino] ?? false),
+                'vigentes' => $vigentes,
+            ]);
+            $id = $this->insertarRuta($pdo, (int) $idOrigen, (int) $idDestino, $datos, $hoy);
             $pdo->commit();
 
             return self::aRuta($this->uno($pdo, self::SELECT_RUTA . ' WHERE r.idRuta = :id', [':id' => $id]) ?? []);
@@ -168,7 +179,6 @@ final class CatalogoRepository implements RepositorioCatalogo
             throw $e;
         }
     }
-
     public function nuevoPrecio(int $idRuta, array $datos, string $hoy, callable $decidir): ?array
     {
         $pdo = Database::conexion();

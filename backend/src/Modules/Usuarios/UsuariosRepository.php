@@ -70,27 +70,30 @@ final class UsuariosRepository implements RepositorioGestionUsuarios
         return $this->uno(Database::conexion(), 'SELECT 1 AS existe FROM Usuario WHERE nombreUsuario = :usuario', [':usuario' => $nombreUsuario]) !== null;
     }
 
-    public function idSucursalActiva(string $codigo): ?int
-    {
-        $fila = $this->uno(Database::conexion(), 'SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :codigo AND activa = 1', [':codigo' => $codigo]);
-
-        return $fila === null ? null : (int) $fila['idSucursal'];
-    }
-
-    public function crearCuenta(int $idPersona, ?int $idSucursal, string $nombreUsuario, string $hashContrasena, string $rol): void
+    public function crearCuenta(int $idPersona, string $codigoSucursal, string $nombreUsuario, string $hashContrasena, string $rol, callable $decidir): void
     {
         $pdo = Database::conexion();
+        $pdo->beginTransaction();
         try {
+            // La sucursal se lee BLOQUEADA y se valida con $decidir antes del INSERT: su desactivación (que bloquea la misma fila y cuenta
+            // el personal activo) espera a que esta cuenta confirme, o llega antes y aquí se ve inactiva.
+            $sucursal = $this->uno($pdo, 'SELECT idSucursal, activa FROM Sucursal WITH (UPDLOCK, HOLDLOCK) WHERE codigoSucursal = :codigo', [':codigo' => $codigoSucursal]);
+            $decidir(['sucursalActiva' => $sucursal !== null && (bool) $sucursal['activa']]);
+
             $alta = $pdo->prepare(
                 'INSERT INTO Usuario (idPersona, idSucursal, nombreUsuario, hashContrasena, rol, activo) VALUES (:persona, :sucursal, :usuario, :hash, :rol, 1)',
             );
             $alta->bindValue(':persona', $idPersona, PDO::PARAM_INT);
-            $alta->bindValue(':sucursal', $idSucursal, $idSucursal === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+            $alta->bindValue(':sucursal', (int) $sucursal['idSucursal'], PDO::PARAM_INT);
             $alta->bindValue(':usuario', $nombreUsuario, PDO::PARAM_STR);
             $alta->bindValue(':hash', $hashContrasena, PDO::PARAM_STR);
             $alta->bindValue(':rol', $rol, PDO::PARAM_STR);
             $alta->execute();
+            $pdo->commit();
         } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             if ($e instanceof PDOException && in_array((int) ($e->errorInfo[1] ?? 0), self::ERROR_CLAVE_DUPLICADA, true)) {
                 if (str_contains($e->getMessage(), 'UQ_USUARIO_NOMBRE')) {
                     throw new HttpException(409, 'usuario_en_uso', 'Ese usuario ya está en uso.', [], ['usuario' => 'Ese usuario ya está en uso. Elige otro.']);
@@ -100,7 +103,6 @@ final class UsuariosRepository implements RepositorioGestionUsuarios
             throw $e;
         }
     }
-
     public function cuenta(string $nombreUsuario): ?array
     {
         $fila = $this->uno(Database::conexion(), self::SELECT_CUENTA . ' WHERE u.nombreUsuario = :usuario', [':usuario' => $nombreUsuario]);
@@ -108,23 +110,35 @@ final class UsuariosRepository implements RepositorioGestionUsuarios
         return $fila === null ? null : self::aCuenta($fila);
     }
 
-    public function cambiarPuesto(string $nombreUsuario, string $rol, ?int $idSucursal, callable $decidir): ?bool
+    public function cambiarPuesto(string $nombreUsuario, string $rol, string $codigoSucursal, callable $decidir): ?bool
     {
         $pdo = Database::conexion();
         $pdo->beginTransaction();
         try {
-            $fila = $this->uno($pdo, 'SELECT idUsuario, rol, activo FROM Usuario WITH (UPDLOCK, HOLDLOCK) WHERE nombreUsuario = :usuario', [':usuario' => $nombreUsuario]);
+            // Orden de bloqueos constante: primero la sucursal de destino, luego la cuenta (UPDLOCK, HOLDLOCK). Todo lo que decide se
+            // lee YA BLOQUEADO; el servicio calcula si hay cambio con estos valores, no con una lectura anterior.
+            $destino = $this->uno($pdo, 'SELECT idSucursal, activa FROM Sucursal WITH (UPDLOCK, HOLDLOCK) WHERE codigoSucursal = :codigo', [':codigo' => $codigoSucursal]);
+            $fila = $this->uno(
+                $pdo,
+                'SELECT u.idUsuario, u.rol, u.activo, s.codigoSucursal AS sucursalActual
+                 FROM Usuario AS u WITH (UPDLOCK, HOLDLOCK) LEFT JOIN Sucursal AS s ON s.idSucursal = u.idSucursal
+                 WHERE u.nombreUsuario = :usuario',
+                [':usuario' => $nombreUsuario],
+            );
             if ($fila === null) {
                 $pdo->rollBack();
 
                 return null;
             }
             $id = (int) $fila['idUsuario'];
-            $decidir(['rol' => (string) $fila['rol'], 'activo' => (bool) $fila['activo'], 'viajesAbiertos' => $this->viajesAbiertos($pdo, $id)]);
+            $decidir([
+                'rolActual' => (string) $fila['rol'], 'sucursalActual' => $fila['sucursalActual'] === null ? null : (string) $fila['sucursalActual'], 'activo' => (bool) $fila['activo'],
+                'sucursalActiva' => $destino !== null && (bool) $destino['activa'], 'viajesAbiertos' => $this->viajesAbiertos($pdo, $id),
+            ]);
 
             $cambio = $pdo->prepare('UPDATE Usuario SET rol = :rol, idSucursal = :sucursal WHERE idUsuario = :id');
             $cambio->bindValue(':rol', $rol, PDO::PARAM_STR);
-            $cambio->bindValue(':sucursal', $idSucursal, $idSucursal === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+            $cambio->bindValue(':sucursal', (int) $destino['idSucursal'], PDO::PARAM_INT);
             $cambio->bindValue(':id', $id, PDO::PARAM_INT);
             $cambio->execute();
             $pdo->commit();
@@ -137,7 +151,6 @@ final class UsuariosRepository implements RepositorioGestionUsuarios
             throw $e;
         }
     }
-
     public function cambiarEstado(string $nombreUsuario, bool $activo, callable $decidir): ?bool
     {
         $pdo = Database::conexion();

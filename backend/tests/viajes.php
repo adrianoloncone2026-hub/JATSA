@@ -286,31 +286,29 @@ final class ViajesFalso implements RepositorioViajes, RepositorioDespacho
         return array_values(array_map(fn (string $u): array => ['nombreUsuario' => $u, 'nombreCompleto' => $this->transportistas[$u]['nombre'], 'sucursal' => $this->nombre($this->transportistas[$u]['sucursal'])], array_keys($this->transportistas)));
     }
 
-    public function idVehiculoActivo(string $placa): ?int
-    {
-        return $this->vehiculos[$placa]['id'] ?? null;
-    }
+    /** Recursos desactivados por el gerente (placas, usuarios y códigos de sucursal). */
+    public array $inactivos = ['vehiculos' => [], 'transportistas' => [], 'sucursales' => []];
+    /** Si se asigna, se ejecuta DENTRO de crearViaje, antes de leer los recursos bloqueados: simula una desactivación que se intercala. */
+    public mixed $alIniciarCrearViaje = null;
 
-    public function idTransportistaActivo(string $nombreUsuario): ?int
+    public function crearViaje(string $placa, string $nombreTransportista, int $idSucursalOrigen, string $codigoDestino, callable $decidir): string
     {
-        return $this->transportistas[$nombreUsuario]['id'] ?? null;
-    }
-
-    public function idSucursalActiva(string $codigoSucursal): ?int
-    {
-        return self::SUCURSALES[$codigoSucursal] ?? null;
-    }
-
-    public function crearViaje(int $idVehiculo, int $idTransportista, int $idSucursalOrigen, int $idSucursalDestino): string
-    {
-        $placa = null;
-        foreach ($this->vehiculos as $p => $v) {
-            if ($v['id'] === $idVehiculo) {
-                $placa = $p;
-            }
+        if ($this->alIniciarCrearViaje !== null) {
+            ($this->alIniciarCrearViaje)($this);
         }
         $origen = array_search($idSucursalOrigen, self::SUCURSALES, true);
-        $destino = array_search($idSucursalDestino, self::SUCURSALES, true);
+        $destinoExiste = isset(self::SUCURSALES[$codigoDestino]);
+        $decidir([
+            'origenActiva' => $origen !== false && !in_array($origen, $this->inactivos['sucursales'], true),
+            'destinoExiste' => $destinoExiste,
+            'destinoActiva' => $destinoExiste && !in_array($codigoDestino, $this->inactivos['sucursales'], true),
+            'vehiculoExiste' => isset($this->vehiculos[$placa]),
+            'vehiculoActivo' => isset($this->vehiculos[$placa]) && !in_array($placa, $this->inactivos['vehiculos'], true),
+            'transportistaExiste' => isset($this->transportistas[$nombreTransportista]),
+            'transportistaActivo' => isset($this->transportistas[$nombreTransportista]) && !in_array($nombreTransportista, $this->inactivos['transportistas'], true),
+        ]);
+        $idTransportista = $this->transportistas[$nombreTransportista]['id'];
+        $destino = $codigoDestino;
         $prefijo = 'VJ' . date('Ymd', (int) strtotime($this->ahora));
         $numero = 1;
         foreach (array_keys($this->viajes) as $c) {
@@ -322,11 +320,10 @@ final class ViajesFalso implements RepositorioViajes, RepositorioDespacho
             throw new HttpException(409, 'limite_de_viajes', 'Se alcanzó el máximo de 99 viajes programados en el día.');
         }
         $codigo = $prefijo . sprintf('%02d', $numero);
-        $this->viaje($codigo, (string) $placa, (string) $origen, (string) $destino, $idTransportista);
+        $this->viaje($codigo, $placa, (string) $origen, (string) $destino, $idTransportista);
 
         return $codigo;
     }
-
     public function cargar(string $codigoViaje, string $codigoSeguimiento, callable $decidir): ?bool
     {
         $v = $this->viajes[$codigoViaje] ?? null;

@@ -111,15 +111,17 @@ final class UsuariosService
         if ($persona['tieneUsuario']) {
             throw new HttpException(409, 'cuenta_existente', 'Esa persona ya tiene una cuenta.', [], ['numeroDocumento' => 'Esa persona ya tiene una cuenta.']);
         }
-        $idSucursal = $this->usuarios->idSucursalActiva($sucursal);
-        if ($idSucursal === null) {
-            throw self::datosInvalidos(['sucursal' => 'Elige una sucursal activa.']);
-        }
         if ($this->usuarios->usuarioExiste($usuario)) {
             throw new HttpException(409, 'usuario_en_uso', 'Ese usuario ya está en uso.', [], ['usuario' => 'Ese usuario ya está en uso. Elige otro.']);
         }
 
-        $this->usuarios->crearCuenta($persona['idPersona'], $idSucursal, $usuario, password_hash($contrasena, PASSWORD_BCRYPT, ['cost' => 12]), $rol);
+        // Que la sucursal exista y esté ACTIVA se decide DENTRO de la transacción del repositorio, con la sucursal bloqueada: su
+        // desactivación (que cuenta el personal activo) no puede intercalarse entre esta validación y el alta de la cuenta.
+        $this->usuarios->crearCuenta($persona['idPersona'], $sucursal, $usuario, password_hash($contrasena, PASSWORD_BCRYPT, ['cost' => 12]), $rol, static function (array $ctx): void {
+            if (!$ctx['sucursalActiva']) {
+                throw self::datosInvalidos(['sucursal' => 'Elige una sucursal activa.']);
+            }
+        });
 
         return $this->presentar($this->cuentaDe($usuario), strtolower((string) ($sesion['nombreUsuario'] ?? '')));
     }
@@ -132,7 +134,7 @@ final class UsuariosService
      */
     public function editar(array $sesion, string $nombreUsuario, array $datos): array
     {
-        $actual = $this->cuentaDe($nombreUsuario);
+        $nombreUsuario = $this->nombreValido($nombreUsuario);
         $errores = [];
         $rol = strtoupper(Validacion::texto($datos, 'rol'));
         if (!in_array($rol, self::ROLES_PERSONAL, true)) {
@@ -144,17 +146,19 @@ final class UsuariosService
         }
         $this->exigirValidos($errores);
 
-        $idSucursal = $this->usuarios->idSucursalActiva($sucursal);
-        if ($idSucursal === null) {
-            throw self::datosInvalidos(['sucursal' => 'Elige una sucursal activa.']);
-        }
-        $cambia = $rol !== $actual['rol'] || $sucursal !== $actual['sucursalCodigo'];
-
-        $resultado = $this->usuarios->cambiarPuesto($actual['nombreUsuario'], $rol, $idSucursal, static function (array $ctx) use ($cambia): void {
-            if (!in_array($ctx['rol'], self::ROLES_PERSONAL, true)) {
+        // TODO lo que decide sale de la fila y de la sucursal BLOQUEADAS por el repositorio: si hay cambio de puesto se calcula aquí, con
+        // el rol y la sucursal que la cuenta tiene en ese momento (no con una lectura anterior que otro gerente pudo dejar obsoleta).
+        $resultado = $this->usuarios->cambiarPuesto($nombreUsuario, $rol, $sucursal, static function (array $ctx) use ($rol, $sucursal): void {
+            if (!in_array($ctx['rolActual'], self::ROLES_PERSONAL, true)) {
                 throw new HttpException(409, 'cuenta_no_editable', 'Solo se edita el puesto del personal (administradores y transportistas).');
             }
-            if ($cambia && $ctx['viajesAbiertos'] > 0) {
+            if ($rol === $ctx['rolActual'] && $sucursal === $ctx['sucursalActual']) {
+                return; // sin cambios: guardar no es un error
+            }
+            if (!$ctx['sucursalActiva']) {
+                throw self::datosInvalidos(['sucursal' => 'Elige una sucursal activa.']);
+            }
+            if ($ctx['viajesAbiertos'] > 0) {
                 throw new HttpException(409, 'transportista_con_viajes', sprintf('No se puede cambiar el puesto: tiene %d viaje(s) programado(s) o en ruta.', $ctx['viajesAbiertos']));
             }
         });
@@ -164,7 +168,6 @@ final class UsuariosService
 
         return $this->presentar($this->cuentaDe($nombreUsuario), strtolower((string) ($sesion['nombreUsuario'] ?? '')));
     }
-
     /**
      * «Desactivar seleccionada» (y volver a activar). No puede desactivarse a sí mismo ni al último gerente activo.
      *
@@ -236,6 +239,12 @@ final class UsuariosService
         return null;
     }
 
+    private function nombreValido(string $nombreUsuario): string
+    {
+        $nombreUsuario = trim($nombreUsuario);
+
+        return preg_match('/^[A-Za-z0-9._-]{4,30}$/', $nombreUsuario) === 1 ? $nombreUsuario : throw self::cuentaNoEncontrada();
+    }
     /** @return array<string, mixed> */
     private function cuentaDe(string $nombreUsuario): array
     {

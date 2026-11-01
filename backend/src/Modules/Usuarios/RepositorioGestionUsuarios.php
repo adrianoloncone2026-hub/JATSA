@@ -29,14 +29,15 @@ interface RepositorioGestionUsuarios
 
     public function usuarioExiste(string $nombreUsuario): bool;
 
-    /** id de la sucursal ACTIVA con ese código, o null. */
-    public function idSucursalActiva(string $codigo): ?int;
-
     /**
-     * Crea la cuenta de una persona que ya existe y todavía no tiene una. Lanza HttpException 409 si el usuario ya existe o la
-     * persona ya tiene cuenta (carrera entre dos altas).
+     * Crea la cuenta de una persona que ya existe y todavía no tiene una. En UNA transacción bloquea la sucursal (UPDLOCK, HOLDLOCK) y
+     * llama a $decidir con ['sucursalActiva' => bool] (false si no existe): una desactivación de la sucursal, que bloquea la misma fila
+     * y cuenta el personal activo, no puede intercalarse entre la validación y el alta. Lanza HttpException 409 si el usuario ya existe
+     * o la persona ya tiene cuenta (carrera entre dos altas).
+     *
+     * @param callable(array<string, mixed>): void $decidir
      */
-    public function crearCuenta(int $idPersona, ?int $idSucursal, string $nombreUsuario, string $hashContrasena, string $rol): void;
+    public function crearCuenta(int $idPersona, string $codigoSucursal, string $nombreUsuario, string $hashContrasena, string $rol, callable $decidir): void;
 
     /**
      * Una cuenta por su usuario (sin hash), o null.
@@ -46,12 +47,14 @@ interface RepositorioGestionUsuarios
     public function cuenta(string $nombreUsuario): ?array;
 
     /**
-     * Cambia rol y sucursal de una cuenta. Bloquea la cuenta y llama a $decidir con ['rol' => string, 'activo' => bool,
-     * 'viajesAbiertos' => int] (viajes sin llegada como transportista). null si la cuenta no existe.
+     * Cambia rol y sucursal de una cuenta. En UNA transacción bloquea, en este orden, la sucursal de destino y la cuenta (UPDLOCK, HOLDLOCK)
+     * y llama a $decidir con lo leído YA BLOQUEADO: ['rolActual' => string, 'sucursalActual' => ?string (código), 'activo' => bool,
+     * 'sucursalActiva' => bool (la de destino), 'viajesAbiertos' => int (viajes sin llegada como transportista)]. Quien decide
+     * calcula la diferencia con esos valores, no con una lectura anterior. null si la cuenta no existe.
      *
      * @param callable(array<string, mixed>): void $decidir
      */
-    public function cambiarPuesto(string $nombreUsuario, string $rol, ?int $idSucursal, callable $decidir): ?bool;
+    public function cambiarPuesto(string $nombreUsuario, string $rol, string $codigoSucursal, callable $decidir): ?bool;
 
     /**
      * Activa o desactiva una cuenta. Bloquea la cuenta y los gerentes activos y llama a $decidir con ['rol' => string,

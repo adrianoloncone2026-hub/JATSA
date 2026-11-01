@@ -31,19 +31,19 @@ interface RepositorioDespacho
      */
     public function transportistasActivos(): array;
 
-    public function idVehiculoActivo(string $placa): ?int;
-
-    /** Id de un usuario activo con rol TRANSPORTISTA. */
-    public function idTransportistaActivo(string $nombreUsuario): ?int;
-
-    public function idSucursalActiva(string $codigoSucursal): ?int;
-
     /**
-     * Crea el viaje (sin salida ni llegada) y devuelve su código «VJ» + fecha de la base (AAAAMMDD) + número del día (01 a
-     * 99), calculado dentro de la transacción con el rango de códigos del día bloqueado.
+     * Crea el viaje (sin salida ni llegada) y devuelve su código «VJ» + fecha de la base (AAAAMMDD) + número del día (01 a 99),
+     * calculado dentro de la transacción con el rango de códigos del día bloqueado.
+     *
+     * Las sucursales, el vehículo y el transportista se bloquean y se leen DENTRO de la transacción (orden constante en todo el
+     * sistema: sucursales por id ascendente, vehículo, usuario; con UPDLOCK, HOLDLOCK) y con ellos se llama a $decidir, que aplica
+     * las reglas y lanza HttpException si alguno no existe o está inactivo. Así una desactivación del gerente, que bloquea la misma
+     * fila y comprueba los viajes abiertos, no puede intercalarse entre la validación y el INSERT.
+     *
+     * @param callable(array<string, mixed>): void $decidir Recibe origenActiva, destinoExiste, destinoActiva, vehiculoExiste,
+     *        vehiculoActivo, transportistaExiste y transportistaActivo (rol TRANSPORTISTA y cuenta activa), todos bool.
      */
-    public function crearViaje(int $idVehiculo, int $idTransportista, int $idSucursalOrigen, int $idSucursalDestino): string;
-
+    public function crearViaje(string $placa, string $nombreTransportista, int $idSucursalOrigen, string $codigoDestino, callable $decidir): string;
     /**
      * Carga un envío en un viaje en UNA transacción: bloquea el viaje y luego el envío (siempre en ese orden), reúne lo
      * que hace falta para decidir y llama a $decidir, que aplica las reglas y lanza HttpException si no procede (todo se
