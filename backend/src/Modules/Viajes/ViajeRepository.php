@@ -117,7 +117,7 @@ final class ViajeRepository implements RepositorioViajes
                 return null;
             }
 
-            // Bloquear el vehículo (después del viaje, siempre en ese orden: no hay interbloqueo) y ver si ya está en ruta.
+            // Bloquear el vehículo (después del viaje, siempre en el mismo orden: no hay interbloqueo) y ver si ya está en ruta.
             $bloqueo = $pdo->prepare('SELECT idVehiculo FROM Vehiculo WITH (UPDLOCK, HOLDLOCK) WHERE idVehiculo = :vehiculo');
             $bloqueo->bindValue(':vehiculo', $viaje['idVehiculo'], PDO::PARAM_INT);
             $bloqueo->execute();
@@ -132,7 +132,23 @@ final class ViajeRepository implements RepositorioViajes
             $vehiculoOcupado = (int) $ocupado->fetchColumn() > 0;
             $ocupado->closeCursor();
 
-            $decidir(['viaje' => $viaje, 'vehiculoOcupado' => $vehiculoOcupado]);
+            // Bloquear al transportista (tercero en el orden: viaje → vehículo → transportista) y ver si ya conduce otro viaje en ruta.
+            // Así dos salidas del mismo conductor con vehículos distintos se ponen en fila y la segunda ya ve la primera.
+            $conductor = $pdo->prepare('SELECT idUsuario FROM Usuario WITH (UPDLOCK, HOLDLOCK) WHERE idUsuario = :usuario');
+            $conductor->bindValue(':usuario', $viaje['idUsuarioTransportista'], PDO::PARAM_INT);
+            $conductor->execute();
+            $conductor->closeCursor();
+            $enRuta = $pdo->prepare(
+                'SELECT COUNT(*) FROM Viaje
+                 WHERE idUsuarioTransportista = :usuario AND fechaHoraSalida IS NOT NULL AND fechaHoraLlegada IS NULL AND idViaje <> :viaje',
+            );
+            $enRuta->bindValue(':usuario', $viaje['idUsuarioTransportista'], PDO::PARAM_INT);
+            $enRuta->bindValue(':viaje', $viaje['idViaje'], PDO::PARAM_INT);
+            $enRuta->execute();
+            $transportistaOcupado = (int) $enRuta->fetchColumn() > 0;
+            $enRuta->closeCursor();
+
+            $decidir(['viaje' => $viaje, 'vehiculoOcupado' => $vehiculoOcupado, 'transportistaOcupado' => $transportistaOcupado]);
 
             $salida = $pdo->prepare('UPDATE Viaje SET fechaHoraSalida = SYSDATETIME() WHERE idViaje = :viaje AND fechaHoraSalida IS NULL');
             $salida->bindValue(':viaje', $viaje['idViaje'], PDO::PARAM_INT);

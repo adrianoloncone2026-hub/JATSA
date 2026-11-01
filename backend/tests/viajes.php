@@ -190,13 +190,19 @@ final class ViajesFalso implements RepositorioViajes, RepositorioDespacho
         if ($v === null) {
             return null;
         }
-        $ocupado = false;
-        foreach ($this->viajes as $otro) {
-            if ($otro['codigo'] !== $codigoViaje && $otro['placa'] === $v['placa'] && $otro['salida'] !== null && $otro['llegada'] === null) {
-                $ocupado = true;
+        // El contexto se calcula DESPUÉS del gancho de concurrencia, como el SQL real lo lee con los bloqueos ya tomados.
+        $this->decidir($decidir, function () use ($codigoViaje): array {
+            $v = $this->viajes[$codigoViaje];
+            $vehiculoOcupado = false;
+            $transportistaOcupado = false;
+            foreach ($this->viajes as $otro) {
+                $enRuta = $otro['codigo'] !== $codigoViaje && $otro['salida'] !== null && $otro['llegada'] === null;
+                $vehiculoOcupado = $vehiculoOcupado || ($enRuta && $otro['placa'] === $v['placa']);
+                $transportistaOcupado = $transportistaOcupado || ($enRuta && $otro['transportista'] === $v['transportista']);
             }
-        }
-        $this->decidir($decidir, ['viaje' => $this->crudo($this->viajes[$codigoViaje]), 'vehiculoOcupado' => $ocupado]);
+
+            return ['viaje' => $this->crudo($v), 'vehiculoOcupado' => $vehiculoOcupado, 'transportistaOcupado' => $transportistaOcupado];
+        });
         if ($this->viajes[$codigoViaje]['salida'] !== null) {
             return false;
         }
@@ -407,6 +413,14 @@ function transportista(int $id = 5): array
     return ['id' => $id, 'nombreUsuario' => $id === 5 ? 'pmamani' : 'jquispe', 'rol' => Roles::TRANSPORTISTA, 'sucursal' => ['id' => 2, 'codigo' => 'AQP001', 'nombre' => 'Agencia AQP001']];
 }
 
+/** Pedro (id 5) ya conduce VJ2026101402; para que salga de otro viaje hay que terminar ese primero (un solo viaje en ruta por conductor). */
+function liberarAPedro(ViajesFalso $r, ViajeService $servicio): void
+{
+    $r->ahora = '2026-10-31 09:00:00';
+    $servicio->marcarLlegada(transportista(), 'VJ2026101402');
+    $r->ahora = '2026-10-31 10:00:00';
+}
+
 // ── Mis viajes ──────────────────────────────────────────────────────────────
 prueba('mis viajes: en ruta primero, luego programados por código y luego terminados (diapositiva 24)', function () {
     [, , $servicio] = escenarioViajes();
@@ -460,6 +474,7 @@ prueba('detalle: ajeno e inexistente dan el mismo 404; el administrador ve los d
 // ── Salida y llegada ────────────────────────────────────────────────────────
 prueba('salida: queda EN_RUTA con la hora de la base y los envíos REGISTRADO pasan a EN_TRANSITO', function () {
     [$r, $despacho, $servicio] = escenarioViajes();
+    liberarAPedro($r, $servicio);
     $despacho->cargar(personal(), 'VJ2026103101', ['codigoSeguimiento' => 'EN4T7Q0P2LKX']);
     $d = $servicio->marcarSalida(transportista(), 'VJ2026103101');
     afirmar($d['estado'] === 'EN_RUTA' && $d['fechaHoraSalida'] === '2026-10-31 10:00:00' && $d['llegadaEstimada'] === '2026-10-31 14:00:00', 'estado, hora y estimada');
@@ -486,8 +501,35 @@ prueba('salida: un vehículo con otro viaje en ruta está ocupado (409) y no cam
     afirmar($servicio->marcarSalida(transportista(), 'VJ2026103102')['estado'] === 'EN_RUTA', 'ya sale');
 });
 
+prueba('salida: un transportista no puede tener dos viajes en ruta (vehículos distintos, mismo conductor) → 409 y sin cambios', function () {
+    [$r, $despacho, $servicio] = escenarioViajes();
+    // Pedro (id 5) ya conduce VJ2026101402 (B7K-210). VJ2026103101 usa otra camioneta (C3M-956): el vehículo está libre.
+    $despacho->cargar(personal(), 'VJ2026103101', ['codigoSeguimiento' => 'EN4T7Q0P2LKX']);
+    $e = esperarError(fn () => $servicio->marcarSalida(transportista(), 'VJ2026103101'), 409, 'transportista_ocupado');
+    afirmar(str_contains($e->getMessage(), 'llegada'), 'dice qué hacer: ' . $e->getMessage());
+    afirmar($r->viajes['VJ2026103101']['salida'] === null && $r->envios['EN4T7Q0P2LKX']['estado'] === 'REGISTRADO' && $r->transaccionesDeshechas === 1, 'sin cambios y transacción deshecha');
+    afirmar($servicio->marcarSalida(transportista(6), 'VJ2026103103')['estado'] === 'EN_RUTA', 'otro conductor sí sale (su vehículo y él están libres)');
+    $r->ahora = '2026-10-31 18:00:00';
+    $servicio->marcarLlegada(transportista(), 'VJ2026101402');
+    $r->ahora = '2026-10-31 18:05:00';
+    afirmar($servicio->marcarSalida(transportista(), 'VJ2026103101')['estado'] === 'EN_RUTA', 'al terminar su viaje en ruta, ya puede salir');
+});
+
+prueba('salida concurrente: dos viajes del MISMO conductor con vehículos DISTINTOS — gana uno solo y el otro ve su salida (409)', function () {
+    [$r, , $servicio] = escenarioViajes();
+    $r->viaje('VJ2026103201', 'C3M-956', 'MOQ001', 'AQP001', 6); // Juan (id 6): dos viajes con vehículos distintos
+    $r->viaje('VJ2026103202', 'V2A-845', 'MOQ001', 'ILO001', 6);
+    // La primera salida está a punto de confirmar cuando se evalúa la segunda: el gancho la marca justo antes de la decisión.
+    $r->antesDeDecidir = function (ViajesFalso $falso): void { $falso->viajes['VJ2026103201']['salida'] = '2026-10-31 09:59:59'; };
+    esperarError(fn () => $servicio->marcarSalida(transportista(6), 'VJ2026103202'), 409, 'transportista_ocupado');
+    afirmar($r->viajes['VJ2026103201']['salida'] === '2026-10-31 09:59:59' && $r->viajes['VJ2026103202']['salida'] === null, 'queda un solo viaje en ruta del conductor');
+    $enRuta = array_filter($r->viajes, static fn (array $v): bool => $v['transportista'] === 6 && $v['salida'] !== null && $v['llegada'] === null);
+    afirmar(count($enRuta) === 1 && $r->transaccionesDeshechas === 1, 'como máximo uno EN_RUTA por transportista');
+});
+
 prueba('llegada: TERMINADO; los envíos cuyo destino final es esa agencia pasan a EN_DESTINO y los de transbordo siguen EN_TRANSITO', function () {
     [$r, $despacho, $servicio] = escenarioViajes();
+    liberarAPedro($r, $servicio);
     $r->envio('ENTRANSBORDO', 'MOQ001', 'LIM001', 'REGISTRADO', '2.00');
     $despacho->cargar(personal(), 'VJ2026103101', ['codigoSeguimiento' => 'EN4T7Q0P2LKX']);
     $despacho->cargar(personal(), 'VJ2026103101', ['codigoSeguimiento' => 'ENTRANSBORDO']);
@@ -502,6 +544,7 @@ prueba('llegada: TERMINADO; los envíos cuyo destino final es esa agencia pasan 
 
 prueba('llegada: sin salida → 409; ajeno → 404; si pasó menos de un segundo desde la salida → 409 llegada_muy_pronto', function () {
     [$r, , $servicio] = escenarioViajes();
+    liberarAPedro($r, $servicio);
     esperarError(fn () => $servicio->marcarLlegada(transportista(), 'VJ2026103101'), 409, 'viaje_no_salio');
     esperarError(fn () => $servicio->marcarLlegada(transportista(6), 'VJ2026101402'), 404, 'viaje_no_encontrado');
     $servicio->marcarSalida(transportista(), 'VJ2026103101');
@@ -635,6 +678,7 @@ prueba('cargar: dos cajas a la vez — la que llega segunda ve el envío ya carg
 
 prueba('transbordo: tras llegar a AQP001, el envío espera allí y se carga en un viaje hacia su destino final; no vuelve a donde ya estuvo', function () {
     [$r, $despacho, $servicio] = escenarioViajes();
+    liberarAPedro($r, $servicio);
     $r->envio('ENTRANSBORDO', 'MOQ001', 'LIM001', 'REGISTRADO', '2.00');
     $despacho->cargar(personal(), 'VJ2026103101', ['codigoSeguimiento' => 'ENTRANSBORDO']);
     $servicio->marcarSalida(transportista(), 'VJ2026103101');
@@ -727,6 +771,7 @@ prueba('controladores: usan el usuario y la sucursal de la sesión, no los del c
     sesionDe($auth, $servicioAuth, 5);
     $res = leer($v->misViajes(new Jatsa\Core\Request('GET', '/x', ['estado' => 'EN_RUTA'], '', []), []));
     afirmar($res['estado'] === 200 && array_column($res['cuerpo']['data']['viajes'], 'codigo') === ['VJ2026101402'], 'mis viajes con filtro');
+    liberarAPedro($r, $servicio); // un conductor no sale de otro viaje mientras tenga uno en ruta
     $res = leer($v->marcarSalida(peticion('POST', '/x'), ['codigo' => 'VJ2026103101']));
     afirmar($res['estado'] === 200 && $res['cuerpo']['data']['viaje']['estado'] === 'EN_RUTA' || $res['estado'] === 200, 'salida');
     $limpiar();

@@ -35,12 +35,13 @@ interface RepositorioViajes
     public function buscarPorCodigo(string $codigoViaje, string $hoy): ?array;
 
     /**
-     * Marca la salida en UNA transacción: bloquea el viaje y su vehículo (en ese orden), lee si el vehículo ya tiene
-     * otro viaje en ruta y llama a $decidir, que aplica las reglas y lanza HttpException si no procede (todo se
+     * Marca la salida en UNA transacción: bloquea el viaje, su vehículo y su transportista (siempre en ese orden), lee si
+     * el vehículo o el transportista ya tienen otro viaje en ruta y llama a $decidir, que aplica las reglas y lanza
+     * HttpException si no procede (todo se
      * deshace). Después fija la salida con la hora de la base y pasa a EN_TRANSITO los envíos cargados que seguían
      * REGISTRADO.
      *
-     * @param callable(array<string, mixed>): void $decidir Recibe ['viaje' => fila del viaje bloqueado, 'vehiculoOcupado' => bool].
+     * @param callable(array<string, mixed>): void $decidir Recibe ['viaje' => fila del viaje bloqueado, 'vehiculoOcupado' => bool, 'transportistaOcupado' => bool].
      * @return bool|null null si el viaje no existe; false si ya no se pudo (otra operación se adelantó).
      */
     public function marcarSalida(string $codigoViaje, callable $decidir): ?bool;

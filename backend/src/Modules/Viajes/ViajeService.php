@@ -89,6 +89,9 @@ final class ViajeService
             if ($contexto['vehiculoOcupado']) {
                 throw new HttpException(409, 'vehiculo_ocupado', 'El vehículo tiene otro viaje en ruta: debe terminar antes de que salga este.');
             }
+            if ($contexto['transportistaOcupado']) {
+                throw new HttpException(409, 'transportista_ocupado', 'Ya conduces otro viaje en ruta: marca su llegada antes de que salga este.');
+            }
         };
         $hecho = $this->viajes->marcarSalida($codigo, $this->conPropietario($usuario, $decidir));
         if ($hecho === null) {
