@@ -43,9 +43,19 @@ const navegador = await iniciarNavegador(9340, ({ ruta, url }) => {
     // La respuesta de 8.80 kg se retrasa; la de cualquier otro peso sale enseguida.
     return { estado: 200, cuerpo: { data: cotizacionPara(peso) }, demoraMs: peso === '8.80' ? RETRASO_MS : 0 }
   }
+  if (ruta === '/api/salidas') {
+    // «Salidas desde aquí» de la ficha de agencia (módulo 9): solo MOQ001 y AQP001 tienen rutas; las demás agencias, ninguna.
+    const origen = url.searchParams.get('origen')
+    const moq = { codigo: 'MOQ001', nombre: 'Agencia Moquegua' }
+    const aqp = { codigo: 'AQP001', nombre: 'Agencia Arequipa Centro' }
+    const lim = { codigo: 'LIM001', nombre: 'Agencia Lima Centro' }
+    const lista = origen === 'MOQ001' ? [{ id: 'MOQ001-AQP001', origen: moq, destino: aqp, horarios: ['14:00', '15:00'], programado: false, horas: 4, desde: '9.15' }]
+      : origen === 'AQP001' ? [{ id: 'AQP001-LIM001', origen: aqp, destino: lim, horarios: [], programado: true, horas: 18, desde: '30.20' }] : []
+    return { estado: 200, cuerpo: { data: { salidas: lista } } }
+  }
   return null
 })
-const { irA, escribir, pulsar, texto, ruta } = navegador
+const { irA, escribir, pulsar, texto, ruta, evaluar } = navegador
 const CALCULAR = '.formulario-cotizador button[type=submit]'
 
 async function prepararCotizador() {
@@ -107,6 +117,21 @@ try {
   await escribir('#filtro-departamento', 'Lima')
   await esperar(500)
   comprobar('si la agencia de la dirección queda fuera del filtro, ficha y dirección pasan a la visible', [await texto('.ficha-agencia h2'), await ruta()], ['Agencia Lima Centro · LIM001', '/agencias?agencia=LIM001'])
+
+  titulo('Agencias: «Salidas desde aquí» (diapositiva 6)')
+  await irA('/agencias?agencia=MOQ001')
+  await esperar(500)
+  comprobar('la ficha muestra las rutas que salen de la agencia: hacia, horario habitual, tiempo y «Ver salida»', await evaluar(`[...document.querySelectorAll('.salidas-desde-aqui tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' ').trim() + '→' + r.querySelector('a').getAttribute('href')).join(' || ')`),
+    'Agencia Arequipa Centro 14:00 · 15:00 4 h Ver salida→/salidas/MOQ001-AQP001')
+  comprobar('«Ver todas las salidas» conserva el origen', await evaluar(`document.querySelector('.ficha-agencia > a.boton').getAttribute('href')`), '/salidas?origen=MOQ001')
+  await pulsar('.agencia-item:nth-child(1) button'); await esperar(500)
+  comprobar('al elegir otra agencia se piden sus salidas (una ruta sin historial dice «viaje programado, sin historial»)', await texto('.salidas-desde-aqui tbody tr'), 'Agencia Lima Centro viaje programado, sin historial 18 h Ver salida')
+  await irA('/agencias?agencia=ILO001'); await esperar(500)
+  comprobar('una agencia sin rutas lo dice', await texto('.salidas-desde-aqui .ayuda'), 'Esta agencia todavía no tiene rutas con salidas.')
+
+  titulo('Cotizador: la ruta puede venir precargada desde «Salidas»')
+  await irA('/cotizador?origen=MOQ001&destino=AQP001'); await esperar(500)
+  comprobar('origen y destino ya elegidos (el peso lo escribe la persona)', await evaluar(`[document.querySelector('#origen').value, document.querySelector('#destino').value, document.querySelector('#peso').value].join(',')`), 'MOQ001,AQP001,')
 
   titulo('Inicio: lema fijo, independiente de la API')
   agenciasPedidas = 0

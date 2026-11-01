@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { obtenerAgencias } from '../../api/publico.js'
+import { listarSalidas, obtenerAgencias } from '../../api/publico.js'
 import ilustracion from '../../assets/ilustracion-sur.png'
 import Moneda, { iconoDeDepartamento } from '../../components/Moneda.jsx'
 import { direccionCompleta, formatoTelefono } from '../../utils/formato.js'
@@ -41,6 +41,23 @@ export default function Agencias() {
       setParametros({ agencia: codigoElegido }, { replace: true })
     }
   }, [codigoElegido, pedida, setParametros])
+
+  // «Salidas desde aquí» (diapositiva 6): las rutas que salen de la agencia elegida. Cada cambio de ficha cancela la consulta anterior.
+  const [salidas, setSalidas] = useState({ fase: 'inactivo', lista: [] }) // inactivo | cargando | listo | error
+  useEffect(() => {
+    if (!codigoElegido) {
+      setSalidas({ fase: 'inactivo', lista: [] })
+      return undefined
+    }
+    const control = new AbortController()
+    setSalidas({ fase: 'cargando', lista: [] })
+    listarSalidas({ origen: codigoElegido }, control.signal)
+      .then((lista) => setSalidas({ fase: 'listo', lista }))
+      .catch((fallo) => {
+        if (fallo.name !== 'AbortError') setSalidas({ fase: 'error', lista: [] })
+      })
+    return () => control.abort()
+  }, [codigoElegido])
 
   function elegir(codigo) {
     setParametros({ agencia: codigo }, { replace: true })
@@ -154,7 +171,40 @@ export default function Agencias() {
                   </dd>
                 </dl>
               </div>
-              <Link to="/salidas" className="boton boton-marino">
+              <section className="salidas-desde-aqui" aria-label="Salidas desde aquí">
+                <h3>Salidas desde aquí</h3>
+                {salidas.fase === 'cargando' && <p className="ayuda">Cargando las salidas…</p>}
+                {salidas.fase === 'error' && <p className="ayuda">No se pudieron cargar las salidas de esta agencia.</p>}
+                {salidas.fase === 'listo' && salidas.lista.length === 0 && <p className="ayuda">Esta agencia todavía no tiene rutas con salidas.</p>}
+                {salidas.fase === 'listo' && salidas.lista.length > 0 && (
+                  <table className="tabla-compacta">
+                    <caption className="solo-lectores">Salidas desde {elegida.nombre}</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Hacia</th>
+                        <th scope="col">Salidas frecuentes</th>
+                        <th scope="col">Tiempo</th>
+                        <th scope="col">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {salidas.lista.map((s) => (
+                        <tr key={s.id}>
+                          <th scope="row">{s.destino.nombre}</th>
+                          <td>{s.horarios.length > 0 ? s.horarios.join(' · ') : s.programado ? 'viaje programado, sin historial' : 'sin historial de salidas'}</td>
+                          <td>{s.horas} h</td>
+                          <td>
+                            <Link to={`/salidas/${s.id}`} className="boton boton-claro" aria-label={`Ver la salida hacia ${s.destino.nombre}`}>
+                              Ver salida
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+              <Link to={`/salidas?origen=${elegida.codigo}`} className="boton boton-marino">
                 Ver todas las salidas
               </Link>
             </article>
