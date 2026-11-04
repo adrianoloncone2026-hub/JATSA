@@ -36,3 +36,4 @@ Criterio: primero la base técnica y el acceso, luego los catálogos de los que 
 - **Módulo 12 bloqueado:** exportar Excel (`.xlsx`), paquete ZIP y manual PDF requiere tecnología aún no autorizada. No se empieza hasta que el usuario decida.
 - **Mi panel (11)** se hace en dos pasos: primero reservas (módulo 4) y se completa en el módulo 9 con envíos en curso y saldo por pagar.
 - Cada módulo termina con: endpoints documentados en `docs/api/`, pantallas del rol funcionando contra la API y verificación manual de los permisos por rol.
+- **Módulo 11 (Resumen y Viajes y flota):** solo lectura del GERENTE en `/api/reportes/resumen` y `/api/reportes/viajes-flota`; Resumen enlaza a Viajes y flota (sin depender del módulo 12) y a Reportes (pendiente). Reglas y contrato en `docs/api/reportes-resumen-flota.md`.

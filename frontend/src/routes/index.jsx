@@ -15,6 +15,8 @@ import ReservaVentanilla from '../modules/administrador/ReservaVentanilla.jsx'
 import Ventanilla from '../modules/administrador/Ventanilla.jsx'
 import Catalogos from '../modules/gerente/Catalogos.jsx'
 import Cuentas from '../modules/gerente/Cuentas.jsx'
+import Resumen from '../modules/gerente/Resumen.jsx'
+import ViajesFlota from '../modules/gerente/ViajesFlota.jsx'
 import DetalleViaje from '../modules/transportista/DetalleViaje.jsx'
 import MisViajes from '../modules/transportista/MisViajes.jsx'
 import Agencias from '../modules/publico/Agencias.jsx'
@@ -55,6 +57,8 @@ const PANTALLAS_REALES = {
   'administrador/llegadas-entregas': LlegadasEntregas,
   'administrador/contrasena': CambiarContrasena,
   'transportista/contrasena': CambiarContrasena,
+  'gerente/': Resumen,
+  'gerente/viajes-flota': ViajesFlota,
   'gerente/contrasena': CambiarContrasena,
   'gerente/catalogos': Catalogos,
   'gerente/cuentas': Cuentas,
