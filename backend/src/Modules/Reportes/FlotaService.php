@@ -101,8 +101,9 @@ final class FlotaService
         if ($texto === '') {
             return (int) $ahora->format('Y');
         }
-        if (preg_match('/^\d{4}$/', $texto) !== 1 || (int) $texto < 2000) {
-            $errores['anio'] = 'Indica un año de cuatro cifras.';
+        if (preg_match('/^\d{4}$/', $texto) !== 1 || (int) $texto < 2000 || (int) $texto > 9998) {
+            // Tope 9998: el año siguiente debe seguir dentro del rango de datetime2 (hasta el año 9999); si no, SQL Server daría 500.
+            $errores['anio'] = 'Indica un año entre 2000 y 9998.';
 
             return (int) $ahora->format('Y');
         }

@@ -95,8 +95,9 @@ final class ResumenService
         if ($texto === '') {
             return $ahora;
         }
-        if (preg_match('/^(\d{4})-(0[1-9]|1[0-2])$/', $texto, $m) !== 1 || (int) $m[1] < 2000) {
-            $errores['mes'] = 'Indica el mes con el formato AAAA-MM.';
+        if (preg_match('/^(\d{4})-(0[1-9]|1[0-2])$/', $texto, $m) !== 1 || (int) $m[1] < 2000 || (int) $m[1] > 9998) {
+            // Tope 9998: el mes siguiente debe seguir dentro del rango de datetime2 (hasta el año 9999); si no, SQL Server daría 500.
+            $errores['mes'] = 'Indica el mes con el formato AAAA-MM (años 2000 a 9998).';
 
             return $ahora;
         }

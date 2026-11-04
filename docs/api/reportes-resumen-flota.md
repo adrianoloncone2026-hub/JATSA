@@ -4,7 +4,7 @@ Solo el **GERENTE** (401 sin sesión, 403 para otros roles). Solo lectura (`GET`
 Pantallas 26 (Resumen) y 28 (Viajes y flota) del prototipo. Código en `backend/src/Modules/Reportes/`.
 
 ## GET /api/reportes/resumen?mes=AAAA-MM&sucursal=CÓDIGO
-`mes` por defecto el actual; `sucursal` vacío = todas.
+`mes` por defecto el actual (años 2000 a 9998: más allá, 422, para no salir del rango `datetime2`); `sucursal` vacío = todas.
 
 ```json
 { "mes": "2026-10", "sucursal": null,
@@ -23,7 +23,7 @@ Reglas:
 - **Viajes**: en ruta = con salida y sin llegada; programados = sin salida (estado actual, no depende del mes).
 
 ## GET /api/reportes/viajes-flota?anio=&mes=&sucursal=&vehiculo=&transportista=&tipoEnvio=
-`anio` por defecto el actual; `mes` 1–12 (vacío = todo el año); `vehiculo` = placa; `transportista` = `nombreUsuario`; `tipoEnvio` = `SOBRE`|`PAQUETE`|`CARGA`.
+`anio` por defecto el actual (2000 a 9998, si no 422); `mes` 1–12 (vacío = todo el año); `vehiculo` = placa; `transportista` = `nombreUsuario`; `tipoEnvio` = `SOBRE`|`PAQUETE`|`CARGA`.
 
 ```json
 { "anio": 2026, "mes": 10, "filtros": { "sucursal": null, "placa": null, "transportista": null, "tipoEnvio": null },
