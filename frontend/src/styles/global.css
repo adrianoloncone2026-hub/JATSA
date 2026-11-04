@@ -2039,3 +2039,71 @@ input[readonly] {
     text-align: left;
   }
 }
+/* Módulo 11: Resumen y Viajes y flota del gerente */
+.filtros label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-weight: 700;
+  color: var(--marino);
+}
+
+.filtros {
+  align-items: flex-end;
+  margin: 1rem 0;
+}
+
+.tarjetas-indicadores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.tarjeta-indicador {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 1rem;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  background: var(--celeste);
+}
+
+.indicador-valor {
+  font-size: 1.9rem;
+  color: var(--marino);
+}
+
+.indicador-titulo {
+  font-weight: 700;
+}
+
+.indicador-detalle {
+  color: var(--gris);
+  font-size: 0.9rem;
+}
+
+.grupos-envios {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.8rem;
+  margin: 0;
+}
+
+.grupo-envios {
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+}
+
+.grupo-envios dt {
+  color: var(--gris);
+}
+
+.grupo-envios dd {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--marino);
+}
