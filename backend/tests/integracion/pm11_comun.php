@@ -93,6 +93,27 @@ function pm11IdentidadValida(array $id, string $base, string $loginEsperado): bo
         && in_array(strtoupper((string) ($id['auth'] ?? '')), ['NTLM', 'KERBEROS', 'NEGOTIATE'], true);
 }
 
+/** ¿Es una conexión administrativa válida a «master»? (base master, la cuenta Windows esperada y autenticación de Windows). @param array<string, mixed> $id */
+function pm11MasterValido(array $id, string $loginEsperado): bool
+{
+    return $loginEsperado !== ''
+        && strcasecmp((string) ($id['bd'] ?? ''), 'master') === 0
+        && strcasecmp((string) ($id['login'] ?? ''), $loginEsperado) === 0
+        && in_array(strtoupper((string) ($id['auth'] ?? '')), ['NTLM', 'KERBEROS', 'NEGOTIATE'], true);
+}
+
+/** Abre «master» y exige base, cuenta y autenticación de Windows ANTES de cualquier operación administrativa. */
+function pm11ConexionMaster(string $servidor, string $puerto, string $loginEsperado): PDO
+{
+    $pdo = pm11ConexionServidor($servidor, $puerto, 'master');
+    $id = pm11Identidad($pdo);
+    if (!pm11MasterValido($id, $loginEsperado)) {
+        pm11Abortar('La conexión administrativa NO es «master» con la cuenta Windows esperada y autenticación de Windows (' . ($id['bd'] ?? '?') . ' / ' . ($id['login'] ?? '?') . ' / ' . ($id['auth'] ?? '?') . '). No se hace nada.', 5);
+    }
+
+    return $pdo;
+}
+
 function pm11ExigirDestino(PDO $pdo, string $base, string $loginEsperado): void
 {
     $id = pm11Identidad($pdo);
@@ -121,7 +142,7 @@ function pm11ContenidoEnv(string $servidor, string $puerto, string $base): strin
 }
 
 /** Problemas del .env de la copia (lista vacía = válido). @return list<string> */
-function pm11EnvProblemas(string $texto, string $base): array
+function pm11EnvProblemas(string $texto, string $base, ?string $servidor = null, ?string $puerto = null): array
 {
     $valores = [];
     $repetidas = [];
@@ -147,6 +168,12 @@ function pm11EnvProblemas(string $texto, string $base): array
     }
     if (($valores['DB_NAME'] ?? null) !== $base) {
         $p[] = 'DB_NAME no es la base aislada';
+    }
+    if ($servidor !== null && ($valores['DB_HOST'] ?? null) !== $servidor) {
+        $p[] = 'DB_HOST no coincide con el servidor del manifiesto';
+    }
+    if ($puerto !== null && ($valores['DB_PORT'] ?? null) !== $puerto) {
+        $p[] = 'DB_PORT no coincide con el puerto del manifiesto';
     }
     if (stripos($valores['DB_NAME'] ?? '', 'encomiendas') !== false) {
         $p[] = 'DB_NAME apunta a la base habitual';

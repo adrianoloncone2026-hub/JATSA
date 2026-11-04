@@ -109,17 +109,12 @@ if ($fase === 'A') {
     }
     [$servidor, $puerto] = pm11Servidor();
     try {
-        $pdo = pm11ConexionServidor($servidor, $puerto, 'master');
-        $yo = $pdo->query("SELECT ORIGINAL_LOGIN() AS login, IS_SRVROLEMEMBER('sysadmin') AS sysadmin, (SELECT MAX(auth_scheme) FROM sys.dm_exec_connections WHERE session_id = @@SPID) AS auth")->fetch(PDO::FETCH_ASSOC);
-        if (!in_array(strtoupper((string) $yo['auth']), ['NTLM', 'KERBEROS', 'NEGOTIATE'], true)) {
-            pm11Abortar('La conexión NO usa autenticación de Windows.', 5);
-        }
+        // La cuenta esperada es la cuenta Windows de ESTE proceso; la conexión debe ser «master» con esa cuenta y autenticación de Windows antes de seguir.
+        $esperada = (string) getenv('USERDOMAIN') . '\\' . (string) getenv('USERNAME');
+        $pdo = pm11ConexionMaster($servidor, $puerto, $esperada);
+        $yo = $pdo->query("SELECT ORIGINAL_LOGIN() AS login, IS_SRVROLEMEMBER('sysadmin') AS sysadmin")->fetch(PDO::FETCH_ASSOC);
         if ((int) $yo['sysadmin'] !== 1) {
             pm11Abortar('La cuenta no es sysadmin: no puede crear la base.', 5);
-        }
-        $esperada = (string) getenv('USERDOMAIN') . '\\' . (string) getenv('USERNAME');
-        if (strcasecmp((string) $yo['login'], $esperada) !== 0) {
-            pm11Abortar('La cuenta de SQL Server (' . $yo['login'] . ') no es la cuenta Windows de este proceso (' . $esperada . ').', 5);
         }
         $existe = $pdo->prepare('SELECT COUNT(*) FROM sys.databases WHERE name = :n');
         $existe->execute([':n' => $base]);
@@ -167,7 +162,7 @@ if ($fase === 'B') {
         file_put_contents($copia . '/.env', pm11ContenidoEnv($servidor, $puerto, $base));
     }
     pm11VerificarCopia($backendHabitual, $copia, $carpetasCopia);
-    $problemas = pm11EnvProblemas((string) file_get_contents($copia . '/.env'), $base);
+    $problemas = pm11EnvProblemas((string) file_get_contents($copia . '/.env'), $base, $servidor, $puerto);
     if ($problemas !== [] || is_file($copia . '/public/sonda_db.php')) {
         pm11Abortar('El .env de la copia no es válido o la copia trae una sonda: ' . implode(' | ', $problemas));
     }
@@ -208,11 +203,7 @@ if ($fase === 'C') {
 
 // ═══ D: DROP DATABASE de ESTA base ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 try {
-    $pdo = pm11ConexionServidor((string) $manifiesto['servidor'], (string) $manifiesto['puerto'], 'master');
-    $yo = pm11Identidad($pdo);
-    if (strcasecmp((string) $yo['login'], (string) $manifiesto['loginEsperado']) !== 0 || !in_array(strtoupper((string) $yo['auth']), ['NTLM', 'KERBEROS', 'NEGOTIATE'], true)) {
-        pm11Abortar('La conexión no usa la cuenta Windows registrada en la fase A.', 5);
-    }
+    $pdo = pm11ConexionMaster((string) $manifiesto['servidor'], (string) $manifiesto['puerto'], (string) $manifiesto['loginEsperado']);
     $fila = $pdo->prepare("SELECT database_id, CONVERT(VARCHAR(30), create_date, 126) AS creada FROM sys.databases WHERE name = :n");
     $fila->execute([':n' => $base]);
     $f = $fila->fetch(PDO::FETCH_ASSOC);

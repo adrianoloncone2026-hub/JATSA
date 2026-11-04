@@ -38,14 +38,14 @@ if ($manifiesto === null || ($manifiesto['base'] ?? '') !== $base || empty($mani
     pm11Abortar('No hay manifiesto de la fase A para esta base.', 5);
 }
 $loginEsperado = (string) $manifiesto['loginEsperado'];
-$problemasEnv = pm11EnvProblemas((string) file_get_contents($raiz . '/.env'), $base);
+$problemasEnv = pm11EnvProblemas((string) file_get_contents($raiz . '/.env'), $base, (string) $manifiesto['servidor'], (string) $manifiesto['puerto']);
 if ($problemasEnv !== []) {
     pm11Abortar('El .env de la copia no es válido: ' . implode(' | ', $problemasEnv), 5);
 }
 Config::cargar($raiz);
 date_default_timezone_set((string) Config::obtener('app.zona_horaria', 'America/Lima'));
-if (Config::obtener('db.nombre') !== $base) {
-    pm11Abortar('La configuración de la copia no apunta a la base aislada.', 5);
+if (Config::obtener('db.nombre') !== $base || (string) Config::obtener('db.host') !== (string) $manifiesto['servidor'] || (string) Config::obtener('db.puerto', '') !== (string) $manifiesto['puerto']) {
+    pm11Abortar('La configuración cargada (DB_NAME, DB_HOST, DB_PORT) no coincide con la base aislada y el servidor del manifiesto.', 5);
 }
 
 /** Conexión de la copia (su .env) con la identidad verificada: base aislada, cuenta Windows esperada. */
@@ -161,10 +161,7 @@ if ($orden === 'cargar') {
     $pdo = null;
 
     // La base pasa a SOLO LECTURA (desde «master», con una conexión verificada): cualquier escritura accidental de la fase C fallará.
-    $master = pm11ConexionServidor((string) Config::obtener('db.host'), (string) Config::obtener('db.puerto', ''), 'master');
-    if (strcasecmp((string) pm11Identidad($master)['login'], $loginEsperado) !== 0) {
-        pm11Abortar('La conexión a master no usa la cuenta esperada.', 5);
-    }
+    $master = pm11ConexionMaster((string) $manifiesto['servidor'], (string) $manifiesto['puerto'], $loginEsperado);
     $master->exec("ALTER DATABASE [$base] SET READ_ONLY WITH ROLLBACK IMMEDIATE");
     if ((int) $master->query("SELECT is_read_only FROM sys.databases WHERE name = '$base'")->fetchColumn() !== 1) {
         pm11Abortar('La base no quedó en READ_ONLY.');
@@ -287,7 +284,10 @@ try {
     };
 
     $sonda = $http('GET', '/sonda_db.php')['json'];
-    $anotar(is_array($sonda) && pm11IdentidadValida($sonda, $base, $loginEsperado), 'el proceso HTTP está en la base aislada con la cuenta esperada (sonda)');
+    if (!is_array($sonda) || !pm11IdentidadValida($sonda, $base, $loginEsperado)) {
+        // Sin identidad verificada del proceso HTTP no se hace NINGUNA otra petición: se cae al bloque finally (servidor y sonda se limpian) y se aborta.
+        throw new RuntimeException('El proceso HTTP NO está en la base aislada con la cuenta esperada (sonda): ' . json_encode($sonda));
+    }
 
     $cookies = [];
     foreach ($credenciales['usuarios'] as $usuario => $rol) {
@@ -333,12 +333,18 @@ try {
         $r = $http('GET', $ruta, $cookies['GERENTE']);
         $anotar($r['estado'] === 422 && isset($r['json']['error']['campos'][$campo]), "422 con campo $campo: $ruta");
     }
+} catch (RuntimeException $detenido) {
+    $detencion = $detenido->getMessage();
 } finally {
     if ($pid > 0) {
         @exec("taskkill /F /T /PID $pid 2>&1");
     }
     is_resource($proceso) && proc_close($proceso);
     @unlink($publico . '\\sonda_db.php');
+}
+
+if (isset($detencion)) {
+    pm11Abortar($detencion . ' Las pruebas se detuvieron sin consultar nada más.', 5);
 }
 
 // 3) Las 12 tablas quedaron idénticas y la base sigue en READ_ONLY.

@@ -404,3 +404,32 @@ prueba('pm11: el oraculo de la semilla da los resultados calculados a mano (peri
     $enero = pm11Semilla(new DateTimeImmutable('2027-01-15 10:00:00'));
     afirmar($enero['meta']['mes'] === '2026-12' && $enero['meta']['mesAnterior'] === '2026-11' && $enero['meta']['anioCruce'] === 2026, 'cargada en enero: M = diciembre, M-1 = noviembre');
 });
+prueba('pm11: la conexion administrativa debe ser master con la cuenta Windows esperada, y DB_HOST/DB_PORT deben coincidir con el manifiesto', function () {
+    $ok = ['bd' => 'master', 'login' => 'PC\\Usuario', 'auth' => 'KERBEROS'];
+    afirmar(pm11MasterValido($ok, 'pc\\usuario'), 'master valida');
+    afirmar(!pm11MasterValido(['bd' => 'JATSA_Encomiendas'] + $ok, 'PC\\Usuario'), 'otra base rechazada');
+    afirmar(!pm11MasterValido(['bd' => 'JATSA_pm11_aislada_20261105_0930'] + $ok, 'PC\\Usuario'), 'la base aislada no es master');
+    afirmar(!pm11MasterValido(['login' => 'sa'] + $ok, 'PC\\Usuario'), 'otra cuenta rechazada');
+    afirmar(!pm11MasterValido(['auth' => 'SQL'] + $ok, 'PC\\Usuario'), 'sin autenticacion de Windows rechazada');
+    afirmar(!pm11MasterValido($ok, ''), 'sin cuenta esperada rechazada');
+    $b = 'JATSA_pm11_aislada_20261105_0930';
+    $env = pm11ContenidoEnv('localhost\\SQLEXPRESS', '1433', $b);
+    afirmar(pm11EnvProblemas($env, $b, 'localhost\\SQLEXPRESS', '1433') === [], 'host y puerto del manifiesto: valido');
+    afirmar(pm11EnvProblemas($env, $b, 'otro-servidor', '1433') !== [], 'DB_HOST distinto del manifiesto: rechazado');
+    afirmar(pm11EnvProblemas($env, $b, 'localhost\\SQLEXPRESS', '1434') !== [], 'DB_PORT distinto del manifiesto: rechazado');
+    afirmar(pm11EnvProblemas(pm11ContenidoEnv('localhost\\SQLEXPRESS', '', $b), $b, 'localhost\\SQLEXPRESS', '1433') !== [], 'puerto vacio frente a manifiesto con puerto: rechazado');
+    afirmar(pm11EnvProblemas($env, $b) === [], 'sin manifiesto (null) no se compara: comportamiento anterior');
+});
+
+prueba('pm11: el codigo de las fases verifica master, host/puerto y detiene las pruebas si falla la sonda (revision estatica)', function () {
+    $dir = __DIR__ . '/integracion/';
+    $l = (string) file_get_contents($dir . 'pm11.php');
+    $t = (string) file_get_contents($dir . 'pm11_trabajo.php');
+    afirmar(substr_count($l, "pm11ConexionMaster(") === 2 && !preg_match("/pm11ConexionServidor\([^)]*'master'\)/", $l . $t), 'A y D abren master solo con pm11ConexionMaster (verificada)');
+    afirmar(str_contains($t, 'pm11ConexionMaster((string) $manifiesto'), 'el READ_ONLY de B abre master verificada');
+    afirmar(str_contains($l, '$base, $servidor, $puerto)') && str_contains($t, "(string) \$manifiesto['servidor'], (string) \$manifiesto['puerto'])"), 'B y el trabajo comparan DB_HOST/DB_PORT con el manifiesto');
+    afirmar(str_contains($t, "Config::obtener('db.host')") && str_contains($t, "Config::obtener('db.puerto', '')"), 'la configuracion cargada tambien se compara');
+    $posSonda = strpos($t, 'throw new RuntimeException');
+    afirmar($posSonda !== false && $posSonda < strpos($t, "'/api/auth/ingresar'") && str_contains($t, 'catch (RuntimeException $detenido)') && str_contains($t, 'pm11Abortar($detencion'), 'sonda fallida: se lanza antes del primer login, se limpia en finally y se aborta');
+    afirmar(strpos($t, 'pm11Abortar($detencion') < strpos($t, 'pm11DiferenciasInstantaneas($antes'), 'el aborto ocurre antes de dar nada por validado');
+});
