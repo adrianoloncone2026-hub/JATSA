@@ -6,7 +6,6 @@ use Jatsa\Middleware\RequiereRol;
 use Jatsa\Modules\Despacho\DespachoController;
 use Jatsa\Shared\Roles;
 
-// Despacho (módulo 7). Solo el ADMINISTRADOR; todo se limita a la sucursal de la sesión. Las rutas fijas van antes que /{codigo}.
 return static function (Router $router): void {
     $administradores = [new RequiereRol([Roles::ADMINISTRADOR])];
 

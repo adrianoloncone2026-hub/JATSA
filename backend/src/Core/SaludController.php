@@ -3,12 +3,9 @@ declare(strict_types=1);
 
 namespace Jatsa\Core;
 
-/**
- * Comprobaciones de estado de la API.
- */
+/** Comprobaciones de estado de la API. */
 final class SaludController
 {
-    /** GET /api/salud — no usa la base de datos. */
     public function estado(Request $peticion, array $parametros): Response
     {
         return Response::exito([
@@ -19,7 +16,6 @@ final class SaludController
         ]);
     }
 
-    /** GET /api/salud/bd — solo abre la conexión; no ejecuta ninguna instrucción SQL. */
     public function baseDeDatos(Request $peticion, array $parametros): Response
     {
         Database::conexion();

@@ -7,7 +7,6 @@ use Jatsa\Modules\Publico\CotizadorController;
 use Jatsa\Modules\Publico\RastreoController;
 use Jatsa\Modules\Publico\SalidaController;
 
-// Rutas públicas (sin sesión): agencias, cotizador, rastreo y salidas entre sucursales.
 return static function (Router $router): void {
     $router->get('/api/agencias', [AgenciasController::class, 'listar']);
     $router->get('/api/cotizacion', [CotizadorController::class, 'cotizar']);

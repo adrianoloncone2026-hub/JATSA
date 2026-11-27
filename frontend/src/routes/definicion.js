@@ -1,10 +1,6 @@
 import { ROLES } from '../auth/roles.js'
 
 // Mapa de navegación del prototipo (diapositiva 1). Cada pantalla indica el módulo de
-// docs/orden-implementacion.md en el que se implementa. Por ahora todas son marcadores.
-//   ruta:   relativa a la base de su sección ('' = pantalla inicial de la sección)
-//   modulo: número de módulo donde se construye (0 = infraestructura)
-//   menu:   si aparece en el menú de su layout
 export const SECCIONES = [
   {
     id: 'publico',
@@ -27,18 +23,16 @@ export const SECCIONES = [
     id: 'cliente',
     etiqueta: 'Cliente / Empresario',
     base: '/cliente',
-    roles: [ROLES.CLIENTE, ROLES.EMPRESARIO],
+    roles: [ROLES.CLIENTE, ROLES.EMPRESARIO, ROLES.GERENTE, ROLES.ADMINISTRADOR, ROLES.TRANSPORTISTA],
     pantallas: [
       { ruta: '', titulo: 'Mi panel', modulo: 4, menu: true },
       { ruta: 'nueva-reserva', titulo: 'Nueva reserva', modulo: 4, menu: true },
       { ruta: 'reserva-registrada/:codigo', titulo: 'Reserva registrada', modulo: 4, menu: false },
       { ruta: 'reservas', titulo: 'Mis reservas', modulo: 4, menu: true },
-      { ruta: 'historial', titulo: 'Historial', modulo: 9, menu: true },
+      { ruta: 'historial', titulo: 'Historial de envíos', modulo: 9, menu: true },
       { ruta: 'pagos', titulo: 'Mis pagos', modulo: 6, menu: true },
-      // «Mi cuenta» no va en el menú: se entra desde el nombre del usuario en la cabecera (diapositiva 17).
-      { ruta: 'cuenta', titulo: 'Mi cuenta', modulo: 3, menu: false },
+      { ruta: 'cuenta', titulo: 'Mi cuenta', modulo: 3, menu: false, roles: [ROLES.CLIENTE, ROLES.EMPRESARIO] },
     ],
-    // Enlaces al área pública que el prototipo muestra también en el menú del cliente.
     enlacesExtra: [
       { to: '/salidas', texto: 'Salidas' },
       { to: '/rastreo', texto: 'Rastrear' },
@@ -60,6 +54,7 @@ export const SECCIONES = [
       { ruta: 'reportes', titulo: 'Reportes', modulo: 12, menu: true },
       { ruta: 'contrasena', titulo: 'Cambiar contraseña', modulo: 10, menu: false },
     ],
+    enlacesPropios: [{ to: '/cliente', texto: 'Mis encomiendas' }],
   },
   {
     id: 'transportista',
@@ -71,6 +66,7 @@ export const SECCIONES = [
       { ruta: 'viajes/:codigo', titulo: 'Detalle del viaje', modulo: 7, menu: false },
       { ruta: 'contrasena', titulo: 'Cambiar contraseña', modulo: 10, menu: false },
     ],
+    enlacesPropios: [{ to: '/cliente', texto: 'Mis encomiendas' }],
   },
   {
     id: 'gerente',
@@ -85,6 +81,7 @@ export const SECCIONES = [
       { ruta: 'cuentas', titulo: 'Cuentas', modulo: 10, menu: true },
       { ruta: 'contrasena', titulo: 'Cambiar contraseña', modulo: 10, menu: false },
     ],
+    enlacesPropios: [{ to: '/cliente', texto: 'Mis encomiendas' }],
   },
 ]
 
@@ -105,6 +102,7 @@ export function enlacesMenu(idSeccion) {
     ...seccion.pantallas
       .filter((pantalla) => pantalla.menu)
       .map((pantalla) => ({ to: rutaCompleta(seccion, pantalla), texto: pantalla.titulo })),
-    ...(seccion.enlacesExtra ?? []),
+    ...(seccion.enlacesPropios ?? []),
+    ...(seccion.enlacesExtra ?? []).map((enlace) => ({ ...enlace, extra: true })),
   ]
 }

@@ -6,9 +6,7 @@ namespace Jatsa\Shared;
 use Jatsa\Core\Config;
 use Throwable;
 
-/**
- * Registro de errores en backend/storage/logs. El detalle técnico va aquí, nunca en la respuesta HTTP.
- */
+/** Registro de errores en backend/storage/logs. El detalle técnico va aquí, nunca en la respuesta HTTP. */
 final class Registro
 {
     public static function error(string $mensaje, ?Throwable $excepcion = null): void

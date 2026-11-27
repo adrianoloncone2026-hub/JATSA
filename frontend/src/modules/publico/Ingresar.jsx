@@ -1,10 +1,9 @@
 import { useState } from 'react'
+import Mosaico from '../../components/Mosaico.jsx'
 import { Link, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthProvider.jsx'
 import { rutaInicioDeRol } from '../../auth/roles.js'
 
-// Vuelve a la pantalla que el usuario quería abrir solo si pertenece al área de su rol;
-// si no, va al inicio de su área.
 function destinoTrasIngresar(rol, desde) {
   const inicio = rutaInicioDeRol(rol)
   return typeof desde === 'string' && desde.startsWith(inicio) ? desde : inicio
@@ -15,7 +14,6 @@ export default function Ingresar() {
   const { usuario, ingresar, cargando } = useAuth()
   const ubicacion = useLocation()
 
-  // Al venir de «Crear cuenta» se avisa y se deja escrito el usuario recién creado.
   const cuentaCreada = ubicacion.state?.cuentaCreada === true
   const [campos, setCampos] = useState({
     usuario: cuentaCreada && typeof ubicacion.state?.usuario === 'string' ? ubicacion.state.usuario : '',
@@ -26,7 +24,6 @@ export default function Ingresar() {
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
 
-  // Quien tiene sesión (ya la tenía o acaba de ingresar) no necesita ver el formulario.
   if (!cargando && usuario) {
     return <Navigate to={destinoTrasIngresar(usuario.rol, ubicacion.state?.desde)} replace />
   }
@@ -41,7 +38,6 @@ export default function Ingresar() {
     setError('')
     setEnviando(true)
     try {
-      // Al guardarse el usuario, el bloque de arriba redirige a su destino.
       await ingresar({
         usuario: campos.usuario.trim(),
         contrasena: campos.contrasena,
@@ -55,12 +51,11 @@ export default function Ingresar() {
   }
 
   return (
-    <section className="formulario-acceso">
-      <p>
-        <Link to="/">← Volver al inicio</Link>
-      </p>
+    <div className="acceso-fila">
+    <Mosaico vertical ids={[64, 15, 4, 1]} />
+    <section className="formulario-acceso acceso-compacto">
       <h1>Ingresar</h1>
-      <p>Usa el usuario y la contraseña de tu cuenta. El sistema te lleva a tu panel según tu rol.</p>
+      <p className="subtitulo">Con tu usuario y contraseña entras a tu panel según tu rol.</p>
 
       {cuentaCreada && !error && (
         <div className="resultado ok" role="status">
@@ -114,10 +109,12 @@ export default function Ingresar() {
         </button>
       </form>
 
-      <p className="ayuda">¿Olvidaste tu contraseña? Pídela en tu agencia o al gerente.</p>
-      <p className="ayuda">
-        ¿Eres cliente y no tienes cuenta? <Link to="/crear-cuenta">Crear cuenta</Link>
+      <p className="ayuda acceso-pie">
+        ¿Sin cuenta? <Link to="/crear-cuenta">Crear cuenta</Link> · <Link to="/">Volver al inicio</Link>
+        <br />
+        ¿Olvidaste tu contraseña? Pídela en tu agencia o al gerente.
       </p>
     </section>
+    </div>
   )
 }

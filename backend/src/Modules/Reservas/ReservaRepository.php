@@ -10,10 +10,7 @@ use PDO;
 use PDOException;
 use Throwable;
 
-/**
- * Lee y escribe Reserva y Persona con los nombres del script SQL definitivo. Siempre con parámetros.
- * Escrituras: alta de reserva (y de la persona destinataria si es nueva) y cancelación.
- */
+/** Lee y escribe Reserva y Persona con los nombres del script SQL definitivo. Siempre con parámetros. */
 final class ReservaRepository implements RepositorioReservas
 {
     private const ERROR_CLAVE_DUPLICADA = [2627, 2601];
@@ -69,8 +66,6 @@ final class ReservaRepository implements RepositorioReservas
 
     /**
      * Persona (si es nueva) + reserva en una sola transacción. El canal es siempre un literal del código
-     * ('WEB' o 'VENTANILLA'), nunca entrada del usuario.
-     *
      * @param array<string, string>|null $remitenteNuevo
      * @param array<string, string>|null $destinatarioNuevo
      */
@@ -84,13 +79,11 @@ final class ReservaRepository implements RepositorioReservas
             $idDestinatario ??= $this->insertarPersona($pdo, (array) $destinatarioNuevo);
 
             // Siguiente código R + 9 dígitos. UPDLOCK + HOLDLOCK serializan a quienes reservan a la vez,
-            // de modo que dos reservas simultáneas no obtienen el mismo número.
             $siguiente = (int) $pdo
                 ->query('SELECT ISNULL(MAX(CAST(SUBSTRING(codigoReserva, 2, 9) AS INT)), 0) + 1 FROM Reserva WITH (UPDLOCK, HOLDLOCK)')
                 ->fetchColumn();
             $codigo = sprintf('R%09d', $siguiente);
 
-            // Estado PENDIENTE y fecha: valores por defecto de la tabla. Las sucursales se resuelven por código y solo si están activas.
             $reserva = $pdo->prepare(
                 "INSERT INTO Reserva (codigoReserva, idPersonaRemitente, idPersonaDestinatario, idSucursalOrigen, idSucursalDestino, canal, descripcion)
                  VALUES (:codigo, :remitente, :destinatario,
@@ -119,7 +112,6 @@ final class ReservaRepository implements RepositorioReservas
 
     /**
      * Inserta una persona nueva y devuelve su id. Va dentro de la transacción de quien la llama.
-     *
      * @param array<string, string> $persona tipoDocumento, numeroDocumento, nombreCompleto, telefono
      */
     private function insertarPersona(PDO $pdo, array $persona): int
@@ -242,8 +234,6 @@ final class ReservaRepository implements RepositorioReservas
 
     public function cancelar(int $idPersona, string $codigo, ?DateTimeImmutable $referencia = null): bool
     {
-        // Condicionado a que siga PENDIENTE y dentro del plazo: una reserva que ya cumplió las horas de vigencia no
-        // se cancela como pendiente (en el instante límite ya vence). Atómico frente a vencerPendientes().
         $sentencia = Database::conexion()->prepare(
             "UPDATE Reserva SET estadoReserva = 'CANCELADA'
              WHERE codigoReserva = :codigo AND idPersonaRemitente = :persona AND estadoReserva = 'PENDIENTE'
@@ -285,16 +275,12 @@ final class ReservaRepository implements RepositorioReservas
         );
     }
 
-    /** Consulta base con las horas de vigencia (constante) ya sustituidas. */
     private static function consulta(): string
     {
         return str_replace('%HORAS%', (string) self::HORAS_DE_VIGENCIA, self::CONSULTA);
     }
 
-    /**
-     * Expresión SQL del instante límite: «ahora − vigencia». Con referencia usa ese instante (parámetro :referencia);
-     * sin ella, el reloj de SQL Server. Las horas son una constante, nunca entrada del usuario.
-     */
+    /** Expresión SQL del instante límite: «ahora − vigencia». Con referencia usa ese instante (parámetro :referencia); */
     private static function limite(?DateTimeImmutable $referencia): string
     {
         $ahora = $referencia === null ? 'SYSDATETIME()' : 'CAST(:referencia AS DATETIME2(0))';
@@ -329,7 +315,6 @@ final class ReservaRepository implements RepositorioReservas
         ];
     }
 
-    /** Una clave duplicada (otra persona o reserva creada a la vez) se vuelve un 409 comprensible. */
     private function traducir(Throwable $excepcion): Throwable
     {
         if ($excepcion instanceof PDOException && in_array((int) ($excepcion->errorInfo[1] ?? 0), self::ERROR_CLAVE_DUPLICADA, true)) {

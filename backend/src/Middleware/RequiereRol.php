@@ -7,16 +7,10 @@ use Jatsa\Core\Request;
 use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Sesion;
 
-/**
- * Exige sesión abierta y que el rol del usuario esté entre los permitidos.
- *
- * Uso: $router->get('/api/caja', [...], [new RequiereRol([Roles::ADMINISTRADOR])]);
- */
+/** Exige sesión abierta y que el rol del usuario esté entre los permitidos. */
 final class RequiereRol
 {
-    /**
-     * @param list<string> $roles
-     */
+    /** @param list<string> $roles */
     public function __construct(
         private readonly array $roles,
         private readonly ?RequiereSesion $sesion = null,

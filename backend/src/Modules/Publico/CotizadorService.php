@@ -7,21 +7,14 @@ use Closure;
 use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Tarifas;
 
-/**
- * Cotizador público (diapositiva 7 del prototipo): dado origen, destino y peso, devuelve el tipo de
- * envío que corresponde, el precio por bulto y las tarifas de todos los tipos para esa ruta.
- *
- * Los importes se devuelven como cadenas con sus decimales ("14.60") para no perder formato.
- */
+/** Cotizador público (diapositiva 7 del prototipo): dado origen, destino y peso, devuelve el tipo de */
 final class CotizadorService
 {
     private readonly RepositorioAgencias $agencias;
     private readonly RepositorioRutas $rutas;
     private readonly Closure $hoy;
 
-    /**
-     * @param (callable(): string)|null $hoy Devuelve la fecha de hoy (AAAA-MM-DD). Se inyecta para poder probar.
-     */
+    /** @param (callable(): string)|null $hoy Devuelve la fecha de hoy (AAAA-MM-DD). Se inyecta para poder probar. */
     public function __construct(?RepositorioAgencias $agencias = null, ?RepositorioRutas $rutas = null, ?callable $hoy = null)
     {
         $this->agencias = $agencias ?? new AgenciaRepository();
@@ -29,9 +22,7 @@ final class CotizadorService
         $this->hoy = Closure::fromCallable($hoy ?? static fn (): string => date('Y-m-d'));
     }
 
-    /**
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     public function cotizar(string $origen, string $destino, string $peso): array
     {
         [$origen, $destino] = self::codigosValidos($origen, $destino);
@@ -66,12 +57,7 @@ final class CotizadorService
         ];
     }
 
-    /**
-     * Tarifas vigentes de una ruta (origen → destino) para los tres tipos de envío, sin necesidad de peso.
-     * Sirve para el precio referencial de «Nueva reserva».
-     *
-     * @return array{origen: array{codigo: string, nombre: string}, destino: array{codigo: string, nombre: string}, tarifas: list<array<string, mixed>>}
-     */
+    /** @return array{origen: array{codigo: string, nombre: string}, destino: array{codigo: string, nombre: string}, tarifas: list<array<string, mixed>>} */
     public function tarifas(string $origen, string $destino): array
     {
         [$origen, $destino] = self::codigosValidos($origen, $destino);
@@ -84,11 +70,7 @@ final class CotizadorService
         ];
     }
 
-    /**
-     * Códigos de sucursal con formato correcto y distintos entre sí, en mayúsculas.
-     *
-     * @return array{0: string, 1: string}
-     */
+    /** @return array{0: string, 1: string} */
     private static function codigosValidos(string $origen, string $destino): array
     {
         $origen = strtoupper(trim($origen));
@@ -107,11 +89,7 @@ final class CotizadorService
         return [$origen, $destino];
     }
 
-    /**
-     * Las dos sucursales, si existen y están activas; si no, 404.
-     *
-     * @return array{0: array<string, mixed>, 1: array<string, mixed>}
-     */
+    /** @return array{0: array<string, mixed>, 1: array<string, mixed>} */
     private function sucursalesActivas(string $origen, string $destino): array
     {
         $sucursalOrigen = $this->agencias->buscarActivaPorCodigo($origen);
@@ -140,7 +118,6 @@ final class CotizadorService
         return $tarifas;
     }
 
-    /** "8.8" o "8,80" → 880. Hasta 2 decimales, mayor que 0 y dentro del tamaño de Bulto.pesoKg. */
     private function pesoEnCentesimas(string $peso): int
     {
         $peso = str_replace(',', '.', trim($peso));
@@ -191,7 +168,6 @@ final class CotizadorService
         ];
     }
 
-    /** 230.0 → "230", 230.5 → "230.5" */
     private static function sinCeroFinal(float $kilometros): string
     {
         $texto = number_format($kilometros, 1, '.', '');

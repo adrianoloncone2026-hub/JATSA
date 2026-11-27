@@ -28,7 +28,6 @@ function soles(monto) {
 }
 
 // Diapositiva 26: Resumen del GERENTE. Solo lectura: indicadores del mes y dónde están los envíos. Desde aquí se llega a Reportes
-// (módulo 12, pendiente) y a Viajes y flota.
 export default function Resumen() {
   const [filtros, setFiltros] = useState({ mes: mesActual(), sucursal: '' })
   const [sucursales, setSucursales] = useState([])
@@ -39,7 +38,7 @@ export default function Resumen() {
     const control = new AbortController()
     listarSucursales(control.signal)
       .then((datos) => setSucursales(datos.sucursales))
-      .catch(() => {}) // sin la lista, el filtro queda en «Todas»; el resumen sigue funcionando
+      .catch(() => {})
     return () => control.abort()
   }, [])
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Mosaico from '../../components/Mosaico.jsx'
 import { cargarEnvio, listarEnviosEnEspera, listarSalidas, quitarEnvio } from '../../api/despacho.js'
 import { obtenerViaje } from '../../api/viajes.js'
 import { useAuth } from '../../auth/AuthProvider.jsx'
@@ -10,19 +11,20 @@ import ProgramarViaje from './ProgramarViaje.jsx'
 // Diapositiva 21 del prototipo: viajes que salen de la agencia, programar uno y cargar los envíos que esperan aquí.
 export default function Despacho() {
   const { usuario } = useAuth()
-  const [salidas, setSalidas] = useState({ fase: 'cargando', datos: null, mensaje: '' }) // cargando | listo | error
+  const [salidas, setSalidas] = useState({ fase: 'cargando', datos: null, mensaje: '' })
   const [espera, setEspera] = useState({ fase: 'cargando', datos: null, mensaje: '' })
   const [intento, setIntento] = useState(0)
   const [aviso, setAviso] = useState({ tipo: '', texto: '' })
   const [programando, setProgramando] = useState(false)
-  const [abierto, setAbierto] = useState(null) // código del viaje cuya carga se muestra
+  const [abierto, setAbierto] = useState(null)
   const [detalle, setDetalle] = useState({ fase: 'inactivo', viaje: null, mensaje: '' })
-  const [elegidos, setElegidos] = useState({}) // código del envío → viaje elegido (si el administrador cambió la sugerencia)
+  const [elegidos, setElegidos] = useState({})
   const [cargando, setCargando] = useState(null)
-  const [confirmando, setConfirmando] = useState(null) // envío del que se pide confirmar «Quitar»
+  const [confirmando, setConfirmando] = useState(null)
   const [quitando, setQuitando] = useState(null)
+  const [pestana, setPestana] = useState('activos')
+  const [busqueda, setBusqueda] = useState('')
 
-  // Las dos listas se recargan juntas: al entrar, al reintentar y después de cada cambio.
   useEffect(() => {
     const control = new AbortController()
     setSalidas((anterior) => ({ ...anterior, fase: 'cargando' }))
@@ -42,7 +44,6 @@ export default function Despacho() {
     return () => control.abort()
   }, [intento])
 
-  // La carga del viaje abierto: se vuelve a leer con cada recarga para que refleje lo que realmente quedó.
   useEffect(() => {
     if (!abierto) return undefined
     const control = new AbortController()
@@ -65,7 +66,11 @@ export default function Despacho() {
     setAbierto(codigo)
   }
 
-  const programados = (salidas.datos?.viajes ?? []).filter((v) => v.estado === 'PROGRAMADO')
+  const viajes = salidas.datos?.viajes ?? []
+  const programados = viajes.filter((v) => v.estado === 'PROGRAMADO')
+  const texto = busqueda.trim().toUpperCase()
+  const visibles = viajes.filter((v) => (pestana === 'activos' ? v.estado !== 'TERMINADO' : v.estado === 'TERMINADO') && (!texto || v.codigo.includes(texto)))
+  const codigoBuscado = /^VJ\d{10}$/.test(texto) && !viajes.some((v) => v.codigo === texto) ? texto : null
   const elegidoPara = (envio) => {
     const elegido = elegidos[envio.codigoSeguimiento] ?? envio.viajeSugerido ?? ''
     return programados.some((v) => v.codigo === elegido) ? elegido : ''
@@ -83,7 +88,7 @@ export default function Despacho() {
       setAviso({ tipo: 'error', texto: fallo.message })
     } finally {
       setCargando(null)
-      setIntento((n) => n + 1) // en todos los casos se recarga: refleja lo que realmente quedó
+      setIntento((n) => n + 1)
     }
   }
 
@@ -112,7 +117,10 @@ export default function Despacho() {
 
   return (
     <section className="despacho">
-      <h1>Despacho{nombreAgencia ? ` · salen de ${nombreAgencia}` : ''}</h1>
+      <div className="cabecera-ilustrada">
+        <h1>Despacho{nombreAgencia ? ` · salen de ${nombreAgencia}` : ''}</h1>
+        <Mosaico ids={[61, 66, 23, 65, 2]} />
+      </div>
 
       <div className="barra-despacho">
         <button type="button" className="boton boton-marino" aria-expanded={programando} onClick={() => setProgramando((p) => !p)}>
@@ -128,7 +136,28 @@ export default function Despacho() {
         </div>
       )}
 
+      <div className="despacho-rejilla">
+        <div className="despacho-viajes">
       <h2>Viajes</h2>
+      <div className="barra-viajes">
+        <div className="pestanas" role="group" aria-label="Estado de los viajes">
+          <button type="button" className={pestana === 'activos' ? 'pestana activa' : 'pestana'} aria-pressed={pestana === 'activos'} onClick={() => setPestana('activos')}>
+            Programados y en ruta ({viajes.filter((v) => v.estado !== 'TERMINADO').length})
+          </button>
+          <button type="button" className={pestana === 'terminados' ? 'pestana activa' : 'pestana'} aria-pressed={pestana === 'terminados'} onClick={() => setPestana('terminados')}>
+            Terminados ({viajes.filter((v) => v.estado === 'TERMINADO').length})
+          </button>
+        </div>
+        <div className="campo buscar-viaje">
+          <label htmlFor="buscarViaje">Buscar viaje por código</label>
+          <input id="buscarViaje" type="search" autoComplete="off" maxLength={12} placeholder="VJ0000000001" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+        </div>
+      </div>
+      {codigoBuscado && (
+        <p className="ayuda">
+          Ese código no está en la lista. <button type="button" className="boton boton-claro" onClick={() => abrir(codigoBuscado)}>Abrir {codigoBuscado}</button>
+        </p>
+      )}
       {salidas.fase === 'cargando' && !salidas.datos && (
         <p role="status" className="cargando">
           Cargando los viajes…
@@ -147,7 +176,10 @@ export default function Despacho() {
           <p>Esta agencia todavía no tiene viajes. Programa el primero.</p>
         </div>
       )}
-      {salidas.datos && salidas.fase !== 'error' && salidas.datos.viajes.length > 0 && (
+      {salidas.datos && salidas.fase !== 'error' && salidas.datos.viajes.length > 0 && visibles.length === 0 && (
+        <p className="ayuda">No hay viajes {pestana === 'activos' ? 'programados ni en ruta' : 'terminados'}{texto ? ' con ese código' : ''}.</p>
+      )}
+      {salidas.datos && salidas.fase !== 'error' && visibles.length > 0 && (
         <div className="tabla-envoltorio">
           <table className="tabla-reservas tabla-viajes">
             <caption className="solo-lectores">Viajes que salen de esta agencia</caption>
@@ -161,7 +193,7 @@ export default function Despacho() {
               </tr>
             </thead>
             <tbody>
-              {salidas.datos.viajes.map((v) => (
+              {visibles.map((v) => (
                 <tr key={v.codigo} className={abierto === v.codigo ? 'fila-abierta' : undefined}>
                   <th scope="row">{v.codigo}</th>
                   <td data-etiqueta="Estado">
@@ -182,8 +214,13 @@ export default function Despacho() {
           </table>
         </div>
       )}
-      {salidas.datos?.hayMasTerminados && <p className="ayuda">Se muestran los 20 viajes terminados más recientes.</p>}
+      {salidas.datos?.hayMasTerminados && pestana === 'terminados' && (
+        <p className="ayuda">Se muestran los 20 viajes terminados más recientes. Para uno más antiguo, escribe su código arriba.</p>
+      )}
+        </div>
 
+        <div className="despacho-carga">
+      {!abierto && <p className="panel ayuda">Elige un viaje de la lista para ver su carga aquí.</p>}
       {abierto && (
         <section className="panel carga-viaje" aria-label={`Carga de ${abierto}`}>
           <div className="carga-viaje-cabecera">
@@ -240,6 +277,8 @@ export default function Despacho() {
           )}
         </section>
       )}
+        </div>
+      </div>
 
       <h2>Envíos en espera en esta agencia</h2>
       {espera.fase === 'cargando' && !espera.datos && (

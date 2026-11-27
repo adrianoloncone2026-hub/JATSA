@@ -1,27 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
+import Mosaico from '../../components/Mosaico.jsx'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { buscarReservaVentanilla, cotizarBultos, formalizarEnvio } from '../../api/ventanilla.js'
+import { obtenerTarifas } from '../../api/publico.js'
 import CampoTexto from '../../components/CampoTexto.jsx'
+import RangosPeso from '../../components/RangosPeso.jsx'
 import RutaMonedas from '../../components/RutaMonedas.jsx'
 import { fechaHoraCorta } from '../../utils/formato.js'
 
 const PESO_VALIDO = /^\d{1,6}([.,]\d{1,2})?$/
 
 // Diapositiva 19 del prototipo: tipo de entrega, bultos con su tipo (por peso) y costo (por ruta), importe y guardar.
-// El tipo y el costo los calcula SIEMPRE el servidor (POST /api/envios/cotizacion); la pantalla solo los muestra.
 export default function FormalizarEnvio() {
   const { codigo } = useParams()
   const navegar = useNavigate()
   const siguienteId = useRef(1)
 
-  const [reserva, setReserva] = useState({ fase: 'cargando', datos: null, mensaje: '' }) // cargando | listo | no_encontrada | error
+  const [reserva, setReserva] = useState({ fase: 'cargando', datos: null, mensaje: '' })
   const [intento, setIntento] = useState(0)
   const [tipoEntrega, setTipoEntrega] = useState('AGENCIA')
   const [direccion, setDireccion] = useState('')
-  const [bultos, setBultos] = useState([]) // [{ id, descripcion, pesoKg }]
+  const [bultos, setBultos] = useState([])
   const [borrador, setBorrador] = useState({ descripcion: '', pesoKg: '' })
-  const [cotizacion, setCotizacion] = useState({ fase: 'inactivo', datos: null }) // de los bultos agregados
-  const [previa, setPrevia] = useState({ fase: 'inactivo', fila: null }) // del bulto que se está escribiendo
+  const [cotizacion, setCotizacion] = useState({ fase: 'inactivo', datos: null })
+  const [previa, setPrevia] = useState({ fase: 'inactivo', fila: null })
   const [errorBorrador, setErrorBorrador] = useState('')
   const [erroresServidor, setErroresServidor] = useState({})
   const [errorGeneral, setErrorGeneral] = useState('')
@@ -41,6 +43,18 @@ export default function FormalizarEnvio() {
 
   const formalizable = reserva.fase === 'listo' && reserva.datos.estado === 'PENDIENTE' && !reserva.datos.plazoCumplido
 
+  const [tarifasRuta, setTarifasRuta] = useState([])
+  const origenRuta = reserva.fase === 'listo' ? reserva.datos.origen.codigo : ''
+  const destinoRuta = reserva.fase === 'listo' ? reserva.datos.destino.codigo : ''
+  useEffect(() => {
+    if (!origenRuta || !destinoRuta) return undefined
+    const control = new AbortController()
+    obtenerTarifas({ origen: origenRuta, destino: destinoRuta }, control.signal)
+      .then((datos) => setTarifasRuta(datos.tarifas))
+      .catch(() => {})
+    return () => control.abort()
+  }, [origenRuta, destinoRuta])
+
   // Cotización de los bultos agregados. Cada cambio cancela la anterior: una respuesta lenta nunca pisa a la actual.
   useEffect(() => {
     if (!formalizable) return undefined
@@ -59,7 +73,6 @@ export default function FormalizarEnvio() {
     return () => control.abort()
   }, [formalizable, codigo, bultos])
 
-  // Vista previa del bulto que se está escribiendo (tipo, costo y, si no hay tarifa, el motivo). Con un pequeño retardo.
   useEffect(() => {
     const peso = borrador.pesoKg.trim()
     if (!formalizable || peso === '') {
@@ -133,7 +146,6 @@ export default function FormalizarEnvio() {
       const delServidor = fallo.campos ?? {}
       if (Object.keys(delServidor).length > 0) setErroresServidor(delServidor)
       else setErrorGeneral(fallo.message)
-      // Si la reserva cambió (la cancelaron, venció o ya se formalizó), se vuelve a leer para mostrar su estado real.
       if (fallo.estado === 409) setIntento((n) => n + 1)
     }
   }
@@ -201,7 +213,10 @@ export default function FormalizarEnvio() {
 
   return (
     <section className="formalizar">
-      <h1>Formalizar {r.codigo}</h1>
+      <div className="cabecera-ilustrada">
+        <h1>Formalizar {r.codigo}</h1>
+        <Mosaico ids={[13, 1, 4, 5]} />
+      </div>
       <p className="subtitulo">
         {r.origen.nombre} ({r.origen.codigo}) → {r.destino.nombre} ({r.destino.codigo}){distancia ? ` · ${distancia} km` : ''}
       </p>
@@ -288,6 +303,14 @@ export default function FormalizarEnvio() {
           </table>
         </div>
 
+        {tarifasRuta.length > 0 && (
+          <div className="rangos-formalizar">
+            <h3>Rangos de peso de esta ruta</h3>
+            <RangosPeso tarifas={tarifasRuta} resaltado={previa.fase === 'listo' && !previa.fila?.error ? (previa.fila?.tipo ?? '') : ''} conPrecio />
+            <p className="ayuda">El peso del bulto decide su tipo. Los límites y precios son los de la tarifa vigente de la ruta.</p>
+          </div>
+        )}
+
         <div className="nuevo-bulto" role="group" aria-label="Agregar un bulto">
           <CampoTexto id="descripcionBulto" name="descripcion" etiqueta="Descripción" maxLength={150} value={borrador.descripcion} onChange={cambiarBorrador} />
           <CampoTexto id="pesoBulto" name="pesoKg" etiqueta="Peso (kg)" inputMode="decimal" maxLength={9} value={borrador.pesoKg} onChange={cambiarBorrador} />
@@ -335,7 +358,7 @@ export default function FormalizarEnvio() {
       </div>
 
       <aside className="panel-precio" aria-label="Resumen del envío">
-        <RutaMonedas origen={r.origen.departamento} destino={r.destino.departamento} tamano={80} />
+        <RutaMonedas origen={r.origen.departamento} destino={r.destino.departamento} nombreOrigen={r.origen.nombre} nombreDestino={r.destino.nombre} tamano={80} />
         <h2>Código de seguimiento</h2>
         <p className="ayuda">Se genera al guardar el envío y se imprime en la etiqueta.</p>
         <p>

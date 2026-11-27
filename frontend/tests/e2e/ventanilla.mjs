@@ -167,7 +167,7 @@ try {
   comprobar('«Formalizar» lleva a la pantalla de esa reserva', (await enlaces('.tabla-reservas tbody a')).split(' | ')[0], 'Formalizar→/administrador/formalizar-envio/R000000006')
   comprobar('accesos: Cliente sin reserva, Cobrar, Despachar, Entregar y Ver salidas', await enlaces('.accesos-ventanilla a'),
     'Cliente sin reserva→/administrador/sin-reserva | Cobrar→/administrador/caja | Despachar→/administrador/despacho | Entregar→/administrador/llegadas-entregas | Ver salidas→/salidas')
-  comprobar('el menú del administrador', await enlaces('nav.menu a'), 'Ventanilla→/administrador | Caja→/administrador/caja | Despacho→/administrador/despacho | Llegadas y entregas→/administrador/llegadas-entregas | Reportes→/administrador/reportes')
+  comprobar('el menú del administrador', await enlaces('nav.menu a'), 'Ventanilla→/administrador | Caja→/administrador/caja | Despacho→/administrador/despacho | Llegadas y entregas→/administrador/llegadas-entregas | Reportes→/administrador/reportes | Mis encomiendas→/cliente')
 
   await captura('18_ventanilla')
   titulo('Ventanilla: buscar por código')

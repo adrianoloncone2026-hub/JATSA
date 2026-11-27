@@ -7,20 +7,18 @@ use Jatsa\Core\Database;
 use PDO;
 use Throwable;
 
-/**
- * Lee y escribe Pago con los nombres del script SQL definitivo. Siempre con parámetros.
- * Las escrituras son dos: registrar un pago (INSERT, en transacción) y anularlo (UPDATE del estado; nunca se borra).
- */
+/** Lee y escribe Pago con los nombres del script SQL definitivo. Siempre con parámetros. */
 final class PagoRepository implements RepositorioPagos
 {
     private const COLUMNAS = 'p.idPago, p.fechaHoraPago, p.monto, p.metodoPago, p.pagadoPor, p.estadoPago, p.idSucursal,
-               e.codigoSeguimiento, s.codigoSucursal AS sucursalCodigo, s.nombre AS sucursalNombre';
+               e.codigoSeguimiento, s.codigoSucursal AS sucursalCodigo, s.nombre AS sucursalNombre,
+               CASE WHEN e.estadoEnvio <> \'ANULADO\' AND t.importe > t.pagado THEN 1 ELSE 0 END AS saldoPendiente';
 
     private const ORIGEN = 'FROM Pago AS p
         INNER JOIN Envio AS e ON e.idEnvio = p.idEnvio
-        INNER JOIN Sucursal AS s ON s.idSucursal = p.idSucursal';
+        INNER JOIN Sucursal AS s ON s.idSucursal = p.idSucursal
+        INNER JOIN vw_EnvioTotales AS t ON t.idEnvio = e.idEnvio';
 
-    /** Pagos que hizo la persona: paga el remitente de su envío o el destinatario del suyo. */
     private const DE_PERSONA = <<<'SQL'
         INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
         WHERE (p.pagadoPor = 'REMITENTE' AND r.idPersonaRemitente = :remitente)
@@ -35,14 +33,14 @@ final class PagoRepository implements RepositorioPagos
                     so.codigoSucursal AS origenCodigo, so.nombre AS origenNombre,
                     sd.codigoSucursal AS destinoCodigo, sd.nombre AS destinoNombre,
                     pr.nombreCompleto AS remitenteNombre, pd.nombreCompleto AS destinatarioNombre,
-                    (SELECT COALESCE(SUM(b.costo), 0) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS importe,
-                    (SELECT COALESCE(SUM(p.monto), 0) FROM Pago AS p WHERE p.idEnvio = e.idEnvio AND p.estadoPago = \'REGISTRADO\') AS pagado
+                    t.importe, t.pagado
              FROM Envio AS e
              INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
              INNER JOIN Persona AS pr ON pr.idPersona = r.idPersonaRemitente
              INNER JOIN Persona AS pd ON pd.idPersona = r.idPersonaDestinatario
              INNER JOIN Sucursal AS so ON so.idSucursal = r.idSucursalOrigen
              INNER JOIN Sucursal AS sd ON sd.idSucursal = r.idSucursalDestino
+             INNER JOIN vw_EnvioTotales AS t ON t.idEnvio = e.idEnvio
              WHERE e.codigoSeguimiento = :codigo',
         );
         $sentencia->bindValue(':codigo', $codigoSeguimiento, PDO::PARAM_STR);
@@ -100,7 +98,6 @@ final class PagoRepository implements RepositorioPagos
             $importe = $this->sumaDelEnvio($pdo, 'SELECT COALESCE(SUM(costo), 0) FROM Bulto WHERE idEnvio = :envio', $idEnvio);
             $pagado = $this->sumaDelEnvio($pdo, "SELECT COALESCE(SUM(monto), 0) FROM Pago WHERE idEnvio = :envio AND estadoPago = 'REGISTRADO'", $idEnvio);
 
-            // 3) Reglas de negocio (sucursal, estado, saldo): las aplica el servicio y puede abortar.
             $decidir([
                 'idEnvio' => $idEnvio,
                 'estado' => (string) $envio['estadoEnvio'],
@@ -110,7 +107,6 @@ final class PagoRepository implements RepositorioPagos
                 'pagado' => $pagado,
             ]);
 
-            // 4) Alta del pago. La fecha y el estado (REGISTRADO) los pone la base por defecto.
             $alta = $pdo->prepare(
                 'INSERT INTO Pago (idEnvio, idSucursal, monto, metodoPago, pagadoPor)
                  OUTPUT INSERTED.idPago
@@ -298,10 +294,10 @@ final class PagoRepository implements RepositorioPagos
             'idSucursal' => (int) $fila['idSucursal'],
             'sucursalCodigo' => (string) $fila['sucursalCodigo'],
             'sucursalNombre' => (string) $fila['sucursalNombre'],
+            'saldoPendiente' => (int) ($fila['saldoPendiente'] ?? 0) === 1,
         ];
     }
 
-    /** "23.75" → 2375 (DECIMAL de la base, con a lo sumo 2 decimales). */
     private static function aCentimos(string $decimal): int
     {
         return (int) round(((float) $decimal) * 100);

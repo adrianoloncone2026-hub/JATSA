@@ -8,10 +8,7 @@ use PDO;
 use PDOStatement;
 use Throwable;
 
-/**
- * Lee y escribe Viaje con los nombres del script SQL definitivo. Siempre con parámetros.
- * Las únicas escrituras son la salida y la llegada (UPDATE de Viaje y del estado de los envíos cargados), en transacción.
- */
+/** Lee y escribe Viaje con los nombres del script SQL definitivo. Siempre con parámetros. */
 final class ViajeRepository implements RepositorioViajes
 {
     private const COLUMNAS = 'v.idViaje, v.codigoViaje, v.idUsuarioTransportista, v.idSucursalOrigen, v.idSucursalDestino,
@@ -31,7 +28,6 @@ final class ViajeRepository implements RepositorioViajes
         INNER JOIN Usuario AS u ON u.idUsuario = v.idUsuarioTransportista
         INNER JOIN Persona AS pe ON pe.idPersona = u.idPersona';
 
-    /** En ruta primero, luego programados por código y luego terminados, del más reciente al más antiguo (diapositiva 24). */
     private const ORDEN = 'ORDER BY CASE WHEN v.fechaHoraSalida IS NOT NULL AND v.fechaHoraLlegada IS NULL THEN 0
                                          WHEN v.fechaHoraSalida IS NULL THEN 1 ELSE 2 END,
                                     CASE WHEN v.fechaHoraSalida IS NULL THEN v.codigoViaje END ASC,
@@ -79,12 +75,12 @@ final class ViajeRepository implements RepositorioViajes
 
         $carga = Database::conexion()->prepare(
             'SELECT e.codigoSeguimiento, ev.fechaHoraCarga, sd.codigoSucursal AS destinoCodigo, sd.nombre AS destinoNombre,
-                    (SELECT COUNT(*) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS bultos,
-                    (SELECT COALESCE(SUM(b.pesoKg), 0) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS pesoKg
+                    t.cantidadBultos AS bultos, t.pesoKg
              FROM Envio_Viaje AS ev
              INNER JOIN Envio AS e ON e.idEnvio = ev.idEnvio
              INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
              INNER JOIN Sucursal AS sd ON sd.idSucursal = r.idSucursalDestino
+             INNER JOIN vw_EnvioTotales AS t ON t.idEnvio = e.idEnvio
              WHERE ev.idViaje = :viaje
              ORDER BY ev.fechaHoraCarga, ev.idEnvioViaje',
         );
@@ -133,7 +129,6 @@ final class ViajeRepository implements RepositorioViajes
             $ocupado->closeCursor();
 
             // Bloquear al transportista (tercero en el orden: viaje → vehículo → transportista) y ver si ya conduce otro viaje en ruta.
-            // Así dos salidas del mismo conductor con vehículos distintos se ponen en fila y la segunda ya ve la primera.
             $conductor = $pdo->prepare('SELECT idUsuario FROM Usuario WITH (UPDLOCK, HOLDLOCK) WHERE idUsuario = :usuario');
             $conductor->bindValue(':usuario', $viaje['idUsuarioTransportista'], PDO::PARAM_INT);
             $conductor->execute();
@@ -150,22 +145,12 @@ final class ViajeRepository implements RepositorioViajes
 
             $decidir(['viaje' => $viaje, 'vehiculoOcupado' => $vehiculoOcupado, 'transportistaOcupado' => $transportistaOcupado]);
 
-            $salida = $pdo->prepare('UPDATE Viaje SET fechaHoraSalida = SYSDATETIME() WHERE idViaje = :viaje AND fechaHoraSalida IS NULL');
-            $salida->bindValue(':viaje', $viaje['idViaje'], PDO::PARAM_INT);
-            $salida->execute();
-            if ($salida->rowCount() !== 1) {
+            // Viaje y carga se actualizan juntos dentro del procedimiento, en esta misma transacción.
+            if (!$this->ejecutarCambio($pdo, 'EXEC dbo.usp_Viaje_MarcarSalida @codigoViaje = :codigo', $codigoViaje)) {
                 $pdo->rollBack();
 
                 return false;
             }
-
-            // El estado del envío se actualiza: lo que estaba REGISTRADO sale de la agencia. Un envío en transbordo ya está EN_TRANSITO.
-            $envios = $pdo->prepare(
-                "UPDATE Envio SET estadoEnvio = 'EN_TRANSITO'
-                 WHERE estadoEnvio = 'REGISTRADO' AND idEnvio IN (SELECT idEnvio FROM Envio_Viaje WHERE idViaje = :viaje)",
-            );
-            $envios->bindValue(':viaje', $viaje['idViaje'], PDO::PARAM_INT);
-            $envios->execute();
 
             $pdo->commit();
 
@@ -193,30 +178,11 @@ final class ViajeRepository implements RepositorioViajes
 
             $decidir(['viaje' => $viaje]);
 
-            // CK_VIAJE_FECHAS exige llegada > salida: con columnas DATETIME2(0), hace falta que haya pasado al menos un segundo.
-            $llegada = $pdo->prepare(
-                'UPDATE Viaje SET fechaHoraLlegada = SYSDATETIME()
-                 WHERE idViaje = :viaje AND fechaHoraSalida IS NOT NULL AND fechaHoraLlegada IS NULL
-                   AND fechaHoraSalida < CAST(SYSDATETIME() AS DATETIME2(0))',
-            );
-            $llegada->bindValue(':viaje', $viaje['idViaje'], PDO::PARAM_INT);
-            $llegada->execute();
-            if ($llegada->rowCount() !== 1) {
+            if (!$this->ejecutarCambio($pdo, 'EXEC dbo.usp_Viaje_MarcarLlegada @codigoViaje = :codigo', $codigoViaje)) {
                 $pdo->rollBack();
 
                 return false;
             }
-
-            $envios = $pdo->prepare(
-                "UPDATE e SET e.estadoEnvio = 'EN_DESTINO'
-                 FROM Envio AS e
-                 INNER JOIN Envio_Viaje AS ev ON ev.idEnvio = e.idEnvio
-                 INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
-                 WHERE ev.idViaje = :viaje AND e.estadoEnvio = 'EN_TRANSITO' AND r.idSucursalDestino = :destino",
-            );
-            $envios->bindValue(':viaje', $viaje['idViaje'], PDO::PARAM_INT);
-            $envios->bindValue(':destino', $viaje['idSucursalDestino'], PDO::PARAM_INT);
-            $envios->execute();
 
             $pdo->commit();
 
@@ -227,6 +193,18 @@ final class ViajeRepository implements RepositorioViajes
             }
             throw $excepcion;
         }
+    }
+
+    /** La sentencia es una constante de esta clase. Devuelve false si el procedimiento no cambió el viaje. */
+    private function ejecutarCambio(PDO $pdo, string $procedimiento, string $codigoViaje): bool
+    {
+        $sentencia = $pdo->prepare($procedimiento);
+        $sentencia->bindValue(':codigo', $codigoViaje, PDO::PARAM_STR);
+        $sentencia->execute();
+        $cambiado = (int) $sentencia->fetchColumn();
+        $sentencia->closeCursor();
+
+        return $cambiado === 1;
     }
 
     /** @return array<string, mixed>|null */

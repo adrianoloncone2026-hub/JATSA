@@ -3,9 +3,7 @@ declare(strict_types=1);
 
 namespace Jatsa\Shared;
 
-/**
- * Valores de Usuario.rol definidos por la restricción CK_USUARIO_ROL del script SQL.
- */
+/** Valores de Usuario.rol definidos por la restricción CK_USUARIO_ROL del script SQL. */
 final class Roles
 {
     public const GERENTE = 'GERENTE';

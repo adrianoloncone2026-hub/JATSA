@@ -8,14 +8,13 @@ const TIPOS = ['SOBRE', 'PAQUETE', 'CARGA']
 const NUEVA = { origen: '', destino: '', tipoEnvio: 'SOBRE', precioBase: '', precioPorKm: '', distanciaKm: '', tiempoHoras: '' }
 
 // Pestaña «Rutas y precios» de Catálogos (diapositiva 29). «Nuevo precio: se cierra la vigencia de la fila actual y se crea otra.
-// Los bultos ya cobrados conservan su tarifa.» Las filas cerradas se conservan como historial.
 export default function CatalogoRutas() {
   const [estado, setEstado] = useState({ fase: 'cargando', rutas: [], mensaje: '' })
   const [sucursales, setSucursales] = useState([])
   const [intento, setIntento] = useState(0)
   const [historial, setHistorial] = useState(false)
-  const [nueva, setNueva] = useState(null) // null = cerrado
-  const [cambio, setCambio] = useState(null) // { ruta, campos } del «Nuevo precio»
+  const [nueva, setNueva] = useState(null)
+  const [cambio, setCambio] = useState(null)
   const [errores, setErrores] = useState({})
   const [enviando, setEnviando] = useState(false)
   const [aviso, setAviso] = useState(null)
@@ -32,7 +31,6 @@ export default function CatalogoRutas() {
     return () => control.abort()
   }, [intento])
 
-  // Las agencias activas llenan «Nueva ruta»; si falla, el formulario queda sin opciones pero la tabla sigue funcionando.
   useEffect(() => {
     const control = new AbortController()
     listarSucursales(control.signal)
@@ -42,6 +40,16 @@ export default function CatalogoRutas() {
   }, [])
 
   const visibles = estado.rutas.filter((r) => historial || r.vigente)
+  const cerradas = estado.rutas.filter((r) => !r.vigente).length
+
+  const tiposVigentes = new Map()
+  for (const r of estado.rutas) {
+    if (!r.vigente) continue
+    const clave = `${r.origen.codigo}-${r.destino.codigo}`
+    tiposVigentes.set(clave, new Set([...(tiposVigentes.get(clave) ?? []), r.tipoEnvio]))
+  }
+  const faltantesDe = (r) => TIPOS.filter((t) => !tiposVigentes.get(`${r.origen.codigo}-${r.destino.codigo}`)?.has(t))
+  const rutasIncompletas = [...tiposVigentes.keys()].filter((clave) => tiposVigentes.get(clave).size < TIPOS.length).length
 
   async function guardarNueva(evento) {
     evento.preventDefault()
@@ -87,7 +95,8 @@ export default function CatalogoRutas() {
         <h2>Rutas y precios</h2>
         <div className="acciones-formulario">
           <label className="casilla">
-            <input type="checkbox" checked={historial} onChange={(e) => setHistorial(e.target.checked)} /> Ver tarifas cerradas
+            <input type="checkbox" checked={historial} onChange={(e) => setHistorial(e.target.checked)} aria-describedby="ayuda-cerradas" /> Ver tarifas cerradas
+            {cerradas > 0 ? ` (${cerradas})` : ''}
           </label>
           <button
             type="button"
@@ -103,6 +112,14 @@ export default function CatalogoRutas() {
           </button>
         </div>
       </div>
+      <p id="ayuda-cerradas" className="ayuda">
+        Una tarifa cerrada es un precio anterior: se cierra cuando creas un «Nuevo precio» y se conserva como historial, con las fechas en que estuvo vigente (Desde – Hasta). Los bultos ya cobrados mantienen la tarifa con la que se cobraron.
+      </p>
+      {estado.fase === 'listo' && rutasIncompletas > 0 && (
+        <div className="resultado aviso-tarifas" role="status">
+          {rutasIncompletas === 1 ? '1 ruta no tiene' : `${rutasIncompletas} rutas no tienen`} tarifa vigente para los tres tipos (SOBRE, PAQUETE y CARGA). En esas rutas el cotizador muestra el tipo que falta como «sin ruta vigente», porque los bultos de ese rango de peso no tendrían tarifa; usa «Agregar» en la fila para completarla.
+        </div>
+      )}
       {aviso && (
         <div className={aviso.tipo === 'ok' ? 'resultado ok' : 'resultado error'} role={aviso.tipo === 'ok' ? 'status' : 'alert'}>
           {aviso.texto}
@@ -216,6 +233,23 @@ export default function CatalogoRutas() {
                 <tr key={r.id} className={r.vigente ? undefined : 'fila-cerrada'}>
                   <th scope="row">
                     {r.origen.codigo} → {r.destino.codigo}
+                    {r.vigente && faltantesDe(r).length > 0 && (
+                      <span className="tipos-faltantes">
+                        Sin tarifa vigente: {faltantesDe(r).join(', ')}
+                        <button
+                          type="button"
+                          className="boton boton-claro"
+                          onClick={() => {
+                            setAviso(null)
+                            setErrores({})
+                            setCambio(null)
+                            setNueva({ ...NUEVA, origen: r.origen.codigo, destino: r.destino.codigo, tipoEnvio: faltantesDe(r)[0] })
+                          }}
+                        >
+                          Agregar {faltantesDe(r)[0]}
+                        </button>
+                      </span>
+                    )}
                   </th>
                   <td data-etiqueta="Tipo">{r.tipoEnvio}</td>
                   <td data-etiqueta="Base S/">{r.precioBase}</td>

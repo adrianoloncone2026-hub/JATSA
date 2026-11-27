@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Mosaico from '../../components/Mosaico.jsx'
 import { Link } from 'react-router-dom'
 import { obtenerResumenDeEnvios } from '../../api/historial.js'
 import { obtenerRuta } from '../../api/publico.js'
@@ -10,11 +11,10 @@ import RutaMonedas from '../../components/RutaMonedas.jsx'
 import { saludoDe } from '../../utils/formato.js'
 
 // Diapositiva 11 del prototipo: envíos en curso, reservas pendientes, saldo por pagar, envíos por recoger y la reserva pendiente
-// más reciente con el horario habitual de su ruta.
 export default function MiPanel() {
   const { usuario } = useAuth()
   const [estado, setEstado] = useState({ fase: 'cargando', pendientes: [], mensaje: '' })
-  const [resumen, setResumen] = useState({ fase: 'cargando', datos: null, mensaje: '' }) // cargando | listo | error
+  const [resumen, setResumen] = useState({ fase: 'cargando', datos: null, mensaje: '' })
   const [horarios, setHorarios] = useState([])
   const [intento, setIntento] = useState(0)
 
@@ -44,7 +44,6 @@ export default function MiPanel() {
 
   const masReciente = estado.pendientes[0]
 
-  // «Salió con más frecuencia a las 14:00 (referencia histórica)»: el horario de la ruta de la reserva pendiente más reciente (si no se puede consultar, se omite).
   const rutaDeLaReserva = masReciente ? `${masReciente.origen.codigo}-${masReciente.destino.codigo}` : ''
   useEffect(() => {
     setHorarios([])
@@ -58,7 +57,10 @@ export default function MiPanel() {
 
   return (
     <section className="mi-panel">
-      <h1>Hola, {saludoDe(usuario.nombreCompleto, usuario.rol === ROLES.EMPRESARIO)}</h1>
+      <div className="cabecera-ilustrada">
+        <h1>Hola, {saludoDe(usuario.nombreCompleto, usuario.rol === ROLES.EMPRESARIO)}</h1>
+        <Mosaico ids={[64, 1, 6, 23]} />
+      </div>
 
       <div className="panel-resumen">
         <div className="indicadores">
@@ -79,12 +81,14 @@ export default function MiPanel() {
           <Link to="/cliente/nueva-reserva" className="boton boton-marino">
             Nueva reserva
           </Link>
-          <Link to="/rastreo" className="boton boton-claro">
-            Rastrear un envío
+          <Link to="/cliente/historial" className="boton boton-claro">
+            Mis envíos
           </Link>
-          <Link to="/salidas" className="boton boton-claro">
-            Ver salidas
-          </Link>
+          {(usuario.rol === ROLES.CLIENTE || usuario.rol === ROLES.EMPRESARIO) && (
+            <Link to="/cliente/cuenta" className="boton boton-claro">
+              Mi cuenta
+            </Link>
+          )}
         </div>
       </div>
 
@@ -142,7 +146,13 @@ export default function MiPanel() {
       )}
       {estado.fase === 'listo' && masReciente && (
         <article className="panel tarjeta-reserva" aria-label={`Reserva pendiente ${masReciente.codigo}`}>
-          <RutaMonedas origen={masReciente.origen.departamento} destino={masReciente.destino.departamento} tamano={72} />
+          <RutaMonedas
+            origen={masReciente.origen.departamento}
+            destino={masReciente.destino.departamento}
+            nombreOrigen={masReciente.origen.nombre}
+            nombreDestino={masReciente.destino.nombre}
+            tamano={72}
+          />
           <h3>{masReciente.codigo}</h3>
           <InsigniaEstado estado={masReciente.estado} />
           <p>

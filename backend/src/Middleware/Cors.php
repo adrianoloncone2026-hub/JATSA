@@ -7,15 +7,9 @@ use Jatsa\Core\Config;
 use Jatsa\Core\Request;
 use Jatsa\Core\Response;
 
-/**
- * CORS con lista blanca de orígenes (config 'cors.origenes').
- * Las cabeceras se añaden antes de procesar la ruta para que también acompañen a las respuestas de error.
- */
+/** CORS con lista blanca de orígenes (config 'cors.origenes'). */
 final class Cors
 {
-    /**
-     * Devuelve una respuesta solo para las peticiones de verificación previa (OPTIONS).
-     */
     public static function aplicar(Request $peticion): ?Response
     {
         $origen = $peticion->cabecera('Origin');

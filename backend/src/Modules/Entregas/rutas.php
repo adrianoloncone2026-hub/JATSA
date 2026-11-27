@@ -6,7 +6,6 @@ use Jatsa\Middleware\RequiereRol;
 use Jatsa\Modules\Entregas\EntregaController;
 use Jatsa\Shared\Roles;
 
-// Llegadas y entregas (módulo 8). Solo el ADMINISTRADOR de la agencia de destino; la ruta fija /pendientes va antes que /envios/{codigo}.
 return static function (Router $router): void {
     $administradores = [new RequiereRol([Roles::ADMINISTRADOR])];
 

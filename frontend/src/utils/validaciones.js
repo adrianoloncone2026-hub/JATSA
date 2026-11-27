@@ -1,5 +1,3 @@
-// Validaciones de formularios de cuenta. Replican las del backend (que vuelve a validar siempre) para
-// avisar al instante. Cada función devuelve el mensaje de error o '' si el valor es válido.
 
 // Quita espacios y guiones: «987 654 323» → «987654323».
 export const sinSeparadores = (texto) => texto.replace(/[\s-]+/g, '')

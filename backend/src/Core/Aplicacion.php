@@ -7,10 +7,7 @@ use Jatsa\Middleware\Cors;
 use Jatsa\Middleware\Csrf;
 use Throwable;
 
-/**
- * Arranque de la API: configuración, manejo de errores, CORS, rutas y despacho.
- * Las rutas del núcleo están en Core/rutas.php; cada módulo registra las suyas en Modules/<Modulo>/rutas.php.
- */
+/** Arranque de la API: configuración, manejo de errores, CORS, rutas y despacho. */
 final class Aplicacion
 {
     public function __construct(private readonly string $raiz)

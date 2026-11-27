@@ -4,6 +4,8 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import { AuthProvider } from './auth/AuthProvider.jsx'
 import './styles/global.css'
+import './styles/mejoras-ui.css'
+import './styles/decoracion.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { listarSalidas, obtenerAgencias } from '../../api/publico.js'
 import ilustracion from '../../assets/ilustracion-sur.png'
-import Moneda, { iconoDeDepartamento } from '../../components/Moneda.jsx'
+import Mosaico, { ImagenAzul } from '../../components/Mosaico.jsx'
+import Carrusel from '../../components/Carrusel.jsx'
+import Moneda from '../../components/Moneda.jsx'
 import { direccionCompleta, formatoTelefono } from '../../utils/formato.js'
+import { fotosDeRegion } from '../../utils/regiones.js'
 
 // Diapositiva 6 del prototipo: agencias activas, filtro por departamento y ficha de la agencia elegida.
-// La agencia elegida va en la dirección (?agencia=AQP001) para poder enlazarla desde otras pantallas.
 export default function Agencias() {
   const [estado, setEstado] = useState({ fase: 'cargando', agencias: [], mensaje: '' })
   const [intento, setIntento] = useState(0)
@@ -33,8 +35,7 @@ export default function Agencias() {
   const pedida = parametros.get('agencia')
   const elegida = visibles.find((a) => a.codigo === pedida) ?? visibles[0] ?? null
 
-  // La dirección debe decir siempre qué ficha se está mostrando: si cambia el filtro (o el código de la
-  // dirección no existe) y la ficha pasa a otra agencia, se actualiza ?agencia= para que no se contradigan.
+  const fotosElegida = elegida ? fotosDeRegion(elegida.departamento) : []
   const codigoElegido = elegida?.codigo ?? null
   useEffect(() => {
     if (codigoElegido !== null && codigoElegido !== pedida) {
@@ -42,8 +43,7 @@ export default function Agencias() {
     }
   }, [codigoElegido, pedida, setParametros])
 
-  // «Salidas desde aquí» (diapositiva 6): las rutas que salen de la agencia elegida. Cada cambio de ficha cancela la consulta anterior.
-  const [salidas, setSalidas] = useState({ fase: 'inactivo', lista: [] }) // inactivo | cargando | listo | error
+  const [salidas, setSalidas] = useState({ fase: 'inactivo', lista: [] })
   useEffect(() => {
     if (!codigoElegido) {
       setSalidas({ fase: 'inactivo', lista: [] })
@@ -92,11 +92,10 @@ export default function Agencias() {
               aria-pressed={departamento === nombre}
               onClick={() => alternarDepartamento(nombre)}
             >
-              <Moneda icono={iconoDeDepartamento(nombre)} tamano={56} />
+              <Moneda departamento={nombre} tamano={56} />
               <span>{nombre}</span>
             </button>
           ))}
-          {departamentos.length > 0 && <p className="ayuda">Toca una moneda para filtrar</p>}
         </div>
       </section>
 
@@ -126,7 +125,7 @@ export default function Agencias() {
               const activa = elegida?.codigo === agencia.codigo
               return (
                 <li key={agencia.codigo} className={activa ? 'agencia-item activa' : 'agencia-item'}>
-                  <Moneda icono={iconoDeDepartamento(agencia.departamento)} />
+                  <Moneda departamento={agencia.departamento} />
                   <div className="agencia-item-texto">
                     <h2>{agencia.nombre}</h2>
                     <p>
@@ -149,12 +148,25 @@ export default function Agencias() {
 
           {elegida && (
             <article className="panel ficha-agencia" aria-label={`Ficha de ${elegida.nombre}`}>
-              <h2>
-                {elegida.nombre} · {elegida.codigo}
-              </h2>
+              <div className="banda-azul">
+                <ImagenAzul id={12} />
+                <h2>
+                  {elegida.nombre} · {elegida.codigo}
+                </h2>
+                <Mosaico ids={[11, 65, 64]} className="banda-mosaico" />
+              </div>
               <div className="ficha-cuerpo">
-                <img className="ficha-ilustracion" src={ilustracion} alt="" />
-                <dl>
+                {fotosElegida.length > 0 ? (
+                  <div className="ficha-foto">
+                    <Carrusel fotos={fotosElegida} etiqueta={`Fotografías de ${elegida.departamento}`} />
+                    <p className="foto-lugar-region">
+                      <strong>{elegida.departamento}</strong> · {elegida.provincia}
+                    </p>
+                  </div>
+                ) : (
+                  <img className="ficha-ilustracion" src={ilustracion} alt="" />
+                )}
+                <dl className="ficha-datos">
                   <dt>Dirección</dt>
                   <dd>{direccionCompleta(elegida)}</dd>
                   <dt>Teléfonos</dt>

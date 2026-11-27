@@ -1,24 +1,25 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { rastrearEnvio } from '../../api/publico.js'
+import FotoAgencia from '../../components/FotoAgencia.jsx'
+import Mosaico, { ImagenAzul } from '../../components/Mosaico.jsx'
 import InsigniaEstado from '../../components/InsigniaEstado.jsx'
+import { useAgencias } from '../../hooks/useAgencias.js'
 import { fechaHoraBreve, horaCorta } from '../../utils/formato.js'
 
-// Código de seguimiento: «EN» + 10 letras o dígitos (restricción CK_ENVIO_CODIGO del script SQL).
 const FORMATO_CODIGO = /^EN[A-Z0-9]{10}$/
 const ETIQUETA_ETAPA = { REGISTRADO: 'REGISTRADO', EN_TRANSITO: 'EN TRÁNSITO', EN_DESTINO: 'EN DESTINO', ENTREGADO: 'ENTREGADO' }
 
 // Diapositiva 3 del prototipo: rastreo público por código de seguimiento, con estado, recorrido y llegada estimada.
-// El código va en la dirección (?codigo=) para poder enlazarlo. No muestra documentos, teléfonos ni nombres.
 export default function Rastreo() {
   const [parametros, setParametros] = useSearchParams()
   const codigoDeLaDireccion = (parametros.get('codigo') ?? '').trim().toUpperCase()
   const [escrito, setEscrito] = useState(codigoDeLaDireccion)
   const [error, setError] = useState('')
-  const [estado, setEstado] = useState({ fase: 'inactivo', envio: null, mensaje: '' }) // inactivo | cargando | listo | no_encontrado | error
+  const [estado, setEstado] = useState({ fase: 'inactivo', envio: null, mensaje: '' })
   const [intento, setIntento] = useState(0)
+  const { porCodigo } = useAgencias()
 
-  // Cada código nuevo cancela la consulta anterior: una respuesta lenta no pisa a la del código actual.
   useEffect(() => {
     if (!FORMATO_CODIGO.test(codigoDeLaDireccion)) {
       setEstado({ fase: 'inactivo', envio: null, mensaje: '' })
@@ -48,10 +49,14 @@ export default function Rastreo() {
   }
 
   const envio = estado.fase === 'listo' ? estado.envio : null
+  const ultima = envio ? ultimaAgenciaConfirmada(envio, porCodigo) : null
 
   return (
     <section className="rastreo">
-      <h1>Rastrea tu envío</h1>
+      <div className="cabecera-ilustrada">
+        <h1>Rastrea tu envío</h1>
+        <Mosaico ids={[16, 1, 23, 18]} />
+      </div>
 
       <form className="panel buscar-reserva" onSubmit={rastrear} noValidate>
         <div className="campo">
@@ -109,6 +114,38 @@ export default function Rastreo() {
               </ol>
             )}
 
+            {ultima && (
+              <section className="ultima-agencia" aria-label="Última agencia confirmada">
+                <h3>Última agencia confirmada</h3>
+                <div className="banda-azul">
+                  <ImagenAzul id={11} />
+                  <div>
+                    <strong>{ultima.nombre}</strong>
+                    <p>Referencia de ubicación: sucursal donde se registró el último movimiento.</p>
+                  </div>
+                  <Mosaico ids={[65, 62]} className="banda-mosaico" />
+                </div>
+                <div className="ultima-agencia-cuerpo">
+                  {ultima.agencia && <FotoAgencia agencia={ultima.agencia} />}
+                  <div>
+                    <p>
+                      <strong>{ultima.nombre}</strong>
+                      <br />
+                      {ultima.accion} el {fechaHoraBreve(ultima.fechaHora)}.
+                    </p>
+                    {ultima.codigo && (
+                      <Link to={`/agencias?agencia=${encodeURIComponent(ultima.codigo)}`} className="boton boton-azul">
+                        Ver dirección de la agencia
+                      </Link>
+                    )}
+                    <p className="ayuda">
+                      Es el último punto donde se registró el envío en una agencia. No es la posición del vehículo: JATSA no hace seguimiento en tiempo real.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            )}
+
             <h3>Recorrido</h3>
             <ol className="recorrido">
               {envio.recorrido.map((hito, i) => (
@@ -152,7 +189,23 @@ export default function Rastreo() {
   )
 }
 
-// «Agencia Arequipa Centro» → «Arequipa» (la ciudad, como en la diapositiva).
+const HITOS_EN_AGENCIA = { registro: 'Recibido', llegada: 'Llegó', entrega: 'Entregado' }
+
+function ultimaAgenciaConfirmada(envio, porCodigo) {
+  const hito = [...envio.recorrido].reverse().find((h) => HITOS_EN_AGENCIA[h.tipo])
+  if (!hito) return null
+  const conocidas = [envio.origen, envio.destino, envio.viajeActual?.origen, envio.viajeActual?.destino].filter(Boolean)
+  const sucursal = conocidas.find((s) => hito.texto.includes(s.nombre)) ?? null
+  const nombre = sucursal?.nombre ?? hito.texto
+  return {
+    nombre,
+    codigo: sucursal?.codigo ?? '',
+    agencia: sucursal ? (porCodigo.get(sucursal.codigo) ?? null) : null,
+    accion: HITOS_EN_AGENCIA[hito.tipo],
+    fechaHora: hito.fechaHora,
+  }
+}
+
 function nombreCorto(nombre) {
   return nombre.replace(/^Agencia\s+/i, '').split(' ')[0]
 }

@@ -1,0 +1,658 @@
+/* Mejoras de interfaz (observaciones de navegación). Se carga después de global.css y solo añade o ajusta estilos. */
+:root {
+  --sombra: 0 1px 3px rgba(10, 17, 114, 0.18);
+}
+
+/* ── Botón amarillo y «Mi panel» ───────────────────────────────────────── */
+.boton-amarillo {
+  background: var(--amarillo);
+  color: var(--sobre-amarillo);
+}
+
+.boton-panel {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
+.menu a.enlace-panel {
+  background: var(--amarillo);
+  color: var(--sobre-amarillo);
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  border-bottom-color: transparent;
+}
+
+.menu a.enlace-panel.active {
+  background: var(--superficie);
+  border-bottom-color: transparent;
+}
+
+.menu a.enlace-extra {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.menu a.inicio-extras {
+  margin-left: auto;
+  padding-left: 1rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+/* ── Monedas con fotografía ────────────────────────────────────────────── */
+.moneda-foto {
+  object-fit: cover;
+  border: 2px solid #fff;
+  box-shadow: var(--sombra);
+}
+
+.ruta-moneda {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  max-width: 7rem;
+  text-align: center;
+}
+
+.ruta-moneda small {
+  font-size: 0.72rem;
+  line-height: 1.15;
+  color: var(--texto);
+}
+
+/* ── Fotografía de agencia (referencia 01) ─────────────────────────────── */
+.foto-agencia {
+  position: relative;
+  margin: 0;
+  min-height: 12rem;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--marino-fondo);
+  color: #fff;
+}
+
+.foto-agencia img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 12rem;
+  max-height: 20rem;
+  object-fit: cover;
+}
+
+.foto-agencia.sin-foto {
+  min-height: 9rem;
+}
+
+.foto-region,
+.foto-provincia {
+  position: absolute;
+  top: 0;
+  padding: 0.35rem 0.8rem;
+  font-weight: 700;
+  background: rgba(10, 17, 114, 0.88);
+  color: #fff;
+}
+
+.foto-region {
+  left: 0;
+  border-bottom-right-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.foto-provincia {
+  right: 0;
+  border-bottom-left-radius: 10px;
+  background: rgba(31, 78, 154, 0.9);
+}
+
+.foto-agencia figcaption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 0.9rem 0.6rem;
+  background: linear-gradient(transparent, rgba(10, 17, 114, 0.92));
+  font-size: 0.9rem;
+}
+
+.fotos-ruta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.fotos-ruta-flecha {
+  font-size: 2rem;
+  color: var(--azul);
+  font-weight: 700;
+}
+
+.fotos-ruta-compacta .foto-agencia,
+.fotos-ruta-compacta .foto-agencia img {
+  min-height: 9rem;
+  max-height: 12rem;
+}
+
+/* ── Carrusel (referencia 03) ──────────────────────────────────────────── */
+.carrusel {
+  position: relative;
+  margin: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--marino-fondo);
+}
+
+.carrusel img {
+  display: block;
+  width: 100%;
+  height: 15rem;
+  object-fit: cover;
+}
+
+.carrusel figcaption {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  padding: 0.3rem 0.75rem;
+  background: rgba(10, 17, 114, 0.85);
+  color: #fff;
+  font-size: 0.85rem;
+  border-top-right-radius: 10px;
+}
+
+.carrusel-flecha {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  color: #0a1172;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.carrusel-anterior {
+  left: 0.5rem;
+}
+
+.carrusel-siguiente {
+  right: 0.5rem;
+}
+
+.carrusel-puntos {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.55rem;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.carrusel .punto {
+  width: 0.8rem;
+  height: 0.8rem;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.carrusel .punto.activo {
+  background: var(--amarillo);
+}
+
+/* ── Inicio: portada con mosaico (referencia 02) ───────────────────────── */
+.hero.hero-mosaico {
+  align-items: stretch;
+  padding: 2rem 2.25rem;
+}
+
+.hero-mosaico .hero-texto {
+  flex: 1 1 18rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.hero-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.mosaico {
+  flex: 1 1 26rem;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 5.5rem;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mosaico-celda {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--azul-fondo);
+}
+
+.mosaico-celda img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mosaico-celda span {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(10, 17, 114, 0.8);
+  border-top-right-radius: 8px;
+}
+
+.mosaico .m1 { grid-column: span 2; grid-row: span 2; }
+.mosaico .m2 { grid-column: span 2; }
+.mosaico .m3 { grid-row: span 2; }
+.mosaico .m4 { grid-row: span 1; }
+.mosaico .m5 { grid-column: span 2; }
+.mosaico .m6 { grid-row: span 2; }
+.mosaico .m7 { grid-column: span 1; }
+.mosaico .m8 { grid-column: span 1; }
+.mosaico .m9 { grid-column: span 2; }
+
+/* ── Agencias ──────────────────────────────────────────────────────────── */
+.ficha-foto {
+  flex: 0 0 18rem;
+  max-width: 100%;
+}
+
+.foto-lugar-region {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+}
+
+.ficha-cuerpo {
+  flex-wrap: wrap;
+}
+
+/* ── Salidas y detalle de salida ───────────────────────────────────────── */
+.salida-fila {
+  grid-template-columns: auto minmax(0, 1.2fr) minmax(0, 2fr) auto;
+}
+
+.datos-ruta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.datos-ruta > div {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+}
+
+.datos-ruta dt {
+  font-size: 0.8rem;
+  color: var(--gris);
+}
+
+.datos-ruta dd {
+  margin: 0.15rem 0 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--marino);
+}
+
+.llega-a-tiempo {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+}
+
+.chips-precio {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.chips-precio li {
+  display: flex;
+  flex-direction: column;
+  min-width: 8rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 10px;
+  background: var(--celeste);
+}
+
+.chips-precio span {
+  font-size: 0.8rem;
+  color: var(--gris);
+}
+
+.chips-precio strong {
+  color: var(--marino);
+}
+
+/* ── Rangos de peso ────────────────────────────────────────────────────── */
+.rangos-peso {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.rango {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--borde);
+  border-left: 6px solid var(--azul);
+  border-radius: 8px;
+  background: var(--superficie);
+}
+
+.rango.resaltado {
+  background: var(--amarillo);
+  border-color: var(--marino);
+}
+
+.rango.sin-ruta {
+  opacity: 0.65;
+}
+
+.rango-tipo {
+  font-weight: 700;
+  color: var(--marino);
+}
+
+.rango-peso {
+  font-size: 0.9rem;
+}
+
+.rango-precio {
+  font-size: 0.85rem;
+  color: var(--gris);
+}
+
+/* ── Rastreo ───────────────────────────────────────────────────────────── */
+.ultima-agencia {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem 1rem;
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+}
+
+.ultima-agencia h3 {
+  margin-top: 0;
+}
+
+.ultima-agencia-cuerpo {
+  display: grid;
+  grid-template-columns: minmax(0, 18rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+/* ── Ingresar compacto ─────────────────────────────────────────────────── */
+.acceso-compacto {
+  max-width: 22rem;
+  padding: 1rem 1.25rem;
+  margin-top: 0.5rem;
+}
+
+.acceso-compacto h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.acceso-compacto .subtitulo {
+  margin: 0.2rem 0 0.4rem;
+  font-size: 0.9rem;
+}
+
+.acceso-compacto form {
+  gap: 0.25rem;
+}
+
+.acceso-compacto .acceso-pie {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* ── Pantallas estrechas ───────────────────────────────────────────────── */
+@media (max-width: 800px) {
+  .fotos-ruta {
+    grid-template-columns: 1fr;
+  }
+
+  .fotos-ruta-flecha {
+    text-align: center;
+    transform: rotate(90deg);
+  }
+
+  .salida-fila {
+    grid-template-columns: 1fr;
+  }
+
+  .ultima-agencia-cuerpo {
+    grid-template-columns: 1fr;
+  }
+
+  .menu a.inicio-extras {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .mosaico {
+    grid-auto-rows: 4.5rem;
+  }
+
+  .hero.hero-mosaico {
+    padding: 1.25rem;
+  }
+}
+
+/* ── Cliente: rutas con nombres claros ─────────────────────────────────── */
+.ruta-nombres {
+  display: block;
+  font-weight: 400;
+}
+
+.ruta-nombres strong {
+  color: var(--marino);
+}
+
+.ruta-regiones {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--gris);
+}
+
+.tarjeta-reserva .ruta-monedas,
+.panel-precio .ruta-monedas,
+.confirmacion .ruta-monedas {
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* ── Caja: saldo pendiente (texto plano, sin imágenes) ─────────────────── */
+.saldo-si,
+.saldo-no {
+  display: inline-block;
+  min-width: 2.5rem;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.saldo-si {
+  background: var(--fondo-error);
+  color: var(--error);
+}
+
+.saldo-no {
+  background: var(--fondo-ok);
+  color: var(--ok);
+}
+
+/* ── Pantallas operativas: lista a la izquierda, panel de trabajo visible a la derecha ── */
+.despacho-rejilla,
+.rejilla-operativa {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.despacho-carga,
+.rejilla-panel {
+  position: sticky;
+  top: 0.75rem;
+}
+
+.despacho-carga .carga-viaje,
+.rejilla-panel .entrega {
+  margin-top: 0.5rem;
+}
+
+.barra-viajes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.buscar-viaje {
+  min-width: 12rem;
+}
+
+.rangos-formalizar {
+  margin: 0.75rem 0;
+}
+
+.rangos-formalizar h3 {
+  margin: 0 0 0.25rem;
+}
+
+/* ── Transportista ─────────────────────────────────────────────────────── */
+.pasos-viaje {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin: 0.75rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.paso {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--gris);
+}
+
+.paso-numero {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--celeste-oscuro);
+  font-weight: 700;
+}
+
+.paso.cumplido .paso-numero {
+  background: var(--ok-fondo);
+  color: #fff;
+}
+
+.paso.actual {
+  color: var(--marino);
+  font-weight: 700;
+}
+
+.paso.actual .paso-numero {
+  background: var(--marino-fondo);
+  color: var(--amarillo);
+}
+
+.acciones-viaje {
+  margin-top: 1rem;
+}
+
+.acciones-viaje .ayuda {
+  margin: 0.75rem 0 0;
+}
+
+.boton-grande {
+  padding: 0.85rem 1.6rem;
+  font-size: 1.05rem;
+}
+
+/* ── Gerente: tarifas ──────────────────────────────────────────────────── */
+.tipos-faltantes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--error);
+}
+
+.tipos-faltantes .boton {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+}
+
+.aviso-tarifas {
+  background: var(--fondo-aviso);
+  border: 1px solid var(--borde-aviso);
+  color: var(--texto);
+}
+
+@media (max-width: 900px) {
+  .despacho-rejilla,
+  .rejilla-operativa {
+    grid-template-columns: 1fr;
+  }
+
+  .despacho-carga,
+  .rejilla-panel {
+    position: static;
+  }
+}

@@ -17,7 +17,6 @@ final class ViajeController
         $this->viajes = $viajes ?? new ViajeService();
     }
 
-    /** GET /api/viajes?estado=EN_RUTA — «Mis viajes» del transportista de la sesión. */
     public function misViajes(Request $peticion, array $parametros): Response
     {
         $estado = is_string($peticion->consulta['estado'] ?? null) ? $peticion->consulta['estado'] : '';
@@ -25,19 +24,16 @@ final class ViajeController
         return Response::exito($this->viajes->misViajes($this->usuario(), $estado));
     }
 
-    /** GET /api/viajes/{codigo} — un viaje con su carga (transportista dueño o administrador de origen/destino). */
     public function detalle(Request $peticion, array $parametros): Response
     {
         return Response::exito(['viaje' => $this->viajes->detalle($this->usuario(), (string) ($parametros['codigo'] ?? ''))]);
     }
 
-    /** POST /api/viajes/{codigo}/salida */
     public function marcarSalida(Request $peticion, array $parametros): Response
     {
         return Response::exito(['viaje' => $this->viajes->marcarSalida($this->usuario(), (string) ($parametros['codigo'] ?? ''))]);
     }
 
-    /** POST /api/viajes/{codigo}/llegada */
     public function marcarLlegada(Request $peticion, array $parametros): Response
     {
         return Response::exito(['viaje' => $this->viajes->marcarLlegada($this->usuario(), (string) ($parametros['codigo'] ?? ''))]);

@@ -473,7 +473,7 @@ prueba('historial: el repositorio real calcula los totales en SQL sin TOP y solo
     $j = strpos($fuente, 'function detalle');
     $cuerpo = substr($fuente, (int) $i, (int) $j - (int) $i);
     afirmar(str_contains($cuerpo, 'COUNT(*) AS enCurso') && str_contains($cuerpo, 'SUM(CASE WHEN t.importe > t.pagado'), 'agrega con COUNT y SUM en la consulta');
-    $totales = substr($cuerpo, 0, (int) strpos($cuerpo, 'Solo la lista'));
+    $totales = substr($cuerpo, 0, (int) strpos($cuerpo, '$lista = $pdo->prepare'));
     afirmar(!str_contains($totales, 'TOP'), 'la consulta de totales no lleva TOP');
     afirmar(str_contains($totales, "r.idPersonaRemitente = :p1 OR r.idPersonaDestinatario = :p2") && str_contains($totales, "IN ('REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO')"), 'filtrada por la persona y por los tres estados en curso');
     afirmar(preg_match('/\b(INSERT|UPDATE|DELETE|DROP|ALTER|EXEC|MERGE)\b/i', $cuerpo) === 0, 'solo lectura');

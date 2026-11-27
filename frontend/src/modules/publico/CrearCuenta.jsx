@@ -27,7 +27,6 @@ const INICIAL = {
   confirmacion: '',
 }
 
-// Orden en que aparecen los campos: sirve para enfocar el primero con error.
 const ORDEN_CAMPOS = ['tipoDocumento', 'numeroDocumento', 'nombreCompleto', 'telefono', 'telefonoAuxiliar', 'correo', 'usuario', 'contrasena', 'confirmacion']
 
 // Diapositiva 10 del prototipo: con DNI se crea una cuenta CLIENTE; con RUC, una cuenta EMPRESARIO.
@@ -41,7 +40,6 @@ export default function CrearCuenta() {
   const [errorGeneral, setErrorGeneral] = useState('')
   const [enviando, setEnviando] = useState(false)
 
-  // Quien ya tiene sesión no necesita crear otra cuenta.
   if (!cargando && sesion) return <Navigate to={rutaInicioDeRol(sesion.rol)} replace />
 
   const esRuc = campos.tipoDocumento === 'RUC'
@@ -49,7 +47,6 @@ export default function CrearCuenta() {
   function cambiar(evento) {
     const { name, value } = evento.target
     setCampos((anteriores) => ({ ...anteriores, [name]: value }))
-    // El error de un campo desaparece en cuanto se vuelve a editar.
     setErrores((anteriores) => (anteriores[name] ? { ...anteriores, [name]: '' } : anteriores))
   }
 
@@ -95,17 +92,14 @@ export default function CrearCuenta() {
         usuario: campos.usuario.trim(),
         contrasena: campos.contrasena,
       })
-      // La cuenta no abre sesión: se pasa a «Ingresar» con un aviso y el usuario ya escrito.
       navegar('/ingresar', { replace: true, state: { cuentaCreada: true, usuario: creada.usuario } })
     } catch (fallo) {
       setEnviando(false)
       const delServidor = fallo.campos ?? {}
       if (Object.keys(delServidor).length > 0) {
-        // Errores por campo (datos inválidos, usuario en uso): se muestran junto a su campo.
         setErrores(delServidor)
         enfocarPrimerError(delServidor)
       } else {
-        // Sin campo concreto (documento que ya tiene cuenta, sin conexión, error del servidor): arriba.
         setErrorGeneral(fallo.message)
       }
     }

@@ -6,10 +6,7 @@ namespace Jatsa\Modules\Publico;
 use Jatsa\Core\Database;
 use PDO;
 
-/**
- * Lee Envio, Reserva, Sucursal, Bulto, Pago, Envio_Viaje, Viaje y Vehiculo para el rastreo público (solo SELECT, con parámetros).
- * No selecciona Persona: el rastreo público no expone documentos, teléfonos ni nombres.
- */
+/** Lee Envio, Reserva, Sucursal, Bulto, Pago, Envio_Viaje, Viaje y Vehiculo para el rastreo público (solo SELECT, con parámetros). */
 final class RastreoRepository implements RepositorioRastreo
 {
     public function buscarEnvio(string $codigoSeguimiento, string $hoy): ?array
@@ -18,14 +15,12 @@ final class RastreoRepository implements RepositorioRastreo
         $sentencia = $pdo->prepare(
             "SELECT e.idEnvio, e.codigoSeguimiento, e.estadoEnvio, e.fechaHoraRegistro, e.fechaHoraEntrega,
                     so.codigoSucursal AS origenCodigo, so.nombre AS origenNombre, sd.codigoSucursal AS destinoCodigo, sd.nombre AS destinoNombre,
-                    (SELECT COUNT(*) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS bultos,
-                    (SELECT COALESCE(SUM(b.pesoKg), 0) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS pesoKg,
-                    (SELECT COALESCE(SUM(b.costo), 0) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS importe,
-                    (SELECT COALESCE(SUM(p.monto), 0) FROM Pago AS p WHERE p.idEnvio = e.idEnvio AND p.estadoPago = 'REGISTRADO') AS pagado
+                    t.cantidadBultos AS bultos, t.pesoKg, t.importe, t.pagado
              FROM Envio AS e
              INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
              INNER JOIN Sucursal AS so ON so.idSucursal = r.idSucursalOrigen
              INNER JOIN Sucursal AS sd ON sd.idSucursal = r.idSucursalDestino
+             INNER JOIN vw_EnvioTotales AS t ON t.idEnvio = e.idEnvio
              WHERE e.codigoSeguimiento = :codigo",
         );
         $sentencia->bindValue(':codigo', $codigoSeguimiento, PDO::PARAM_STR);

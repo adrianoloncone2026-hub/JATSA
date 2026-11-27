@@ -6,8 +6,6 @@ use Jatsa\Middleware\RequiereRol;
 use Jatsa\Modules\Viajes\ViajeController;
 use Jatsa\Shared\Roles;
 
-// Viajes (módulo 7). Mis viajes, salida y llegada son del TRANSPORTISTA; el detalle también lo ve el ADMINISTRADOR
-// (el servicio limita a los viajes de su sucursal).
 return static function (Router $router): void {
     $transportistas = [new RequiereRol([Roles::TRANSPORTISTA])];
     $detalle = [new RequiereRol([Roles::TRANSPORTISTA, Roles::ADMINISTRADOR])];

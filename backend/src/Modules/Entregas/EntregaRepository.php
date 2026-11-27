@@ -7,10 +7,7 @@ use Jatsa\Core\Database;
 use PDO;
 use Throwable;
 
-/**
- * Lee y escribe Envio (estado y fecha de entrega) con los nombres del script SQL definitivo. Siempre con parámetros.
- * Las únicas escrituras son marcar un envío ENTREGADO o DEVUELTO, cada una en su transacción y solo si seguía EN_DESTINO.
- */
+/** Lee y escribe Envio (estado y fecha de entrega) con los nombres del script SQL definitivo. Siempre con parámetros. */
 final class EntregaRepository implements RepositorioEntregas
 {
     public function viajesEnCamino(int $idSucursal, string $hoy): array
@@ -51,13 +48,11 @@ final class EntregaRepository implements RepositorioEntregas
         // El límite es un entero que decide el servicio (nunca entrada del usuario).
         $sentencia = Database::conexion()->prepare(
             'SELECT TOP ' . max(1, $limite) . " e.codigoSeguimiento, e.tipoEntrega, pd.nombreCompleto AS destinatario,
-                    (SELECT COUNT(*) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS bultos,
-                    (SELECT COALESCE(SUM(b.pesoKg), 0) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS pesoKg,
-                    (SELECT COALESCE(SUM(b.costo), 0) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS importe,
-                    (SELECT COALESCE(SUM(p.monto), 0) FROM Pago AS p WHERE p.idEnvio = e.idEnvio AND p.estadoPago = 'REGISTRADO') AS pagado
+                    t.cantidadBultos AS bultos, t.pesoKg, t.importe, t.pagado
              FROM Envio AS e
              INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
              INNER JOIN Persona AS pd ON pd.idPersona = r.idPersonaDestinatario
+             INNER JOIN vw_EnvioTotales AS t ON t.idEnvio = e.idEnvio
              WHERE e.estadoEnvio = 'EN_DESTINO' AND r.idSucursalDestino = :destino
              ORDER BY e.fechaHoraRegistro, e.idEnvio",
         );
@@ -85,13 +80,13 @@ final class EntregaRepository implements RepositorioEntregas
             "SELECT e.idEnvio, e.codigoSeguimiento, e.estadoEnvio, e.tipoEntrega, e.direccionEntrega, e.fechaHoraEntrega, r.idSucursalDestino,
                     so.codigoSucursal AS origenCodigo, so.nombre AS origenNombre, sd.codigoSucursal AS destinoCodigo, sd.nombre AS destinoNombre,
                     pd.tipoDocumento, pd.numeroDocumento, pd.nombreCompleto,
-                    (SELECT COALESCE(SUM(b.costo), 0) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS importe,
-                    (SELECT COALESCE(SUM(p.monto), 0) FROM Pago AS p WHERE p.idEnvio = e.idEnvio AND p.estadoPago = 'REGISTRADO') AS pagado
+                    t.importe, t.pagado
              FROM Envio AS e
              INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
              INNER JOIN Persona AS pd ON pd.idPersona = r.idPersonaDestinatario
              INNER JOIN Sucursal AS so ON so.idSucursal = r.idSucursalOrigen
              INNER JOIN Sucursal AS sd ON sd.idSucursal = r.idSucursalDestino
+             INNER JOIN vw_EnvioTotales AS t ON t.idEnvio = e.idEnvio
              WHERE e.codigoSeguimiento = :codigo",
         );
         $sentencia->bindValue(':codigo', $codigoSeguimiento, PDO::PARAM_STR);
@@ -173,7 +168,6 @@ final class EntregaRepository implements RepositorioEntregas
             $importe = $this->suma($pdo, 'SELECT COALESCE(SUM(costo), 0) FROM Bulto WHERE idEnvio = :envio', $idEnvio);
             $pagado = $this->suma($pdo, "SELECT COALESCE(SUM(monto), 0) FROM Pago WHERE idEnvio = :envio AND estadoPago = 'REGISTRADO'", $idEnvio);
 
-            // 3) Reglas de negocio: las aplica el servicio y puede abortar.
             $decidir(['envio' => [
                 'idEnvio' => $idEnvio,
                 'estado' => (string) $envio['estadoEnvio'],
@@ -183,7 +177,6 @@ final class EntregaRepository implements RepositorioEntregas
                 'pagado' => $pagado,
             ]]);
 
-            // 4) El cambio de estado (y la fecha de entrega, en el mismo UPDATE) solo si seguía EN_DESTINO.
             $cambio = $pdo->prepare($actualizacion);
             $cambio->bindValue(':envio', $idEnvio, PDO::PARAM_INT);
             $cambio->execute();

@@ -49,7 +49,6 @@ export default function ReservaRegistrada() {
     return () => control.abort()
   }, [codigo, intento])
 
-  // Recién creada: se muestra al instante con los datos de la creación mientras llega la versión del servidor.
   const reserva = estado.reserva ?? (ubicacion.state?.reserva?.codigo === codigo ? ubicacion.state.reserva : null)
 
   if (estado.fase === 'no_encontrada') {
@@ -92,7 +91,13 @@ export default function ReservaRegistrada() {
       </span>
       <h1 id="titulo-reserva">{TITULOS[reserva.estado] ?? 'Reserva'}</h1>
       <p className="codigo-reserva">{reserva.codigo}</p>
-      <RutaMonedas origen={reserva.origen.departamento} destino={reserva.destino.departamento} tamano={64} />
+      <RutaMonedas
+        origen={reserva.origen.departamento}
+        destino={reserva.destino.departamento}
+        nombreOrigen={reserva.origen.nombre}
+        nombreDestino={reserva.destino.nombre}
+        tamano={64}
+      />
       <p className="ruta-texto">
         {reserva.origen.nombre} → {reserva.destino.nombre} · Para {reserva.destinatario}
       </p>

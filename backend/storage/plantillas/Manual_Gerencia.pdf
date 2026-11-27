@@ -1,0 +1,88 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 2 /Kids [6 0 R 8 0 R] >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 2463 >>
+stream
+BT /F2 18 Tf 50 800 Td (Manual — Gestión Gerencial) Tj ET
+BT /F1 9.5 Tf 50 772 Td (Reporte de Power BI Desktop alimentado con los datos de JATSA al momento de la descarga.) Tj ET
+BT /F2 13 Tf 50 752 Td (Contenido del ZIP) Tj ET
+BT /F1 9.5 Tf 62 730 Td (• JATSA_Gerencia.pbix: el reporte \(plantilla de Power BI Desktop\).) Tj ET
+BT /F1 9.5 Tf 62 716 Td (• JATSA_Gerencia.xlsx: datos actuales de JATSA. Hojas: EnviosResumen, Pagos, Sucursales.) Tj ET
+BT /F1 9.5 Tf 62 702 Td (• Manual_Gerencia.pdf: este manual.) Tj ET
+BT /F2 13 Tf 50 682 Td (Requisito) Tj ET
+BT /F1 9.5 Tf 50 660 Td (Power BI Desktop instalado en Windows \(gratuito, desde Microsoft Store o powerbi.microsoft.com\).) Tj ET
+BT /F2 13 Tf 50 640 Td (Paso 1. Extraer los tres archivos en una misma carpeta) Tj ET
+BT /F1 9.5 Tf 50 618 Td (Haz clic derecho en el ZIP > Extraer todo. Elige una carpeta fija, por ejemplo C:\\JATSA\\Reportes\\.) Tj ET
+BT /F1 9.5 Tf 50 604 Td (No abras el .pbix desde dentro del ZIP: primero extrae. Anota la ruta de la carpeta.) Tj ET
+BT /F2 13 Tf 50 584 Td (Paso 2. Abrir JATSA_Gerencia.pbix) Tj ET
+BT /F1 9.5 Tf 50 562 Td (Haz doble clic en JATSA_Gerencia.pbix o usa Archivo > Abrir informe en Power BI Desktop.) Tj ET
+BT /F1 9.5 Tf 50 548 Td (Si aparece el aviso de que no se puede cargar la información, es normal: se corrige en el paso 3.) Tj ET
+BT /F2 13 Tf 50 528 Td (Paso 3. Conectar el origen de datos con el Excel incluido) Tj ET
+BT /F1 9.5 Tf 50 506 Td (El reporte lee JATSA_Gerencia.xlsx desde una carpeta. No lo encuentra solo si la ruta guardada no es la tuya.) Tj ET
+BT /F1 9.5 Tf 50 492 Td (Opción A \(si el reporte tiene el parámetro RutaCarpeta\):) Tj ET
+BT /F1 9.5 Tf 62 478 Td (1. Pestaña Inicio > Transformar datos > Editar parámetros.) Tj ET
+BT /F1 9.5 Tf 62 464 Td (2. En RutaCarpeta escribe la carpeta del paso 1 terminada en barra invertida. Ejemplo: C:\\JATSA\\Reportes\\) Tj ET
+BT /F1 9.5 Tf 62 450 Td (3. Aceptar. Si Power BI lo pide, pulsa Aplicar cambios.) Tj ET
+BT /F1 9.5 Tf 50 436 Td (Opción B \(si no existe ese parámetro\):) Tj ET
+BT /F1 9.5 Tf 62 422 Td (1. Inicio > Transformar datos > Configuración de origen de datos.) Tj ET
+BT /F1 9.5 Tf 62 408 Td (2. Selecciona el origen que apunta a JATSA_Gerencia.xlsx > Cambiar origen > Examinar.) Tj ET
+BT /F1 9.5 Tf 62 394 Td (3. Elige el JATSA_Gerencia.xlsx extraído > Aceptar > Cerrar.) Tj ET
+BT /F1 9.5 Tf 50 380 Td (Si pide credenciales, elige la pestaña Archivo y pulsa Conectar.) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 5 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+7 0 obj
+<< /Length 1456 >>
+stream
+BT /F2 13 Tf 50 794 Td (Paso 4. Actualizar los datos) Tj ET
+BT /F1 9.5 Tf 50 772 Td (Pestaña Inicio > Actualizar. Espera a que termine la barra de progreso.) Tj ET
+BT /F1 9.5 Tf 50 758 Td (Si falla, comprueba que JATSA_Gerencia.xlsx esté en la carpeta indicada y que no esté abierto en Excel.) Tj ET
+BT /F1 9.5 Tf 50 744 Td (Cada descarga desde JATSA trae datos nuevos: para un reporte al día, vuelve a descargar el ZIP,) Tj ET
+BT /F1 9.5 Tf 50 730 Td (reemplaza JATSA_Gerencia.xlsx en la misma carpeta y pulsa Actualizar \(no hace falta repetir el paso 3\).) Tj ET
+BT /F2 13 Tf 50 710 Td (Paso 5. Ver los gráficos y usar los filtros) Tj ET
+BT /F1 9.5 Tf 62 688 Td (• Navega las páginas con las pestañas de la parte inferior.) Tj ET
+BT /F1 9.5 Tf 62 674 Td (• Haz clic en una barra, sector o fila para filtrar el resto de la página; clic otra vez para quitar.) Tj ET
+BT /F1 9.5 Tf 62 660 Td (• Ctrl + clic selecciona varios elementos. Pasa el cursor para ver el detalle.) Tj ET
+BT /F1 9.5 Tf 62 646 Td (• Usa las segmentaciones \(fecha, sucursal y similares\) de cada página.) Tj ET
+BT /F1 9.5 Tf 62 632 Td (• Para restablecer filtros: botón Borrar segmentaciones, o vuelve a abrir la página.) Tj ET
+BT /F2 13 Tf 50 612 Td (Notas) Tj ET
+BT /F1 9.5 Tf 50 590 Td (Los datos corresponden al ámbito de la cuenta que descargó el ZIP:) Tj ET
+BT /F1 9.5 Tf 50 576 Td (el Gerente, todo el historial o la sucursal elegida; el Administrador, solo su sucursal.) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 7 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+9 0 obj
+<< /Title (Manual Gestión Gerencial) /Producer (JATSA) >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000218 00000 n 
+0000000320 00000 n 
+0000002835 00000 n 
+0000002971 00000 n 
+0000004479 00000 n 
+0000004615 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R /Info 9 0 R >>
+startxref
+4688
+%%EOF

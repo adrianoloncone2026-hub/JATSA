@@ -16,7 +16,6 @@ final class AuthController
         $this->auth = $auth ?? new AuthService();
     }
 
-    /** POST /api/auth/ingresar — { usuario, contrasena, recordarme? } */
     public function ingresar(Request $peticion, array $parametros): Response
     {
         $cuerpo = $peticion->json();
@@ -31,7 +30,6 @@ final class AuthController
         return Response::exito(['usuario' => $acceso['usuario']]);
     }
 
-    /** POST /api/auth/salir — cierra la sesión (si no había, no hace nada). */
     public function salir(Request $peticion, array $parametros): Response
     {
         Sesion::cerrar();
@@ -39,7 +37,6 @@ final class AuthController
         return Response::exito(['sesionCerrada' => true]);
     }
 
-    /** GET /api/auth/yo — usuario de la sesión actual (la ruta exige sesión). */
     public function yo(Request $peticion, array $parametros): Response
     {
         return Response::exito(['usuario' => Sesion::usuario()]);

@@ -1,4 +1,3 @@
-// Estado de una reserva, un pago, un viaje o un envío con su color (diapositivas 3, 11, 14, 15, 16, 20, 21, 22, 24, 29 y 30).
 const ETIQUETAS = {
   PENDIENTE: 'PENDIENTE',
   FORMALIZADA: 'FORMALIZADA',

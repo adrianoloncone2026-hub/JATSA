@@ -7,11 +7,10 @@ const TIPOS = ['CAMION', 'FURGON', 'CAMIONETA', 'MOTO']
 const VACIO = { placa: '', tipoVehiculo: 'FURGON', capacidadKg: '' }
 
 // Pestaña «Vehículos» de Catálogos (diapositiva 29). La placa no cambia; un vehículo no se borra: se desactiva (si no tiene viajes
-// programados ni en ruta). El servidor impide bajar la capacidad por debajo de lo ya cargado.
 export default function CatalogoVehiculos() {
   const [estado, setEstado] = useState({ fase: 'cargando', vehiculos: [], mensaje: '' })
   const [intento, setIntento] = useState(0)
-  const [formulario, setFormulario] = useState(null) // { editando: placa | null, campos }
+  const [formulario, setFormulario] = useState(null)
   const [errores, setErrores] = useState({})
   const [enviando, setEnviando] = useState(false)
   const [aviso, setAviso] = useState(null)

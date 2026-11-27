@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import Mosaico from '../../components/Mosaico.jsx'
 import { useSearchParams } from 'react-router-dom'
 import { anularPago, listarPagosCobrados, obtenerEnvioParaCobro, registrarPago } from '../../api/pagos.js'
 import { useAuth } from '../../auth/AuthProvider.jsx'
@@ -12,32 +13,29 @@ const METODOS = ['EFECTIVO', 'TARJETA', 'BILLETERA', 'TRANSFERENCIA']
 const PAGADORES = ['REMITENTE', 'DESTINATARIO']
 const NOMBRE_METODO = { EFECTIVO: 'Efectivo', TARJETA: 'Tarjeta', BILLETERA: 'Billetera', TRANSFERENCIA: 'Transferencia' }
 
-// "23.75" o "23,75" → 2375 (céntimos enteros: sin errores de coma flotante).
 function enCentimos(texto) {
   const [enteros, decimales = ''] = texto.trim().replace(',', '.').split('.')
   return Number(enteros) * 100 + Number(decimales.padEnd(2, '0'))
 }
 
 // Diapositiva 20 del prototipo: registrar el pago de un envío y ver lo cobrado en esta caja.
-// La modalidad «cobrar ahora» / «paga en destino» no se guarda: todo envío con saldo está pendiente y aquí se elige quién paga.
 export default function Caja() {
   const { usuario } = useAuth()
   const [parametros] = useSearchParams()
   const codigoInicial = (parametros.get('envio') ?? '').trim().toUpperCase()
 
   const [codigo, setCodigo] = useState(codigoInicial)
-  const [busqueda, setBusqueda] = useState({ fase: 'inactivo', envio: null, mensaje: '' }) // inactivo | buscando | listo | no_encontrado | error
+  const [busqueda, setBusqueda] = useState({ fase: 'inactivo', envio: null, mensaje: '' })
   const [formulario, setFormulario] = useState({ monto: '', pagadoPor: 'REMITENTE', metodoPago: 'EFECTIVO' })
   const [errores, setErrores] = useState({})
   const [registrando, setRegistrando] = useState(false)
   const [aviso, setAviso] = useState({ tipo: '', texto: '' })
   const [cobrados, setCobrados] = useState({ fase: 'cargando', datos: null, mensaje: '' })
   const [intento, setIntento] = useState(0)
-  const [confirmando, setConfirmando] = useState(null) // id del pago al que se pide confirmar la anulación
+  const [confirmando, setConfirmando] = useState(null)
   const [anulando, setAnulando] = useState(null)
   const controlBusqueda = useRef(null)
 
-  // Lo cobrado en esta caja: al entrar y cada vez que cambia (nuevo pago, anulación, reintento).
   useEffect(() => {
     const control = new AbortController()
     setCobrados((anterior) => ({ ...anterior, fase: 'cargando' }))
@@ -50,15 +48,12 @@ export default function Caja() {
     return () => control.abort()
   }, [intento])
 
-  // Una búsqueda nueva cancela la anterior: una respuesta lenta no pisa a la de la búsqueda actual.
   useEffect(() => () => controlBusqueda.current?.abort(), [])
 
-  // Llegar desde «Cobrar ahora» de Formalizar envío: el envío ya viene en la dirección.
   useEffect(() => {
     if (FORMATO_CODIGO.test(codigoInicial)) cargarEnvio(codigoInicial, { nuevo: true })
   }, [])
 
-  // nuevo: búsqueda nueva (se propone quién paga). ajustarMonto: el monto vuelve a ser el saldo.
   function cargarEnvio(codigoLimpio, { nuevo = false, ajustarMonto = true } = {}) {
     controlBusqueda.current?.abort()
     const control = new AbortController()
@@ -127,11 +122,10 @@ export default function Caja() {
     } catch (fallo) {
       if (fallo.estado === 422 && Object.keys(fallo.campos ?? {}).length > 0) {
         setErrores(fallo.campos)
-        // El saldo cambió desde que se cargó el envío (otra caja cobró): se vuelve a leer sin tocar lo que se escribió.
         if (fallo.campos.monto) cargarEnvio(envio.codigoSeguimiento, { ajustarMonto: false })
       } else {
         setAviso({ tipo: 'error', texto: fallo.message })
-        if (fallo.estado === 404 || fallo.estado === 409) cargarEnvio(envio.codigoSeguimiento) // el estado cambió: se recarga
+        if (fallo.estado === 404 || fallo.estado === 409) cargarEnvio(envio.codigoSeguimiento)
       }
     } finally {
       setRegistrando(false)
@@ -144,13 +138,13 @@ export default function Caja() {
     try {
       await anularPago(pago.id)
       setAviso({ tipo: 'ok', texto: `Pago de S/ ${pago.monto} del envío ${pago.codigoSeguimiento} anulado.` })
-      if (busqueda.envio?.codigoSeguimiento === pago.codigoSeguimiento) cargarEnvio(pago.codigoSeguimiento) // su saldo cambió
+      if (busqueda.envio?.codigoSeguimiento === pago.codigoSeguimiento) cargarEnvio(pago.codigoSeguimiento)
     } catch (fallo) {
       setAviso({ tipo: 'error', texto: fallo.message })
     } finally {
       setAnulando(null)
       setConfirmando(null)
-      setIntento((n) => n + 1) // en todos los casos se recarga la lista: refleja lo que realmente quedó
+      setIntento((n) => n + 1)
     }
   }
 
@@ -159,7 +153,10 @@ export default function Caja() {
 
   return (
     <section className="caja">
-      <h1>Caja{usuario?.sucursal ? ` · ${usuario.sucursal.nombre}` : ''}</h1>
+      <div className="cabecera-ilustrada">
+        <h1>Caja{usuario?.sucursal ? ` · ${usuario.sucursal.nombre}` : ''}</h1>
+        <Mosaico ids={[8, 6, 20, 56]} />
+      </div>
 
       <div className="panel registrar-pago">
         <h2>Registrar pago</h2>
@@ -169,7 +166,6 @@ export default function Caja() {
             <label htmlFor="codigoEnvio">Envío</label>
             <input id="codigoEnvio" type="text" autoComplete="off" maxLength={12} placeholder="EN4T7Q0P2LKX" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
           </div>
-          {/* No se deshabilita mientras busca: una búsqueda nueva cancela la anterior. */}
           <button type="submit" className="boton boton-azul">
             {busqueda.fase === 'buscando' ? 'Buscando…' : 'Buscar'}
           </button>
@@ -289,6 +285,7 @@ export default function Caja() {
                   <th scope="col">Monto</th>
                   <th scope="col">Método</th>
                   <th scope="col">Estado</th>
+                  <th scope="col">¿Saldo pendiente?</th>
                   <th scope="col">Acción</th>
                 </tr>
               </thead>
@@ -301,6 +298,9 @@ export default function Caja() {
                     <td data-etiqueta="Método">{pago.metodoPago}</td>
                     <td data-etiqueta="Estado">
                       <InsigniaEstado estado={pago.estado} />
+                    </td>
+                    <td data-etiqueta="¿Saldo pendiente?">
+                      <span className={pago.saldoPendiente ? 'saldo-si' : 'saldo-no'}>{pago.saldoPendiente ? 'Sí' : 'No'}</span>
                     </td>
                     <td className="celda-accion" data-etiqueta="Acción">
                       {pago.estado === 'REGISTRADO' && confirmando !== pago.id && (

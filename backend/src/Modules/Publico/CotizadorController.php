@@ -15,7 +15,6 @@ final class CotizadorController
         $this->cotizador = $cotizador ?? new CotizadorService();
     }
 
-    /** GET /api/cotizacion?origen=MOQ001&destino=AQP001&peso=8.80 (público, sin sesión). */
     public function cotizar(Request $peticion, array $parametros): Response
     {
         $texto = static fn (string $clave): string => is_string($peticion->consulta[$clave] ?? null)
@@ -25,7 +24,6 @@ final class CotizadorController
         return Response::exito($this->cotizador->cotizar($texto('origen'), $texto('destino'), $texto('peso')));
     }
 
-    /** GET /api/tarifas?origen=MOQ001&destino=AQP001 — tarifas vigentes de la ruta, sin peso (público). */
     public function tarifas(Request $peticion, array $parametros): Response
     {
         $texto = static fn (string $clave): string => is_string($peticion->consulta[$clave] ?? null)

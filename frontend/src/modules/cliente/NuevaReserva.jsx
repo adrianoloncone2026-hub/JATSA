@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import Mosaico from '../../components/Mosaico.jsx'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../../auth/AuthProvider.jsx'
 import { obtenerCuenta } from '../../api/cuenta.js'
 import { obtenerAgencias, obtenerRuta, obtenerTarifas } from '../../api/publico.js'
 import { consultarDestinatario, crearReserva } from '../../api/reservas.js'
@@ -17,27 +19,26 @@ const INICIAL = {
   contenido: '',
 }
 
-// Orden de los campos: sirve para enfocar el primero con error.
 const ORDEN_CAMPOS = ['numeroDocumento', 'nombreDestinatario', 'telefonoDestinatario', 'sucursalOrigen', 'sucursalDestino', 'contenido']
 
 // Diapositiva 12 del prototipo: remitente (tú), destinatario por documento, ruta, contenido y precio referencial.
 export default function NuevaReserva() {
   const navegar = useNavigate()
   const formulario = useRef(null)
-  const [parametros] = useSearchParams() // la ruta puede venir precargada desde «Salidas» (?origen=&destino=)
+  const [parametros] = useSearchParams()
 
   const [campos, setCampos] = useState({ ...INICIAL, sucursalOrigen: parametros.get('origen') ?? '', sucursalDestino: parametros.get('destino') ?? '' })
   const [errores, setErrores] = useState({})
   const [errorGeneral, setErrorGeneral] = useState('')
   const [enviando, setEnviando] = useState(false)
 
+  const { usuario } = useAuth()
   const [remitente, setRemitente] = useState(null)
   const [agencias, setAgencias] = useState({ fase: 'cargando', lista: [], mensaje: '' })
   const [intentoAgencias, setIntentoAgencias] = useState(0)
-  const [destinatario, setDestinatario] = useState({ fase: 'inactivo' }) // inactivo | buscando | existe | usted | nuevo | error
-  const [tarifas, setTarifas] = useState({ fase: 'inactivo' }) // inactivo | cargando | listo | error
+  const [destinatario, setDestinatario] = useState({ fase: 'inactivo' })
+  const [tarifas, setTarifas] = useState({ fase: 'inactivo' })
 
-  // Remitente: la persona de la sesión (solo lectura; el servidor siempre usa la de la sesión).
   useEffect(() => {
     const control = new AbortController()
     obtenerCuenta(control.signal)
@@ -59,7 +60,6 @@ export default function NuevaReserva() {
   }, [intentoAgencias])
 
   // Destinatario: al completar un documento válido se consulta su nombre (con un pequeño retardo). Cada cambio
-  // cancela la consulta anterior, así un resultado lento nunca se muestra para otro documento.
   useEffect(() => {
     if (errorDocumento(campos.tipoDocumento, campos.numeroDocumento)) {
       setDestinatario({ fase: 'inactivo' })
@@ -87,7 +87,6 @@ export default function NuevaReserva() {
     }
   }, [campos.tipoDocumento, campos.numeroDocumento])
 
-  // Precio referencial: tarifas vigentes de la ruta elegida.
   useEffect(() => {
     const { sucursalOrigen: origen, sucursalDestino: destino } = campos
     if (!origen || !destino || origen === destino) {
@@ -105,8 +104,7 @@ export default function NuevaReserva() {
     return () => control.abort()
   }, [campos.sucursalOrigen, campos.sucursalDestino])
 
-  // «Salida frecuente (referencia histórica)»: el horario de la ruta elegida (si no se puede consultar, se omite sin molestar).
-  const [salida, setSalida] = useState({ fase: 'inactivo' }) // inactivo | cargando | listo
+  const [salida, setSalida] = useState({ fase: 'inactivo' })
   useEffect(() => {
     const { sucursalOrigen: origen, sucursalDestino: destino } = campos
     if (!origen || !destino || origen === destino) {
@@ -121,9 +119,9 @@ export default function NuevaReserva() {
     return () => control.abort()
   }, [campos.sucursalOrigen, campos.sucursalDestino])
 
-  // Si el destinatario no existe (o el servidor lo pide), hacen falta sus datos para crear su persona.
   const pideDatosDelDestinatario = destinatario.fase === 'nuevo' || Boolean(errores.nombreDestinatario || errores.telefonoDestinatario)
   const departamentoDe = (codigo) => agencias.lista.find((a) => a.codigo === codigo)?.departamento ?? ''
+  const nombreDe = (codigo) => agencias.lista.find((a) => a.codigo === codigo)?.nombre ?? ''
   const esRuc = campos.tipoDocumento === 'RUC'
 
   function cambiar(evento) {
@@ -184,7 +182,6 @@ export default function NuevaReserva() {
     }
   }
 
-  // Ruta confirmada sin ninguna tarifa vigente (de ningún tipo): el servidor también la rechaza.
   const sinTarifas = tarifas.fase === 'listo' && tarifas.tarifas.every((tarifa) => !tarifa.disponible)
 
   const opcionesSucursal = agencias.lista.map((a) => (
@@ -195,7 +192,10 @@ export default function NuevaReserva() {
 
   return (
     <section className="nueva-reserva">
-      <h1>Nueva reserva</h1>
+      <div className="cabecera-ilustrada">
+        <h1>Nueva reserva</h1>
+        <Mosaico ids={[1, 4, 2, 65]} />
+      </div>
       <p className="subtitulo">El precio es referencial: se confirma al pesar cada bulto en la agencia</p>
 
       {errorGeneral && (
@@ -216,7 +216,7 @@ export default function NuevaReserva() {
         <form ref={formulario} className="panel formulario-reserva" onSubmit={reservar} noValidate>
           <div className="campo">
             <label htmlFor="remitente">Remitente</label>
-            <input id="remitente" type="text" readOnly value={remitente ? `${remitente.nombreCompleto} · ${remitente.tipoDocumento} ${remitente.numeroDocumento}` : '—'} />
+            <input id="remitente" type="text" readOnly value={remitente ? `${remitente.nombreCompleto} · ${remitente.tipoDocumento} ${remitente.numeroDocumento}` : (usuario?.nombreCompleto ?? '—')} />
           </div>
 
           <div className="fila-destinatario">
@@ -270,7 +270,13 @@ export default function NuevaReserva() {
         </form>
 
         <aside className="panel-precio" aria-label="Precio referencial">
-          <RutaMonedas origen={departamentoDe(campos.sucursalOrigen)} destino={departamentoDe(campos.sucursalDestino)} tamano={80} />
+          <RutaMonedas
+            origen={departamentoDe(campos.sucursalOrigen)}
+            destino={departamentoDe(campos.sucursalDestino)}
+            nombreOrigen={nombreDe(campos.sucursalOrigen)}
+            nombreDestino={nombreDe(campos.sucursalDestino)}
+            tamano={80}
+          />
           <h2>Precio referencial</h2>
 
           {tarifas.fase === 'inactivo' && <p className="ayuda">Elige el origen y el destino para ver los precios por tipo de envío.</p>}
@@ -324,7 +330,6 @@ export default function NuevaReserva() {
   )
 }
 
-// «14:00 · llegaría aprox. 18:00 (4 h)»: la primera hora frecuente posterior a la actual, o la primera del día; solo una referencia histórica.
 function ProximaSalida({ ruta }) {
   if (ruta.horarios.length === 0) return <p className="ayuda">Salida frecuente: todavía no hay salidas registradas en esta ruta (sin referencia de horario).</p>
   const ahora = new Date().getHours()

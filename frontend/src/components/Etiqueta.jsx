@@ -1,7 +1,6 @@
 import { fechaHoraCorta } from '../utils/formato.js'
 
 // Etiqueta del envío para imprimir (diapositiva 19: «se imprime en la etiqueta»). Se imprime desde el navegador
-// con los estilos de impresión de global.css: solo esta etiqueta sale en el papel.
 export default function Etiqueta({ envio }) {
   const { reserva } = envio
   return (

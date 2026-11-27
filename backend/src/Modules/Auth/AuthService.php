@@ -6,15 +6,10 @@ namespace Jatsa\Modules\Auth;
 use Jatsa\Shared\Credencial;
 use Jatsa\Shared\HttpException;
 
-/**
- * Reglas de autenticación. No toca HTTP ni sesiones: recibe un repositorio y devuelve datos públicos.
- */
+/** Reglas de autenticación. No toca HTTP ni sesiones: recibe un repositorio y devuelve datos públicos. */
 final class AuthService
 {
-    /**
-     * Hash bcrypt (coste 12) de una contraseña aleatoria ya descartada. Se verifica cuando el usuario
-     * no existe para que la respuesta tarde lo mismo y no se pueda averiguar qué usuarios existen.
-     */
+    /** Hash bcrypt (coste 12) de una contraseña aleatoria ya descartada. Se verifica cuando el usuario */
     private const HASH_DE_RELLENO = '$2y$12$qZgqOoM9kiG.0/w2h/f1AeZVdRipRcO/JoxSbI/6slw7Qr61xoPva';
 
     private readonly RepositorioUsuarios $usuarios;
@@ -24,22 +19,13 @@ final class AuthService
         $this->usuarios = $usuarios ?? new UsuarioRepository();
     }
 
-    /**
-     * Valida usuario y contraseña. La contraseña se comprueba antes del estado de la cuenta,
-     * para no revelar a un desconocido que una cuenta existe o está desactivada.
-     *
-     * @return array<string, mixed> Datos públicos del usuario.
-     */
+    /** @return array<string, mixed> Datos públicos del usuario. */
     public function ingresar(string $nombreUsuario, string $contrasena): array
     {
         return $this->ingresarConHuella($nombreUsuario, $contrasena)['usuario'];
     }
 
-    /**
-     * Igual que ingresar(), y además devuelve la huella de la credencial para guardarla en la sesión.
-     *
-     * @return array{usuario: array<string, mixed>, huella: string}
-     */
+    /** @return array{usuario: array<string, mixed>, huella: string} */
     public function ingresarConHuella(string $nombreUsuario, string $contrasena): array
     {
         $nombreUsuario = trim($nombreUsuario);
@@ -71,13 +57,7 @@ final class AuthService
         return ['usuario' => self::datosPublicos($registro), 'huella' => Credencial::huella($registro['hashContrasena'])];
     }
 
-    /**
-     * Datos actuales de una cuenta activa, o null si ya no existe o está desactivada.
-     * Si se indica la huella con la que se abrió la sesión, también debe seguir siendo la de la
-     * contraseña actual: así, cambiar la contraseña cierra las demás sesiones de la cuenta.
-     *
-     * @return array<string, mixed>|null
-     */
+    /** @return array<string, mixed>|null */
     public function vigente(int $idUsuario, ?string $huella = null): ?array
     {
         $registro = $this->usuarios->buscarPorId($idUsuario);
@@ -95,7 +75,6 @@ final class AuthService
 
     /**
      * Nunca incluye el hash de la contraseña.
-     *
      * @param array<string, mixed> $registro
      * @return array<string, mixed>
      */

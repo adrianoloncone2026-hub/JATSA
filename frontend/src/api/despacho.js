@@ -1,7 +1,6 @@
 import { solicitar } from './cliente.js'
 
 // Despacho del ADMINISTRADOR (módulo 7). Todo se limita a la agencia de la sesión: el servidor la toma de la sesión,
-// nunca de lo que se envíe aquí.
 
 // GET /api/despacho/viajes — { sucursal, viajes, hayMasTerminados }.
 export function listarSalidas(signal) {

@@ -11,15 +11,11 @@ use PDO;
 use PDOException;
 use Throwable;
 
-/**
- * Lee y escribe Envio y Bulto con los nombres del script SQL definitivo. Siempre con parámetros.
- * La única escritura es la formalización (reserva → envío con sus bultos), en una transacción.
- */
+/** Lee y escribe Envio y Bulto con los nombres del script SQL definitivo. Siempre con parámetros. */
 final class EnvioRepository implements RepositorioEnvios
 {
     private const ERROR_CLAVE_DUPLICADA = [2627, 2601];
 
-    /** Letras y dígitos del código de seguimiento, sin los que se confunden al leer (I, O, 0, 1). */
     private const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     private const INTENTOS_CODIGO = 20;
 
@@ -56,9 +52,6 @@ final class EnvioRepository implements RepositorioEnvios
         $pdo->beginTransaction();
 
         try {
-            // 1) Reclamar la reserva. El UPDATE vuelve a comprobar en SQL todo lo que importa: que sea de esta sucursal,
-            //    que siga PENDIENTE y que no haya cumplido el plazo. Si una cancelación, un vencimiento o un segundo
-            //    cajero se adelantó, no cambia ninguna fila.
             $reclamo = $pdo->prepare(
                 "UPDATE Reserva SET estadoReserva = 'FORMALIZADA'
                  WHERE codigoReserva = :codigo AND idSucursalOrigen = :sucursal AND estadoReserva = 'PENDIENTE'
@@ -91,13 +84,11 @@ final class EnvioRepository implements RepositorioEnvios
             $tarifas->bindValue(':fecha2', $fechaIso, PDO::PARAM_STR);
             $tarifas->execute();
 
-            // 3) Reglas de negocio (tipo por peso, tarifa del tipo, costo): las aplica el servicio.
             $plan = $planificar(
                 ['idReserva' => $idReserva, 'idSucursalOrigen' => (int) $reserva['idSucursalOrigen'], 'idSucursalDestino' => (int) $reserva['idSucursalDestino']],
                 self::unaPorTipo($tarifas->fetchAll(PDO::FETCH_ASSOC)),
             );
 
-            // 4) Código de seguimiento libre y alta del envío.
             $codigo = $this->codigoLibre($pdo);
             $envio = $pdo->prepare(
                 'INSERT INTO Envio (idReserva, codigoSeguimiento, tipoEntrega, direccionEntrega)
@@ -113,9 +104,7 @@ final class EnvioRepository implements RepositorioEnvios
             $idEnvio->bindValue(':reserva', $idReserva, PDO::PARAM_INT);
             $idEnvio->execute();
             $idEnvio = (int) $idEnvio->fetchColumn();
-            // (el cursor se libera solo al reasignar la variable)
 
-            // 5) Los bultos, cada uno con la ruta (tarifa) con la que se cobra.
             $bulto = $pdo->prepare(
                 'INSERT INTO Bulto (idEnvio, idRuta, numeroBulto, descripcion, pesoKg, costo)
                  VALUES (:envio, :ruta, :numero, :descripcion, :peso, :costo)',
@@ -219,10 +208,7 @@ final class EnvioRepository implements RepositorioEnvios
         ];
     }
 
-    /**
-     * Instante límite de vigencia de una reserva pendiente (la misma expresión que usa ReservaRepository).
-     * Las horas son una constante, nunca entrada del usuario.
-     */
+    /** Instante límite de vigencia de una reserva pendiente (la misma expresión que usa ReservaRepository). */
     private static function limite(?DateTimeImmutable $referencia): string
     {
         $ahora = $referencia === null ? 'SYSDATETIME()' : 'CAST(:referencia AS DATETIME2(0))';
@@ -238,8 +224,6 @@ final class EnvioRepository implements RepositorioEnvios
     }
 
     /**
-     * La consulta ya viene con la vigente más reciente primero: se conserva una tarifa por tipo.
-     *
      * @param list<array<string, mixed>> $filas
      * @return list<array<string, mixed>>
      */
@@ -263,10 +247,7 @@ final class EnvioRepository implements RepositorioEnvios
         return array_values($porTipo);
     }
 
-    /**
-     * 'EN' + 10 caracteres al azar que no estén en uso. La comprobación lleva UPDLOCK + HOLDLOCK para que dos
-     * formalizaciones simultáneas no elijan el mismo; la restricción UNIQUE es la red de seguridad.
-     */
+    /** 'EN' + 10 caracteres al azar que no estén en uso. La comprobación lleva UPDLOCK + HOLDLOCK para que dos */
     private function codigoLibre(PDO $pdo): string
     {
         $existe = $pdo->prepare('SELECT 1 FROM Envio WITH (UPDLOCK, HOLDLOCK) WHERE codigoSeguimiento = :codigo');

@@ -6,9 +6,8 @@ use Jatsa\Middleware\RequiereRol;
 use Jatsa\Modules\Pagos\PagoController;
 use Jatsa\Shared\Roles;
 
-// Pagos y Caja (módulo 6). Caja es del ADMINISTRADOR; «Mis pagos» es del CLIENTE y del EMPRESARIO.
 return static function (Router $router): void {
-    $clientes = [new RequiereRol([Roles::CLIENTE, Roles::EMPRESARIO])];
+    $clientes = [new RequiereRol([Roles::CLIENTE, Roles::EMPRESARIO, Roles::GERENTE, Roles::ADMINISTRADOR, Roles::TRANSPORTISTA])];
     $administradores = [new RequiereRol([Roles::ADMINISTRADOR])];
 
     $router->get('/api/pagos', [PagoController::class, 'misPagos'], $clientes);

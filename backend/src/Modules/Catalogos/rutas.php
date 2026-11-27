@@ -6,7 +6,6 @@ use Jatsa\Middleware\RequiereRol;
 use Jatsa\Modules\Catalogos\CatalogoController;
 use Jatsa\Shared\Roles;
 
-// Catálogos (módulo 10). Solo el GERENTE; la autorización se aplica aquí, en el backend.
 return static function (Router $router): void {
     $gerentes = [new RequiereRol([Roles::GERENTE])];
 

@@ -8,10 +8,7 @@ use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Registro;
 use Throwable;
 
-/**
- * Convierte cualquier error en una respuesta JSON uniforme.
- * El detalle técnico se registra en storage/logs; el cliente solo recibe un mensaje genérico.
- */
+/** Convierte cualquier error en una respuesta JSON uniforme. */
 final class ManejadorErrores
 {
     public static function registrar(): void

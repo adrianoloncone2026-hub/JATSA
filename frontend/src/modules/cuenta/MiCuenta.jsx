@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { actualizarContacto, obtenerCuenta } from '../../api/cuenta.js'
 import { useCerrarSesion } from '../../auth/useCerrarSesion.js'
+import Mosaico from '../../components/Mosaico.jsx'
 import CampoTexto from '../../components/CampoTexto.jsx'
 import FormularioContrasena from './FormularioContrasena.jsx'
 import { fechaCorta, iniciales } from '../../utils/formato.js'
@@ -10,11 +11,10 @@ import { errorCorreo, errorTelefono, errorTelefonoAuxiliar, sinSeparadores, solo
 const SIN_DATO = '—'
 
 // Diapositiva 17 del prototipo: datos de la cuenta, edición de teléfonos y correo, y cambio de contraseña.
-// «Actividad reciente» llegará con los módulos de reservas e historial (4 y 9), que aportan esos datos.
 export default function MiCuenta() {
   const [estado, setEstado] = useState({ fase: 'cargando', cuenta: null, mensaje: '' })
   const [intento, setIntento] = useState(0)
-  const [panel, setPanel] = useState(null) // null | 'datos' | 'contrasena'
+  const [panel, setPanel] = useState(null)
   const [aviso, setAviso] = useState('')
   const { cerrarSesion, saliendo, errorSalida } = useCerrarSesion()
 
@@ -59,6 +59,7 @@ export default function MiCuenta() {
   return (
     <div className="mi-cuenta">
       <h1 className="solo-lectores">Mi cuenta</h1>
+      <Mosaico ids={[15, 4, 14, 8, 65]} />
 
       <div className="mi-cuenta-principal panel">
         <section className="perfil" aria-label="Resumen de la cuenta">
@@ -130,14 +131,8 @@ export default function MiCuenta() {
         <button type="button" className="boton boton-claro" aria-expanded={panel === 'contrasena'} onClick={() => abrirPanel('contrasena')}>
           Cambiar contraseña
         </button>
-        <Link to="/cliente/historial" className="boton boton-claro">
-          Historial de envíos
-        </Link>
-        <Link to="/cliente/reservas" className="boton boton-claro">
-          Mis reservas
-        </Link>
-        <Link to="/cliente/pagos" className="boton boton-claro">
-          Mis pagos
+        <Link to="/cliente" className="boton boton-celeste">
+          ← Volver a Mi panel
         </Link>
         <button type="button" className="boton boton-marino" onClick={cerrarSesion} disabled={saliendo}>
           Cerrar sesión

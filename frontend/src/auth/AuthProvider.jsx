@@ -25,9 +25,6 @@ export function AuthProvider({ children }) {
   }, [])
 
   // El cierre solo se refleja en la interfaz cuando el servidor lo confirma. Si la petición falla,
-  // lanza el error y se conserva el usuario: aparentar que la sesión se cerró mientras el servidor
-  // la mantiene válida sería engañoso (reaparecería al recargar). Cerrar sesión es idempotente en
-  // el servidor, así que reintentar es seguro.
   const salir = useCallback(async () => {
     await salirApi()
     setEstado({ usuario: null, cargando: false })

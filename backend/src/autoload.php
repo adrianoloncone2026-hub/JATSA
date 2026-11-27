@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-// Autoloader PSR-4 manual: el espacio de nombres Jatsa\ corresponde a backend/src/.
 spl_autoload_register(static function (string $clase): void {
     $prefijo = 'Jatsa\\';
 

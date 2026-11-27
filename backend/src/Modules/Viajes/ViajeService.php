@@ -9,20 +9,11 @@ use Jatsa\Modules\Reservas\VentanillaService;
 use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Roles;
 
-/**
- * Viajes del TRANSPORTISTA (diapositivas 24 y 25): lista de sus viajes, detalle con la carga, y registro de la salida y
- * la llegada. El ADMINISTRADOR también puede ver el detalle de los viajes que salen de su sucursal o llegan a ella
- * («Ver carga» de Despacho).
- *
- * El estado del viaje no se guarda: se deduce de las fechas (informe de BD). Sin salida = PROGRAMADO; con salida y sin
- * llegada = EN_RUTA; con llegada = TERMINADO. Las reglas se comprueban aquí con mensajes claros y VUELVEN A
- * COMPROBARSE dentro de la transacción de ViajeRepository, con el viaje (y su vehículo) bloqueados.
- */
+/** Viajes del TRANSPORTISTA (diapositivas 24 y 25): lista de sus viajes, detalle con la carga, y registro de la salida y */
 final class ViajeService
 {
     public const ESTADOS = ['PROGRAMADO', 'EN_RUTA', 'TERMINADO'];
 
-    /** Máximo de viajes que devuelve «Mis viajes». */
     public const MAX_LISTA = 200;
 
     private readonly RepositorioViajes $viajes;
@@ -36,8 +27,6 @@ final class ViajeService
     }
 
     /**
-     * «Mis viajes» del transportista de la sesión.
-     *
      * @param array<string, mixed> $usuario
      * @return array{viajes: list<array<string, mixed>>, hayMas: bool}
      */
@@ -57,9 +46,6 @@ final class ViajeService
     }
 
     /**
-     * Un viaje con su carga. El transportista solo ve los suyos; el administrador, los de su sucursal de origen o de
-     * destino. Otro viaje o uno inexistente: el mismo 404.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -71,8 +57,6 @@ final class ViajeService
     }
 
     /**
-     * El transportista marca la salida de su viaje.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -105,8 +89,6 @@ final class ViajeService
     }
 
     /**
-     * El transportista marca la llegada de su viaje.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -135,11 +117,9 @@ final class ViajeService
         return $this->detalle($usuario, $codigo);
     }
 
-    // ── Utilidades ──────────────────────────────────────────────────────────
 
     /**
      * Viaje visible para el usuario de la sesión, o 404 (el mismo para ajeno e inexistente).
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -169,7 +149,6 @@ final class ViajeService
 
     /**
      * Dentro de la transacción (viaje ya bloqueado) vuelve a comprobar que el viaje es del transportista de la sesión.
-     *
      * @param array<string, mixed> $usuario
      */
     private function conPropietario(array $usuario, callable $reglas): callable
@@ -192,7 +171,6 @@ final class ViajeService
         return strtoupper(trim($codigo));
     }
 
-    /** PROGRAMADO, EN_RUTA o TERMINADO, deducido de las fechas. */
     public static function estadoDe(?string $salida, ?string $llegada): string
     {
         if ($salida === null) {
@@ -237,7 +215,6 @@ final class ViajeService
         return $datos;
     }
 
-    /** "18.5000" o "6500" → "18.50" / "6500.00" */
     public static function kilos(string $decimal): string
     {
         $centesimas = (int) round(((float) $decimal) * 100);

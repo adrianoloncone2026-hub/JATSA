@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Mosaico from '../../components/Mosaico.jsx'
 import { Link } from 'react-router-dom'
 import { confirmarEntrega, listarPendientes, marcarDevuelto, obtenerEnvioParaEntrega } from '../../api/entregas.js'
 import { useAuth } from '../../auth/AuthProvider.jsx'
@@ -8,20 +9,19 @@ import { errorDocumentoPersonal, sinSeparadores } from '../../utils/validaciones
 
 const TIPOS = ['DNI', 'RUC', 'CE', 'PAS']
 
-// Como en el servidor: sin espacios ni guiones; CE y PAS en mayúsculas.
 const normalizar = (tipo, numero) => (tipo === 'CE' || tipo === 'PAS' ? sinSeparadores(numero).toUpperCase() : sinSeparadores(numero))
 
 // Diapositiva 22 del prototipo: viajes en camino a la agencia, envíos listos para entregar y la entrega contra el documento.
 export default function LlegadasEntregas() {
   const { usuario } = useAuth()
-  const [pendientes, setPendientes] = useState({ fase: 'cargando', datos: null, mensaje: '' }) // cargando | listo | error
+  const [pendientes, setPendientes] = useState({ fase: 'cargando', datos: null, mensaje: '' })
   const [intento, setIntento] = useState(0)
   const [aviso, setAviso] = useState({ tipo: '', texto: '' })
-  const [atendiendo, setAtendiendo] = useState(null) // código del envío abierto en el panel
-  const [detalle, setDetalle] = useState({ fase: 'inactivo', envio: null, mensaje: '' }) // cargando | listo | no_encontrado | error
+  const [atendiendo, setAtendiendo] = useState(null)
+  const [detalle, setDetalle] = useState({ fase: 'inactivo', envio: null, mensaje: '' })
   const [formulario, setFormulario] = useState({ tipoDocumento: 'DNI', numeroDocumento: '' })
   const [errores, setErrores] = useState({})
-  const [enviando, setEnviando] = useState(null) // 'entrega' | 'devolucion'
+  const [enviando, setEnviando] = useState(null)
   const [confirmandoDevolucion, setConfirmandoDevolucion] = useState(false)
 
   useEffect(() => {
@@ -36,7 +36,6 @@ export default function LlegadasEntregas() {
     return () => control.abort()
   }, [intento])
 
-  // El envío del panel: una atención nueva cancela la lectura anterior (una respuesta lenta no pisa a la actual).
   useEffect(() => {
     if (!atendiendo) return undefined
     const control = new AbortController()
@@ -99,7 +98,7 @@ export default function LlegadasEntregas() {
       } else {
         setAviso({ tipo: 'error', texto: fallo.message })
         if (fallo.estado === 409 || fallo.estado === 404) {
-          setIntento((n) => n + 1) // el estado cambió: se vuelven a leer las listas y el envío
+          setIntento((n) => n + 1)
           obtenerEnvioParaEntrega(envio.codigoSeguimiento).then((actual) => setDetalle({ fase: 'listo', envio: actual, mensaje: '' })).catch(() => {})
         }
       }
@@ -134,7 +133,10 @@ export default function LlegadasEntregas() {
 
   return (
     <section className="llegadas-entregas">
-      <h1>Llegadas y entregas{nombreAgencia ? ` · ${nombreAgencia}` : ''}</h1>
+      <div className="cabecera-ilustrada">
+        <h1>Llegadas y entregas{nombreAgencia ? ` · ${nombreAgencia}` : ''}</h1>
+        <Mosaico ids={[63, 67, 18, 1, 15]} />
+      </div>
 
       {aviso.texto && (
         <div className={`resultado ${aviso.tipo === 'ok' ? 'ok' : 'error'}`} role={aviso.tipo === 'ok' ? 'status' : 'alert'}>
@@ -156,6 +158,8 @@ export default function LlegadasEntregas() {
         </div>
       )}
 
+      <div className="rejilla-operativa">
+      <div className="rejilla-lista">
       {datos && pendientes.fase !== 'error' && (
         <>
           <h2>En camino hacia aquí</h2>
@@ -168,7 +172,7 @@ export default function LlegadasEntregas() {
               {datos.enCamino.map((v) => (
                 <li key={v.codigo} className="panel">
                   <strong>{v.codigo}</strong> {v.origen.nombre} → {v.destino.nombre}
-                  {v.llegadaEstimada ? ` · llega aprox. ${horaCorta(v.llegadaEstimada)}` : ''} · {v.cantidadEnvios} {v.cantidadEnvios === 1 ? 'envío' : 'envíos'}
+                  {v.llegadaEstimada ? ` · llegada estimada ${horaCorta(v.llegadaEstimada)} (la llegada real la confirma el transportista)` : ''} · {v.cantidadEnvios} {v.cantidadEnvios === 1 ? 'envío' : 'envíos'}
                 </li>
               ))}
             </ul>
@@ -214,7 +218,10 @@ export default function LlegadasEntregas() {
           {datos.hayMas && <p className="ayuda">Se muestran los 200 envíos más antiguos.</p>}
         </>
       )}
+      </div>
 
+      <div className="rejilla-panel">
+      {!atendiendo && datos && <p className="panel ayuda">Pulsa «Atender» en un envío para registrar su entrega aquí.</p>}
       {atendiendo && (
         <section className="panel entrega" aria-label={`Entregar ${atendiendo}`}>
           {detalle.fase === 'cargando' && (
@@ -322,6 +329,8 @@ export default function LlegadasEntregas() {
           )}
         </section>
       )}
+      </div>
+      </div>
     </section>
   )
 }

@@ -28,6 +28,14 @@ El navegador llama a `http://localhost:5173/api/...`; Vite reenvía `/api` a `ht
 - **Backend:** copiar `backend/.env.example` a `backend/.env` y completar. `DB_NAME` es obligatorio para conectar; con `DB_USER` y `DB_PASSWORD` vacíos se usa autenticación de Windows. `backend/.env` no se versiona.
 - **Frontend:** opcional; `frontend/.env.example` → `frontend/.env` para cambiar `VITE_API_URL` (por defecto `/api`).
 
+## Objetos SQL adicionales (Unidad 2)
+El backend necesita `database/script/unidad2_objetos.sql` aplicado **después** del script original (vista `vw_EnvioTotales`, procedimientos `usp_Viaje_MarcarSalida` / `usp_Viaje_MarcarLlegada` y disparador `trg_Pago_ProtegerRegistro`). Es idempotente.
+
+```powershell
+sqlcmd -S localhost -E -C -I -b -f 65001 -d JATSA_Encomiendas -i database/script/unidad2_objetos.sql
+```
+Demostración en SSMS (no deja cambios): `unidad2_demo.sql`. Reversión: `unidad2_revertir.sql`. El disparador impide borrar pagos, también en la limpieza de `escritura_pm6.php` y `escritura_pm8.php`.
+
 ## Endpoints actuales
 | Método | Ruta | Descripción |
 |---|---|---|

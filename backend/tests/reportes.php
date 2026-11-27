@@ -209,8 +209,8 @@ prueba('rutas del modulo 11: solo GET y solo GERENTE (401 sin sesion; 403 al res
     $router = new Router();
     (require dirname(__DIR__) . '/src/Modules/Reportes/rutas.php')($router);
     $fuente = (string) file_get_contents(dirname(__DIR__) . '/src/Modules/Reportes/rutas.php');
-    afirmar(preg_match_all('/\$router->(get|post|put|patch|delete)\(/', $fuente) === 2 && preg_match_all('/\$router->get\(/', $fuente) === 2, 'dos rutas, ambas GET');
-    afirmar(preg_match_all('/\$gerentes\);/', $fuente) === 2 && !str_contains($fuente, 'Roles::ADMINISTRADOR'), 'ambas con $gerentes; solo GERENTE');
+    afirmar(preg_match_all('/\$router->(get|post|put|patch|delete)\(/', $fuente) === 6 && preg_match_all('/\$router->get\(/', $fuente) === 6, 'seis rutas (dos del modulo 11, dos exportaciones Excel y dos paquetes Power BI del 12), todas GET');
+    afirmar(preg_match_all('/\$gerentes\);/', $fuente) === 2 && substr_count($fuente, 'Roles::ADMINISTRADOR') === 1, 'las del modulo 11 con $gerentes; solo las exportaciones admiten ADMINISTRADOR');
     esperarError(fn () => $guardia(peticion('GET', '/api/reportes/resumen')), 401, 'no_autenticado');
     foreach ([2, 4, 5, 6] as $id) {
         $limpiar();

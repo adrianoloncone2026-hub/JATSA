@@ -138,7 +138,10 @@ try {
   await irA('/administrador/despacho')
   comprobar('título con la agencia y botón «Programar viaje»', [await texto('h1'), await texto('.barra-despacho button')], ['Despacho · salen de Agencia Moquegua', 'Programar viaje'])
   comprobar('viajes: en ruta, programados y terminados con vehículo y carga', await filas(VIAJES),
-    'VJ2026101402 EN RUTA Agencia Arequipa Centro FURGON B7K-210 · 18.50 / 6500 kg Ver carga || VJ2026103101 PROGRAMADO Agencia Arequipa Centro CAMIONETA C3M-956 · 0.00 / 1500 kg Cargar envíos || VJ2026103102 PROGRAMADO Agencia Arequipa Centro FURGON B7K-210 · 0.00 / 6500 kg Cargar envíos || VJ2026103103 PROGRAMADO Agencia Ilo CAMION V2A-845 · 0.00 / 18000 kg Cargar envíos || VJ2026101001 TERMINADO Agencia Arequipa Centro CAMIONETA C3M-956 · 9.20 / 1500 kg Ver carga')
+    'VJ2026101402 EN RUTA Agencia Arequipa Centro FURGON B7K-210 · 18.50 / 6500 kg Ver carga || VJ2026103101 PROGRAMADO Agencia Arequipa Centro CAMIONETA C3M-956 · 0.00 / 1500 kg Cargar envíos || VJ2026103102 PROGRAMADO Agencia Arequipa Centro FURGON B7K-210 · 0.00 / 6500 kg Cargar envíos || VJ2026103103 PROGRAMADO Agencia Ilo CAMION V2A-845 · 0.00 / 18000 kg Cargar envíos')
+  await evaluar(`[...document.querySelectorAll('.pestana')].find((b) => b.innerText.startsWith('Terminados')).click()`); await new Promise((r) => setTimeout(r, 300))
+  comprobar('pestaña «Terminados»: el viaje terminado con su carga', await filas(VIAJES), 'VJ2026101001 TERMINADO Agencia Arequipa Centro CAMIONETA C3M-956 · 9.20 / 1500 kg Ver carga')
+  await evaluar(`[...document.querySelectorAll('.pestana')].find((b) => b.innerText.startsWith('Programados')).click()`); await new Promise((r) => setTimeout(r, 300))
   comprobar('envíos en espera con su detalle', await celdas(ESPERA), 'EN4T7Q0P2LKX · 2 bultos · 9.20 kg · Agencia Arequipa Centro · Cargar en VJ2026103101 || ENQ8W2E4R6TY · 1 bulto · 3.10 kg · Agencia Arequipa Centro · Cargar en VJ2026103101 || ENA1S3D5F7GH · 1 bulto · 25.00 kg · Agencia Ilo · Cargar en VJ2026103103')
   comprobar('cada envío trae preseleccionado el viaje hacia su destino', await evaluar(`[...document.querySelectorAll('.tabla-espera select')].map(s => s.value).join(',')`), 'VJ2026103101,VJ2026103101,VJ2026103103')
   comprobar('el menú del administrador marca Despacho', (await enlaces('nav.menu a')).includes('Despacho→/administrador/despacho'), true)
@@ -209,9 +212,9 @@ try {
   sim.sesion = TRANSP
   await irA('/transportista')
   comprobar('título y filas con salida, llegada o «Sin salida aún»', [await texto('h1'), await celdas(VIAJES)], ['Mis viajes',
-    'VJ2026101402 · Agencia Moquegua → Agencia Arequipa Centro · Salió 14/10 15:00 · EN RUTA · Abrir || VJ2026103101 · Agencia Moquegua → Agencia Arequipa Centro · Sin salida aún · PROGRAMADO · Abrir || VJ2026103102 · Agencia Moquegua → Agencia Arequipa Centro · Sin salida aún · PROGRAMADO · Abrir || VJ2026103103 · Agencia Moquegua → Agencia Ilo · Sin salida aún · PROGRAMADO · Abrir || VJ2026101001 · Agencia Moquegua → Agencia Arequipa Centro · Llegó 10/10 18:30 · TERMINADO · Abrir'])
+'VJ2026101402 · Agencia Moquegua → Agencia Arequipa Centro Agencia Moquegua a Agencia Arequipa Centro · Salió 14/10 15:00 · EN RUTA · Abrir · marcar llegada || VJ2026103101 · Agencia Moquegua → Agencia Arequipa Centro Agencia Moquegua a Agencia Arequipa Centro · Sin salida aún · PROGRAMADO · Abrir · marcar salida || VJ2026103102 · Agencia Moquegua → Agencia Arequipa Centro Agencia Moquegua a Agencia Arequipa Centro · Sin salida aún · PROGRAMADO · Abrir · marcar salida || VJ2026103103 · Agencia Moquegua → Agencia Ilo Agencia Moquegua a Agencia Ilo · Sin salida aún · PROGRAMADO · Abrir · marcar salida || VJ2026101001 · Agencia Moquegua → Agencia Arequipa Centro Agencia Moquegua a Agencia Arequipa Centro · Llegó 10/10 18:30 · TERMINADO · Ver detalle'])
   comprobar('los filtros', await texto('.filtros'), 'Todos Programados En ruta Terminados')
-  comprobar('«Abrir» lleva al detalle del viaje', (await enlaces(`${VIAJES} a`)).split(' | ')[0], 'Abrir→/transportista/viajes/VJ2026101402')
+  comprobar('«Abrir» lleva al detalle del viaje', (await enlaces(`${VIAJES} a`)).split(' | ')[0], 'Abrir · marcar llegada→/transportista/viajes/VJ2026101402')
   await pulsar('.filtros button:nth-child(3)'); await esperar(500)
   comprobar('filtro «En ruta»: consulta con el estado y muestra solo ese viaje', [llamadasA('GET', '/api/viajes').at(-1) !== undefined, (await filas(VIAJES)).startsWith('VJ2026101402') && (await evaluar(`document.querySelectorAll('${VIAJES}').length`)) === 1], [true, true])
   comprobar('el filtro activo queda marcado', await evaluar(`document.querySelector('.filtro.activo').innerText`), 'En ruta')

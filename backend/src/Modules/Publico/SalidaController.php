@@ -15,13 +15,11 @@ final class SalidaController
         $this->salidas = $salidas ?? new SalidaService();
     }
 
-    /** GET /api/salidas?origen=&destino=&tipo= — público, sin sesión. */
     public function listar(Request $peticion, array $parametros): Response
     {
         return Response::exito($this->salidas->listar($this->consulta($peticion, 'origen'), $this->consulta($peticion, 'destino'), $this->consulta($peticion, 'tipo')));
     }
 
-    /** GET /api/salidas/{id} — id = «MOQ001-AQP001». */
     public function detalle(Request $peticion, array $parametros): Response
     {
         return Response::exito(['ruta' => $this->salidas->detalle((string) ($parametros['id'] ?? ''))]);

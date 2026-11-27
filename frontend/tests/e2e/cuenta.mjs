@@ -132,8 +132,8 @@ try {
   comprobar('avatar con las iniciales (MR)', await texto('.avatar-grande'), 'MR')
   comprobar('mis datos: los vacíos se muestran con una raya', await texto('.datos-contacto'), 'Teléfono 987654323 Teléfono auxiliar — Correo —')
   comprobar('cabecera: nombre y rol enlazan a Mi cuenta', [await texto('.identidad-nombre'), await texto('.identidad-rol'), await evaluar(`document.querySelector('a.identidad').getAttribute('href')`)], ['María Elena Rojas Ccori', 'CLIENTE', '/cliente/cuenta'])
-  comprobar('menú del cliente: sin «Mi cuenta» y con Salidas y Rastrear', await evaluar(`[...document.querySelectorAll('.menu a')].map(a => a.innerText).join(' | ')`), 'Mi panel | Nueva reserva | Mis reservas | Historial | Mis pagos | Salidas | Rastrear')
-  comprobar('acciones laterales', await evaluar(`[...document.querySelectorAll('.mi-cuenta-acciones > *')].map(e => e.innerText).join(' | ')`), 'Editar datos | Cambiar contraseña | Historial de envíos | Mis reservas | Mis pagos | Cerrar sesión')
+  comprobar('menú del cliente: sin «Mi cuenta» y con Salidas y Rastrear', await evaluar(`[...document.querySelectorAll('.menu a')].map(a => a.innerText).join(' | ')`), 'Mi panel | Nueva reserva | Mis reservas | Historial de envíos | Mis pagos | Salidas | Rastrear')
+  comprobar('acciones laterales', await evaluar(`[...document.querySelectorAll('.mi-cuenta-acciones > *')].map(e => e.innerText).join(' | ')`), 'Editar datos | Cambiar contraseña | ← Volver a Mi panel | Cerrar sesión')
 
   titulo('Mi cuenta: editar teléfonos y correo')
   await pulsar('.mi-cuenta-acciones button:nth-child(1)')

@@ -9,10 +9,7 @@ use PDO;
 use PDOException;
 use Throwable;
 
-/**
- * Lee y escribe Usuario (con Persona y Sucursal) para la gestión de cuentas del GERENTE. Consultas parametrizadas;
- * las escrituras que dependen de otros datos van en transacción con las filas bloqueadas. No contiene reglas de negocio.
- */
+/** Lee y escribe Usuario (con Persona y Sucursal) para la gestión de cuentas del GERENTE. Consultas parametrizadas; */
 final class UsuariosRepository implements RepositorioGestionUsuarios
 {
     private const ERROR_CLAVE_DUPLICADA = [2601, 2627];
@@ -76,7 +73,6 @@ final class UsuariosRepository implements RepositorioGestionUsuarios
         $pdo->beginTransaction();
         try {
             // La sucursal se lee BLOQUEADA y se valida con $decidir antes del INSERT: su desactivación (que bloquea la misma fila y cuenta
-            // el personal activo) espera a que esta cuenta confirme, o llega antes y aquí se ve inactiva.
             $sucursal = $this->uno($pdo, 'SELECT idSucursal, activa FROM Sucursal WITH (UPDLOCK, HOLDLOCK) WHERE codigoSucursal = :codigo', [':codigo' => $codigoSucursal]);
             $decidir(['sucursalActiva' => $sucursal !== null && (bool) $sucursal['activa']]);
 
@@ -157,7 +153,6 @@ final class UsuariosRepository implements RepositorioGestionUsuarios
 
         // Orden de bloqueos constante en todo el sistema: sucursal → (gerentes) → cuenta. La sucursal de la cuenta solo se conoce
         // leyendo la cuenta, y otro gerente puede moverla entre esa lectura y el bloqueo: se comprueba con la cuenta ya bloqueada y,
-        // si cambió, se reintenta con la nueva sucursal.
         for ($intento = 0; $intento < 3; $intento++) {
             $pdo->beginTransaction();
             try {
@@ -210,7 +205,6 @@ final class UsuariosRepository implements RepositorioGestionUsuarios
 
         throw new HttpException(409, 'cuenta_modificada', 'La cuenta cambió mientras se procesaba. Inténtalo de nuevo.');
     }
-    // ── Utilidades ──────────────────────────────────────────────────────────
 
     private function viajesAbiertos(PDO $pdo, int $idUsuario): int
     {

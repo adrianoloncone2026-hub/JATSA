@@ -1,7 +1,6 @@
 import { solicitar } from './cliente.js'
 
 // Ventanilla y envíos del ADMINISTRADOR (módulo 5). Todo se limita a la agencia de la sesión: el servidor la toma
-// de la sesión, nunca de lo que se envíe aquí.
 
 // GET /api/ventanilla/reservas — reservas pendientes de la agencia que aún están dentro de las 72 h.
 export async function listarReservasPendientes(signal) {

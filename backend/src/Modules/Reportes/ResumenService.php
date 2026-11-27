@@ -7,15 +7,7 @@ use Closure;
 use DateTimeImmutable;
 use Jatsa\Shared\HttpException;
 
-/**
- * Resumen del GERENTE (diapositiva 26): envíos del mes, cobrado, por entregar y viajes abiertos.
- *
- * Reglas: «envíos registrados» cuenta los envíos del mes que siguen REGISTRADO, EN_TRANSITO, EN_DESTINO o ENTREGADO
- * (los cuatro grupos de «Dónde están los envíos del mes»; no cuenta ANULADO ni DEVUELTO). «Por entregar» = EN_TRANSITO + EN_DESTINO.
- * «Más de 3 días» = por entregar con fechaHoraRegistro anterior a hoy menos 3 días. «Cobrados» excluye pagos ANULADO y se
- * mide por la sucursal del pago; envíos y viajes cuentan origen o destino. La variación es contra el mes anterior
- * (null si el mes anterior fue 0).
- */
+/** Resumen del GERENTE (diapositiva 26): envíos del mes, cobrado, por entregar y viajes abiertos. */
 final class ResumenService
 {
     public const ESTADOS = ['ENTREGADO', 'EN_TRANSITO', 'EN_DESTINO', 'REGISTRADO'];
@@ -78,7 +70,6 @@ final class ResumenService
         ];
     }
 
-    /** Variación porcentual entera respecto del periodo anterior; null si no hay base de comparación. */
     public static function variacion(float $actual, float $anterior): ?int
     {
         if ($anterior <= 0.0) {
@@ -96,7 +87,6 @@ final class ResumenService
             return $ahora;
         }
         if (preg_match('/^(\d{4})-(0[1-9]|1[0-2])$/', $texto, $m) !== 1 || (int) $m[1] < 2000 || (int) $m[1] > 9998) {
-            // Tope 9998: el mes siguiente debe seguir dentro del rango de datetime2 (hasta el año 9999); si no, SQL Server daría 500.
             $errores['mes'] = 'Indica el mes con el formato AAAA-MM (años 2000 a 9998).';
 
             return $ahora;

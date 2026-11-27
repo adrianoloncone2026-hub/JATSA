@@ -9,10 +9,7 @@ use PDO;
 use PDOException;
 use Throwable;
 
-/**
- * Lee y escribe Sucursal, Telefono_Sucursal, Ruta y Vehiculo (consultas parametrizadas; escrituras en transacción).
- * No contiene reglas de negocio: las decide el servicio mediante `$decidir`, con las filas ya bloqueadas.
- */
+/** Lee y escribe Sucursal, Telefono_Sucursal, Ruta y Vehiculo (consultas parametrizadas; escrituras en transacción). */
 final class CatalogoRepository implements RepositorioCatalogo
 {
     private const ERROR_CLAVE_DUPLICADA = [2601, 2627];
@@ -24,7 +21,6 @@ final class CatalogoRepository implements RepositorioCatalogo
         INNER JOIN Sucursal AS so ON so.idSucursal = r.idSucursalOrigen
         INNER JOIN Sucursal AS sd ON sd.idSucursal = r.idSucursalDestino";
 
-    // ── Sucursales ──────────────────────────────────────────────────────────
 
     public function sucursales(): array
     {
@@ -133,7 +129,6 @@ final class CatalogoRepository implements RepositorioCatalogo
         }
     }
 
-    // ── Rutas y precios ─────────────────────────────────────────────────────
 
     public function rutas(): array
     {
@@ -149,7 +144,7 @@ final class CatalogoRepository implements RepositorioCatalogo
             // leen YA BLOQUEADAS: si el gerente desactiva una a la vez, o este alta ve la sucursal inactiva, o la desactivación espera.
             $ids = [];
             foreach ([$codigoOrigen, $codigoDestino] as $codigo) {
-                $fila = $this->uno($pdo, 'SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :codigo', [':codigo' => $codigo]); // el id no cambia
+                $fila = $this->uno($pdo, 'SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :codigo', [':codigo' => $codigo]);
                 $ids[$codigo] = $fila === null ? null : (int) $fila['idSucursal'];
             }
             $activas = [];
@@ -211,7 +206,6 @@ final class CatalogoRepository implements RepositorioCatalogo
         }
     }
 
-    // ── Vehículos ───────────────────────────────────────────────────────────
 
     public function vehiculos(): array
     {
@@ -304,7 +298,6 @@ final class CatalogoRepository implements RepositorioCatalogo
         }
     }
 
-    // ── Utilidades ──────────────────────────────────────────────────────────
 
     /** @param array<string, mixed> $datos */
     private function insertarRuta(PDO $pdo, int $idOrigen, int $idDestino, array $datos, string $hoy): int
@@ -324,7 +317,6 @@ final class CatalogoRepository implements RepositorioCatalogo
         $alta->bindValue(':hoy', $hoy, PDO::PARAM_STR);
         $alta->execute();
 
-        // El id sale del MISMO INSERT (OUTPUT INSERTED): con pdo_sqlsrv el INSERT preparado corre en su propio ámbito (sp_executesql) y un SCOPE_IDENTITY() en otra
         // sentencia devuelve NULL. Sin un id positivo no se confirma nada: nunca se devuelve un 201 con una ruta vacía.
         $id = $alta->fetchColumn();
         $alta->closeCursor();

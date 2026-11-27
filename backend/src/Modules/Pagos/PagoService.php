@@ -9,23 +9,12 @@ use Jatsa\Modules\Reservas\VentanillaService;
 use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Tarifas;
 
-/**
- * Pagos y Caja (diapositivas 20 y 16 y proceso de pago del informe).
- *
- * - El ADMINISTRADOR cobra en la caja de SU sucursal los envíos de los que es origen o destino (el pago en destino se
- *   registra en la agencia de destino), consulta lo cobrado allí y anula un pago con error. Un pago nunca se borra.
- * - El CLIENTE y el EMPRESARIO ven los pagos que ellos hicieron («Mis pagos»).
- *
- * El importe de un envío es la suma de sus bultos (no se guarda aparte). Saldo = importe − pagos REGISTRADO.
- * Las reglas se comprueban aquí con mensajes claros y VUELVEN A COMPROBARSE dentro de la transacción de
- * PagoRepository::registrar, que es la autoridad (el envío queda bloqueado mientras se decide).
- */
+/** Pagos y Caja (diapositivas 20 y 16 y proceso de pago del informe). */
 final class PagoService
 {
     public const METODOS = ['EFECTIVO', 'TARJETA', 'BILLETERA', 'TRANSFERENCIA'];
     public const PAGADO_POR = ['REMITENTE', 'DESTINATARIO'];
 
-    /** Máximo de pagos que devuelve una lista (los totales cuentan todos). */
     public const MAX_LISTA = 200;
 
     private readonly RepositorioPagos $pagos;
@@ -37,12 +26,8 @@ final class PagoService
         $this->reservas = $reservas ?? new ReservaRepository();
     }
 
-    // ── Caja (ADMINISTRADOR) ────────────────────────────────────────────────
 
     /**
-     * El envío a cobrar: importe, pagado, saldo y sus pagos. Visible para el personal de su sucursal de origen o de
-     * destino; para otro personal, igual que si no existiera.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -60,8 +45,6 @@ final class PagoService
     }
 
     /**
-     * Registra un pago en la caja de la sucursal de la sesión.
-     *
      * @param array<string, mixed> $usuario
      * @param array<string, mixed> $datos codigoSeguimiento, monto, pagadoPor, metodoPago
      * @return array{pago: array<string, mixed>, envio: array<string, mixed>}
@@ -104,7 +87,6 @@ final class PagoService
             if ($estado['estado'] === 'ANULADO') {
                 throw new HttpException(409, 'envio_anulado', 'El envío está anulado: no admite pagos.');
             }
-            // Un envío ya cerrado no admite cobros (los reembolsos y devoluciones de dinero están fuera del alcance del sistema).
             if ($estado['estado'] === 'ENTREGADO') {
                 throw new HttpException(409, 'envio_entregado', 'El envío ya fue entregado: no admite más pagos.');
             }
@@ -134,9 +116,6 @@ final class PagoService
     }
 
     /**
-     * Anula un pago cobrado en esta sucursal (un pago con error se anula, no se borra). Un pago de otra sucursal o
-     * inexistente: el mismo 404.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -151,7 +130,7 @@ final class PagoService
         // (un envío ENTREGADO nunca queda con saldo por una anulación posterior).
         $decidir = static function (array $contexto) use ($sucursal): void {
             if ($contexto['pago']['idSucursal'] !== $sucursal['id']) {
-                throw self::pagoNoEncontrado(); // el pago de otra caja es, para esta, como si no existiera
+                throw self::pagoNoEncontrado();
             }
             if ($contexto['pago']['estadoPago'] === 'ANULADO') {
                 throw new HttpException(409, 'pago_anulado', 'El pago ya estaba anulado.');
@@ -169,7 +148,7 @@ final class PagoService
             throw self::pagoNoEncontrado();
         }
         if ($hecho === false) {
-            throw new HttpException(409, 'pago_anulado', 'El pago ya estaba anulado.'); // el UPDATE condicional no cambió nada: otra caja se adelantó
+            throw new HttpException(409, 'pago_anulado', 'El pago ya estaba anulado.');
         }
 
         $anulado = $this->pagos->buscarPago((int) $id) ?? throw self::pagoNoEncontrado();
@@ -178,9 +157,6 @@ final class PagoService
     }
 
     /**
-     * «Pagos cobrados aquí»: los de la sucursal de la sesión, el más reciente primero, y los totales por método
-     * (solo pagos REGISTRADO, de todos los pagos de la sucursal aunque la lista se acote).
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -208,11 +184,8 @@ final class PagoService
         ];
     }
 
-    // ── Mis pagos (CLIENTE / EMPRESARIO) ────────────────────────────────────
 
     /**
-     * Los pagos que hizo la persona de la sesión y el total pagado (solo REGISTRADO).
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -232,13 +205,8 @@ final class PagoService
         ];
     }
 
-    // ── Utilidades ──────────────────────────────────────────────────────────
 
-    /**
-     * El personal solo cobra envíos de su sucursal de origen o de destino.
-     *
-     * @param array<string, mixed> $envio
-     */
+    /** @param array<string, mixed> $envio */
     private static function esDeLaSucursal(array $envio, int $idSucursal): bool
     {
         return in_array($idSucursal, [$envio['idSucursalOrigen'], $envio['idSucursalDestino']], true);
@@ -254,9 +222,6 @@ final class PagoService
         return new HttpException(404, 'envio_no_encontrado', 'No se encontró el envío.');
     }
 
-    /**
-     * «23.75», «23,75», 23.75 o 24 → céntimos. Null si no es un monto en soles con hasta 2 decimales. Sin coma flotante.
-     */
     private static function montoEnCentimos(mixed $monto): ?int
     {
         if (is_int($monto) || is_float($monto)) {
@@ -281,7 +246,6 @@ final class PagoService
     {
         $importe = self::aCentimos($envio['importe']);
         $pagado = self::aCentimos($envio['pagado']);
-        // Pago en destino: si el cajero está en la agencia de destino (y no en la de origen) lo habitual es que pague el destinatario.
         $enDestino = $idSucursal === $envio['idSucursalDestino'] && $idSucursal !== $envio['idSucursalOrigen'];
 
         return [
@@ -314,6 +278,7 @@ final class PagoService
             'pagadoPor' => $pago['pagadoPor'],
             'estado' => $pago['estadoPago'],
             'sucursal' => ['codigo' => $pago['sucursalCodigo'], 'nombre' => $pago['sucursalNombre']],
+            'saldoPendiente' => (bool) ($pago['saldoPendiente'] ?? false),
         ];
     }
 

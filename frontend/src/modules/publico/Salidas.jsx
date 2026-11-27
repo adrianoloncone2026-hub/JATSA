@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { listarSalidas, obtenerAgencias } from '../../api/publico.js'
+import { listarSalidas } from '../../api/publico.js'
+import RutaMonedas from '../../components/RutaMonedas.jsx'
+import Mosaico from '../../components/Mosaico.jsx'
+import { useAgencias } from '../../hooks/useAgencias.js'
 
 const TIPOS = ['SOBRE', 'PAQUETE', 'CARGA']
 
@@ -10,24 +13,16 @@ export function textoHorario(salida) {
 }
 
 // Diapositiva 4 del prototipo: salidas entre sucursales. El horario habitual se calcula con las salidas reales de los últimos
-// viajes de cada ruta. Los filtros van en la dirección (?origen=&destino=&tipo=) para poder enlazarlos desde otras pantallas.
 export default function Salidas() {
   const [parametros, setParametros] = useSearchParams()
   const origen = parametros.get('origen') ?? ''
   const destino = parametros.get('destino') ?? ''
   const tipo = parametros.get('tipo') ?? ''
-  const [agencias, setAgencias] = useState([])
-  const [estado, setEstado] = useState({ fase: 'cargando', salidas: [], mensaje: '' }) // cargando | listo | error
+  const [estado, setEstado] = useState({ fase: 'cargando', salidas: [], mensaje: '' })
   const [intento, setIntento] = useState(0)
 
-  // Las agencias llenan los filtros; si fallan, los filtros quedan sin opciones pero la lista sigue funcionando.
-  useEffect(() => {
-    const control = new AbortController()
-    obtenerAgencias(control.signal).then(setAgencias).catch(() => {})
-    return () => control.abort()
-  }, [])
+  const { lista: agencias, porCodigo } = useAgencias()
 
-  // Cada cambio de filtro cancela la consulta anterior: una respuesta lenta no pisa a la del filtro actual.
   useEffect(() => {
     const control = new AbortController()
     setEstado((anterior) => ({ ...anterior, fase: 'cargando' }))
@@ -49,8 +44,13 @@ export default function Salidas() {
 
   return (
     <section className="salidas">
-      <h1>Salidas entre sucursales</h1>
-      <p className="ayuda">Referencia histórica: las horas en que más salieron los últimos viajes de cada ruta. No es un horario garantizado; confirma la salida en la agencia.</p>
+      <div className="cabecera-ilustrada">
+        <div>
+          <h1>Salidas entre sucursales</h1>
+          <p className="ayuda">Referencia histórica: las horas en que más salieron los últimos viajes de cada ruta. No es un horario garantizado; confirma la salida en la agencia.</p>
+        </div>
+        <Mosaico ids={[61, 2, 9, 65, 10]} />
+      </div>
 
       <div className="panel filtros-salidas">
         <div className="campo">
@@ -76,15 +76,18 @@ export default function Salidas() {
           </select>
         </div>
         <div className="campo">
-          <label htmlFor="filtroTipo">Tipo</label>
-          <select id="filtroTipo" value={tipo} onChange={(e) => cambiar('tipo', e.target.value)}>
-            <option value="">Todos</option>
+          <label htmlFor="filtroTipo">Con tarifa de tipo</label>
+          <select id="filtroTipo" value={tipo} onChange={(e) => cambiar('tipo', e.target.value)} aria-describedby="ayudaTipo">
+            <option value="">Cualquiera</option>
             {TIPOS.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
             ))}
           </select>
+          <p id="ayudaTipo" className="ayuda">
+            El tipo (sobre, paquete o carga) se define por bulto al registrar el envío, no por la salida. Este filtro solo muestra rutas que tienen esa tarifa.
+          </p>
         </div>
       </div>
 
@@ -110,6 +113,11 @@ export default function Salidas() {
         <ul className="lista-salidas">
           {estado.salidas.map((s) => (
             <li key={s.id} className="panel salida-fila">
+              <RutaMonedas
+                origen={porCodigo.get(s.origen.codigo)?.departamento ?? ''}
+                destino={porCodigo.get(s.destino.codigo)?.departamento ?? ''}
+                tamano={48}
+              />
               <strong className="salida-ruta">
                 {s.origen.nombre} → {s.destino.nombre}
               </strong>

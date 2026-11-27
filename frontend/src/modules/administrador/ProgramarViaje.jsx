@@ -5,7 +5,7 @@ import { kilosSinCeros } from '../../utils/formato.js'
 
 // «Programar viaje» (diapositiva 21): elige vehículo, transportista y destino; el origen es siempre la agencia de la sesión.
 export default function ProgramarViaje({ alProgramar, alCancelar }) {
-  const [opciones, setOpciones] = useState({ fase: 'cargando', datos: null, mensaje: '' }) // cargando | listo | error
+  const [opciones, setOpciones] = useState({ fase: 'cargando', datos: null, mensaje: '' })
   const [intento, setIntento] = useState(0)
   const [formulario, setFormulario] = useState({ placa: '', transportista: '', destino: '' })
   const [errores, setErrores] = useState({})

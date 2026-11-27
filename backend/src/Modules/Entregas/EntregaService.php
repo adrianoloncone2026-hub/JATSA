@@ -9,17 +9,9 @@ use Jatsa\Modules\Reservas\VentanillaService;
 use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Tarifas;
 
-/**
- * Llegadas y entregas del Administrador (diapositiva 22): viajes que vienen en camino a su agencia, envíos listos para
- * entregar, confirmar la entrega contra el documento del destinatario, y marcar un envío devuelto. Todo se limita a la
- * agencia de DESTINO de la sesión: un envío de otro destino es, para el personal, como si no existiera.
- *
- * Las reglas (estado, agencia, documento, saldo) se comprueban dentro de la transacción de EntregaRepository, con el envío
- * bloqueado: nunca se confía en lo que el frontend haya mostrado (su «✓ Coincide» es solo una ayuda).
- */
+/** Llegadas y entregas del Administrador (diapositiva 22): viajes que vienen en camino a su agencia, envíos listos para */
 final class EntregaService
 {
-    /** Tipos de documento que el personal puede comprobar (Persona admite estos cuatro). */
     public const TIPOS_DOCUMENTO = ['DNI', 'RUC', 'CE', 'PAS'];
     public const MAX_LISTOS = 200;
 
@@ -34,8 +26,6 @@ final class EntregaService
     }
 
     /**
-     * «En camino hacia aquí» y «Listos para entregar».
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -69,8 +59,6 @@ final class EntregaService
     }
 
     /**
-     * Un envío de la agencia de destino para atenderlo (en cualquier estado). Otro destino o inexistente: el mismo 404.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -88,9 +76,6 @@ final class EntregaService
     }
 
     /**
-     * Confirma la entrega: el documento presentado debe coincidir con el del destinatario registrado y el envío no debe
-     * tener saldo. Guarda la fecha y hora de entrega con la hora de la base.
-     *
      * @param array<string, mixed> $usuario
      * @param array<string, mixed> $datos tipoDocumento, numeroDocumento
      * @return array<string, mixed> El envío ya ENTREGADO.
@@ -133,8 +118,6 @@ final class EntregaService
     }
 
     /**
-     * Marca el envío como DEVUELTO (el destinatario no lo recibe). Solo desde EN_DESTINO y en la agencia de destino.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed> El envío ya DEVUELTO.
      */
@@ -150,11 +133,8 @@ final class EntregaService
         return $this->cerrar($this->entregas->devolver($codigo, $decidir), $usuario, $codigo);
     }
 
-    // ── Reglas y utilidades ─────────────────────────────────────────────────
 
     /**
-     * El envío debe ser de esta agencia de destino y estar EN_DESTINO; si no, el motivo exacto.
-     *
      * @param array<string, mixed> $envio
      * @return array<string, mixed>
      */
@@ -239,7 +219,6 @@ final class EntregaService
         ];
     }
 
-    /** "8.50" → 850 (también sirve para kilos: "0.60" → 60 centésimas). */
     private static function centimos(string $decimal): int
     {
         return (int) round(((float) $decimal) * 100);

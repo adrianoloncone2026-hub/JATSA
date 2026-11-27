@@ -6,7 +6,7 @@ import { fechaHoraBreve } from '../../utils/formato.js'
 
 // Diapositiva 16 del prototipo: los pagos que hizo el cliente o empresario y el total pagado.
 export default function MisPagos() {
-  const [estado, setEstado] = useState({ fase: 'cargando', datos: null, mensaje: '' }) // cargando | listo | error
+  const [estado, setEstado] = useState({ fase: 'cargando', datos: null, mensaje: '' })
   const [intento, setIntento] = useState(0)
 
   useEffect(() => {

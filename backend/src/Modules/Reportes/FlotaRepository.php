@@ -124,7 +124,6 @@ final class FlotaRepository implements RepositorioFlota
 
     /**
      * Condiciones de los filtros sobre Viaje (alias v). Cada una es un EXISTS: nunca multiplica filas, así que un viaje cuenta una vez.
-     *
      * @param array<string, ?string> $filtros
      * @param array<string, string> $valores
      */

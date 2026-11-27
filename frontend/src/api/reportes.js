@@ -1,6 +1,5 @@
-import { solicitar } from './cliente.js'
+import { descargar, solicitar } from './cliente.js'
 
-// Resumen y Viajes y flota del GERENTE (módulo 11). Solo lectura; el backend exige el rol GERENTE.
 
 function consulta(filtros) {
   const parametros = new URLSearchParams()
@@ -17,4 +16,13 @@ export function obtenerResumen(filtros = {}, signal) {
 // GET /api/reportes/viajes-flota?anio=&mes=&sucursal=&vehiculo=&transportista=&tipoEnvio= — diapositiva 28.
 export function obtenerViajesFlota(filtros = {}, signal) {
   return solicitar(`/reportes/viajes-flota${consulta(filtros)}`, { signal })
+}
+
+// GET /api/reportes/exportar/{gerencia|logistica}?sucursal= — descarga el .xlsx (módulo 12). El ADMINISTRADOR solo obtiene su sucursal.
+export function descargarPowerBi(tipo, filtros = {}, signal) {
+  return descargar(`/reportes/exportar/${tipo}-powerbi${consulta(filtros)}`, { signal })
+}
+
+export function descargarExcel(tipo, filtros = {}, signal) {
+  return descargar(`/reportes/exportar/${tipo}${consulta(filtros)}`, { signal })
 }

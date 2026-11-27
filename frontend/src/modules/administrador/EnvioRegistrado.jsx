@@ -5,11 +5,10 @@ import Etiqueta from '../../components/Etiqueta.jsx'
 import { fechaHoraCorta } from '../../utils/formato.js'
 
 // Confirmación tras formalizar (diapositiva 19): código de seguimiento, resumen de bultos y etiqueta para imprimir.
-// La misma pantalla sirve para reabrir un envío y reimprimir su etiqueta.
 export default function EnvioRegistrado() {
   const { codigo } = useParams()
   const ubicacion = useLocation()
-  const [estado, setEstado] = useState({ fase: 'cargando', envio: null, mensaje: '' }) // cargando | listo | no_encontrado | error
+  const [estado, setEstado] = useState({ fase: 'cargando', envio: null, mensaje: '' })
   const [intento, setIntento] = useState(0)
 
   useEffect(() => {
@@ -24,7 +23,6 @@ export default function EnvioRegistrado() {
     return () => control.abort()
   }, [codigo, intento])
 
-  // Recién formalizado: se muestra al instante con los datos del guardado mientras llega la versión del servidor.
   const envio = estado.envio ?? (ubicacion.state?.envio?.codigoSeguimiento === codigo ? ubicacion.state.envio : null)
   const cobrarAhora = ubicacion.state?.cobrarAhora === true
 
@@ -83,7 +81,6 @@ export default function EnvioRegistrado() {
           <button type="button" className="boton boton-azul" onClick={() => window.print()}>
             Imprimir etiqueta
           </button>
-          {/* «Cobrar ahora» abre Caja con el envío ya cargado (solo un parámetro de la URL: la modalidad no se guarda). */}
           <Link to={cobrarAhora ? `/administrador/caja?envio=${encodeURIComponent(envio.codigoSeguimiento)}` : '/administrador/caja'} className={cobrarAhora ? 'boton boton-marino' : 'boton boton-claro'}>
             {cobrarAhora ? 'Cobrar ahora (Caja)' : 'Ir a Caja'}
           </Link>

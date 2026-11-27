@@ -15,6 +15,7 @@ import ReservaVentanilla from '../modules/administrador/ReservaVentanilla.jsx'
 import Ventanilla from '../modules/administrador/Ventanilla.jsx'
 import Catalogos from '../modules/gerente/Catalogos.jsx'
 import Cuentas from '../modules/gerente/Cuentas.jsx'
+import Reportes from '../modules/gerente/Reportes.jsx'
 import Resumen from '../modules/gerente/Resumen.jsx'
 import ViajesFlota from '../modules/gerente/ViajesFlota.jsx'
 import DetalleViaje from '../modules/transportista/DetalleViaje.jsx'
@@ -46,7 +47,6 @@ const LAYOUTS = {
   gerente: LayoutGerente,
 }
 
-// Pantallas ya reales; el resto de las rutas muestran un marcador.
 const PANTALLAS_REALES = {
   'administrador/': Ventanilla,
   'administrador/sin-reserva': ReservaVentanilla,
@@ -55,10 +55,12 @@ const PANTALLAS_REALES = {
   'administrador/caja': Caja,
   'administrador/despacho': Despacho,
   'administrador/llegadas-entregas': LlegadasEntregas,
+  'administrador/reportes': Reportes,
   'administrador/contrasena': CambiarContrasena,
   'transportista/contrasena': CambiarContrasena,
   'gerente/': Resumen,
   'gerente/viajes-flota': ViajesFlota,
+  'gerente/reportes': Reportes,
   'gerente/contrasena': CambiarContrasena,
   'gerente/catalogos': Catalogos,
   'gerente/cuentas': Cuentas,
@@ -95,6 +97,13 @@ function NoEncontrada() {
 
 function elementoDe(seccion, pantalla) {
   const Real = PANTALLAS_REALES[`${seccion.id}/${pantalla.ruta}`]
+  if (Real && pantalla.roles) {
+    return (
+      <RutaProtegida roles={pantalla.roles}>
+        <Real />
+      </RutaProtegida>
+    )
+  }
   if (Real) return <Real />
   return <PantallaPendiente titulo={pantalla.titulo} modulo={pantalla.modulo} seccion={seccion.etiqueta} />
 }

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { cotizar, obtenerAgencias } from '../../api/publico.js'
-import Moneda, { iconoDeDepartamento } from '../../components/Moneda.jsx'
+import FotoAgencia from '../../components/FotoAgencia.jsx'
+import Mosaico from '../../components/Mosaico.jsx'
+import RangosPeso from '../../components/RangosPeso.jsx'
 
 const FORMATO_PESO = /^\d{1,6}([.,]\d{1,2})?$/
 
@@ -9,20 +11,19 @@ const FORMATO_PESO = /^\d{1,6}([.,]\d{1,2})?$/
 export default function Cotizador() {
   const [agencias, setAgencias] = useState({ fase: 'cargando', lista: [], mensaje: '' })
   const [intento, setIntento] = useState(0)
-  const [parametros] = useSearchParams() // la ruta puede venir precargada desde «Salidas» (?origen=&destino=)
+  const [parametros] = useSearchParams()
   const [campos, setCampos] = useState({ origen: parametros.get('origen') ?? '', destino: parametros.get('destino') ?? '', peso: '' })
   const [error, setError] = useState('')
   const [calculando, setCalculando] = useState(false)
   const [resultado, setResultado] = useState(null)
 
   // Cotización en curso. Una respuesta solo se acepta si sigue siendo la solicitud vigente: así una
-  // respuesta lenta de datos anteriores nunca muestra un precio que no corresponde a lo que hay en el formulario.
   const solicitudVigente = useRef(null)
   const cancelarCotizacion = useCallback(() => {
     solicitudVigente.current?.abort()
     solicitudVigente.current = null
   }, [])
-  useEffect(() => cancelarCotizacion, [cancelarCotizacion]) // al salir de la pantalla
+  useEffect(() => cancelarCotizacion, [cancelarCotizacion])
 
   useEffect(() => {
     const control = new AbortController()
@@ -39,8 +40,6 @@ export default function Cotizador() {
   function cambiar(evento) {
     const { name, value } = evento.target
     setCampos((anteriores) => ({ ...anteriores, [name]: value }))
-    // Un resultado (o una cotización en curso) calculado con otros datos podría confundir:
-    // al cambiar cualquier campo se cancela lo pendiente y se descarta lo mostrado.
     cancelarCotizacion()
     setCalculando(false)
     setResultado(null)
@@ -72,7 +71,7 @@ export default function Cotizador() {
     setCalculando(true)
     try {
       const datos = await cotizar({ ...campos, peso: campos.peso.trim().replace(',', '.') }, control.signal)
-      if (solicitudVigente.current !== control) return // respuesta obsoleta: otra solicitud la reemplazó
+      if (solicitudVigente.current !== control) return
       setResultado(datos)
     } catch (fallo) {
       if (fallo.name === 'AbortError' || solicitudVigente.current !== control) return
@@ -86,12 +85,15 @@ export default function Cotizador() {
     }
   }
 
-  const departamentoDe = (codigo) => agencias.lista.find((a) => a.codigo === codigo)?.departamento ?? ''
+  const agenciaDe = (codigo) => agencias.lista.find((a) => a.codigo === codigo) ?? null
 
   return (
     <div className="cotizador">
       <section className="panel cotizador-principal">
-        <h1>Cotiza tu envío</h1>
+        <div className="cabecera-ilustrada">
+          <h1>Cotiza tu envío</h1>
+          <Mosaico ids={[13, 20, 1, 2]} />
+        </div>
 
         {agencias.fase === 'error' && (
           <div className="resultado error" role="alert">
@@ -140,10 +142,11 @@ export default function Cotizador() {
           </p>
         )}
 
-        <div aria-live="polite">{resultado && <Resultado datos={resultado} departamentoDe={departamentoDe} />}</div>
+        <div aria-live="polite">{resultado && <Resultado datos={resultado} agenciaDe={agenciaDe} />}</div>
       </section>
 
       <aside className="cotizador-acciones" aria-label="Acciones">
+        <Mosaico vertical ids={[62, 4, 1, 66, 5]} />
         <Link to="/cliente/nueva-reserva" className="boton boton-marino">
           Reservar ahora
         </Link>
@@ -161,17 +164,21 @@ export default function Cotizador() {
   )
 }
 
-function Resultado({ datos, departamentoDe }) {
+function Resultado({ datos, agenciaDe }) {
   const aplicable = datos.cotizacion
 
   return (
     <section className="resultado-cotizacion" aria-label="Resultado de la cotización">
-      <div className="resultado-cabecera">
-        <div className="ruta-monedas" aria-hidden="true">
-          <Moneda icono={iconoDeDepartamento(departamentoDe(datos.origen.codigo))} tamano={72} />
-          <span>→</span>
-          <Moneda icono={iconoDeDepartamento(departamentoDe(datos.destino.codigo))} tamano={72} />
+      {(agenciaDe(datos.origen.codigo) || agenciaDe(datos.destino.codigo)) && (
+        <div className="fotos-ruta fotos-ruta-compacta">
+          <FotoAgencia agencia={agenciaDe(datos.origen.codigo)} etiqueta="Origen" />
+          <span className="fotos-ruta-flecha" aria-hidden="true">
+            →
+          </span>
+          <FotoAgencia agencia={agenciaDe(datos.destino.codigo)} etiqueta="Destino" />
         </div>
+      )}
+      <div className="resultado-cabecera">
         <div>
           <p className="ruta-texto">
             {datos.origen.nombre} → {datos.destino.nombre}
@@ -193,6 +200,9 @@ function Resultado({ datos, departamentoDe }) {
           )}
         </div>
       </div>
+
+      <h3>¿Cómo se clasifica por peso?</h3>
+      <RangosPeso tarifas={datos.tarifas} resaltado={aplicable.tipo} conPrecio />
 
       <table className="tabla-tarifas">
         <caption className="solo-lectores">Tarifas de la ruta por tipo de envío</caption>

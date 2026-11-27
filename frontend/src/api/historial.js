@@ -1,7 +1,6 @@
 import { solicitar } from './cliente.js'
 
 // Historial de envíos del CLIENTE y del EMPRESARIO (módulo 9): lo que la persona de la sesión envió o recibió.
-// De la otra parte solo viene el nombre: nunca documentos ni teléfonos.
 
 // GET /api/mis-envios?q=&rol=&estado=&desde=&hasta= — { envios, hayMas }.
 export function listarMisEnvios(filtros = {}, signal) {

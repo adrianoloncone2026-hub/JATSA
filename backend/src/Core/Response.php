@@ -5,9 +5,7 @@ namespace Jatsa\Core;
 
 final class Response
 {
-    /**
-     * @param array<string, string> $cabeceras
-     */
+    /** @param array<string, string> $cabeceras */
     private function __construct(
         private readonly int $estado,
         private readonly ?string $cuerpo,
@@ -15,16 +13,12 @@ final class Response
     ) {
     }
 
-    /** Respuesta correcta: { "data": ... } */
     public static function exito(mixed $datos, int $estado = 200): self
     {
         return self::json(['data' => $datos], $estado);
     }
 
     /**
-     * Respuesta de error: { "error": { "codigo": "...", "mensaje": "...", "campos": { "telefono": "..." } } }
-     * "campos" solo aparece cuando hay errores por campo (validaciones de formularios).
-     *
      * @param array<string, string> $cabeceras
      * @param array<string, string> $campos
      */
@@ -38,14 +32,23 @@ final class Response
         return self::json(['error' => $error], $estado, $cabeceras);
     }
 
+    /** Descarga de un archivo generado (no JSON). El nombre lo fija el servidor, nunca la petición. */
+    public static function archivo(string $contenido, string $tipo, string $nombre): self
+    {
+        return new self(200, $contenido, [
+            'Content-Type' => $tipo,
+            'Content-Disposition' => 'attachment; filename="' . $nombre . '"',
+            'Content-Length' => (string) strlen($contenido),
+            'Cache-Control' => 'no-store',
+        ]);
+    }
+
     public static function vacia(int $estado = 204): self
     {
         return new self($estado, null);
     }
 
-    /**
-     * @param array<string, string> $cabeceras
-     */
+    /** @param array<string, string> $cabeceras */
     private static function json(mixed $contenido, int $estado, array $cabeceras = []): self
     {
         $cuerpo = json_encode($contenido, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);

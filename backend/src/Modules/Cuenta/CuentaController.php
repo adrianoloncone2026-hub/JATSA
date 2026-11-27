@@ -18,25 +18,21 @@ final class CuentaController
         $this->cuentas = $cuentas ?? new CuentaService();
     }
 
-    /** POST /api/cuenta/registro — público. No abre sesión: la persona ingresa después con su usuario. */
     public function registrar(Request $peticion, array $parametros): Response
     {
         return Response::exito($this->cuentas->registrar($peticion->json()), 201);
     }
 
-    /** GET /api/cuenta — la cuenta de la sesión (cliente o empresario). */
     public function ver(Request $peticion, array $parametros): Response
     {
         return Response::exito($this->cuentas->obtener($this->idUsuarioDeLaSesion()));
     }
 
-    /** PATCH /api/cuenta — { telefono, telefonoAuxiliar?, correo? } */
     public function actualizar(Request $peticion, array $parametros): Response
     {
         return Response::exito($this->cuentas->actualizarContacto($this->idUsuarioDeLaSesion(), $peticion->json()));
     }
 
-    /** POST /api/cuenta/contrasena — { contrasenaActual, contrasenaNueva } */
     public function cambiarContrasena(Request $peticion, array $parametros): Response
     {
         $cuerpo = $peticion->json();
@@ -45,7 +41,6 @@ final class CuentaController
 
         $hashNuevo = $this->cuentas->cambiarContrasena($this->idUsuarioDeLaSesion(), $actual, $nueva);
 
-        // Esta sesión sigue válida con la huella nueva; las demás sesiones de la cuenta dejan de valer.
         Sesion::renovarHuella(Credencial::huella($hashNuevo));
 
         return Response::exito(['contrasenaCambiada' => true]);

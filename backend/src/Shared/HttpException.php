@@ -5,10 +5,7 @@ namespace Jatsa\Shared;
 
 use RuntimeException;
 
-/**
- * Error controlado que se traduce en una respuesta HTTP JSON.
- * El mensaje es el que verá el cliente: nunca debe contener SQL, rutas ni datos internos.
- */
+/** Error controlado que se traduce en una respuesta HTTP JSON. */
 final class HttpException extends RuntimeException
 {
     /**

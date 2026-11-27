@@ -202,7 +202,7 @@ async function estable(minimoMs = 250, limiteMs = 10000) {
 }
 const irA = async (rutaNueva) => { await navegador.irA(rutaNueva, 100); await estable(300) }
 const filas = (selector) => evaluar(`[...document.querySelectorAll(${JSON.stringify(selector)})].map(r => r.innerText.replace(/\\s+/g, ' ').trim()).join(' || ')`)
-const aviso = () => texto('.resultado')
+const aviso = () => texto('.resultado:not(.aviso-tarifas)')
 const llamadasA = (metodo, rutaApi) => llamadas.filter((l) => l.metodo === metodo && l.ruta === rutaApi)
 const tabla = (nombre) => filas(`table[class*="tabla-catalogo"] tbody tr${nombre ?? ''}`)
 
@@ -211,8 +211,8 @@ try {
   await irA('/gerente/catalogos')
   comprobar('título y pestañas; «Rutas y precios» es la pestaña inicial', [await texto('h1'), await evaluar(`[...document.querySelectorAll('[role=tab]')].map(t => t.innerText + ':' + t.getAttribute('aria-selected')).join(' ')`)], ['Catálogos', 'Sucursales:false Rutas y precios:true Vehículos:false'])
   comprobar('las cinco tarifas vigentes con su costo del bulto (S/ 9.15, 14.60, 30.20, 136.00 y 8.50)', await tabla(),
-    'MOQ001 → AQP001 SOBRE 8.00 0.005 230.0 4 01/09/2026 vigente S/ 9.15 Nuevo precio || MOQ001 → AQP001 PAQUETE 10.00 0.020 230.0 4 01/09/2026 vigente S/ 14.60 Nuevo precio || AQP001 → LIM001 PAQUETE 10.00 0.020 1010.0 18 01/09/2026 vigente S/ 30.20 Nuevo precio || LIM001 → ILO001 CARGA 40.00 0.080 1200.0 24 01/09/2026 vigente S/ 136.00 Nuevo precio || ILO001 → MOQ001 SOBRE 8.00 0.005 100.0 2 01/09/2026 vigente S/ 8.50 Nuevo precio')
-  comprobar('la nota de la diapositiva sobre «Nuevo precio»', (await texto('section[aria-label="Rutas y precios"] > .ayuda')).startsWith('Nuevo precio: se cierra la vigencia de la fila actual y se crea otra. Los bultos ya cobrados conservan su tarifa.'), true)
+    'MOQ001 → AQP001 Sin tarifa vigente: CARGA Agregar CARGA SOBRE 8.00 0.005 230.0 4 01/09/2026 vigente S/ 9.15 Nuevo precio || MOQ001 → AQP001 Sin tarifa vigente: CARGA Agregar CARGA PAQUETE 10.00 0.020 230.0 4 01/09/2026 vigente S/ 14.60 Nuevo precio || AQP001 → LIM001 Sin tarifa vigente: SOBRE, CARGA Agregar SOBRE PAQUETE 10.00 0.020 1010.0 18 01/09/2026 vigente S/ 30.20 Nuevo precio || LIM001 → ILO001 Sin tarifa vigente: SOBRE, PAQUETE Agregar SOBRE CARGA 40.00 0.080 1200.0 24 01/09/2026 vigente S/ 136.00 Nuevo precio || ILO001 → MOQ001 Sin tarifa vigente: PAQUETE, CARGA Agregar PAQUETE SOBRE 8.00 0.005 100.0 2 01/09/2026 vigente S/ 8.50 Nuevo precio')
+  comprobar('la nota de la diapositiva sobre «Nuevo precio»', (await texto('section[aria-label="Rutas y precios"] p.ayuda:last-of-type')).startsWith('Nuevo precio: se cierra la vigencia de la fila actual y se crea otra. Los bultos ya cobrados conservan su tarifa.'), true)
   comprobar('la tabla tiene un título accesible', await texto('caption'), 'Rutas con sus precios y vigencia')
 
   titulo('Catálogos: «Nuevo precio» (cierra la vigencia y crea otra fila)')
@@ -223,7 +223,7 @@ try {
   await escribir('#precio-base', '9,00'); await escribir('#precio-km-precio', '0.006'); await escribir('#precio-horas', '4'); await pulsar('form[aria-label="Nuevo precio"] button[type=submit]'); await estable()
   comprobar('el cuerpo enviado trae solo los precios (con las horas como número) y el aviso informa el costo nuevo', [llamadasA('POST', '/api/catalogos/rutas/1/precio').at(-1).cuerpo, await aviso()],
     [{ precioBase: '9,00', precioPorKm: '0.006', distanciaKm: '230.0', tiempoHoras: 4 }, 'Nuevo precio de MOQ001 → AQP001 (SOBRE): S/ 10.38 por bulto, vigente desde hoy. La tarifa anterior quedó cerrada.'])
-  comprobar('la lista muestra la fila nueva vigente y la vieja desaparece de las vigentes', [(await tabla()).split(' || ').length, (await tabla()).includes('MOQ001 → AQP001 SOBRE 9.00 0.006 230.0 4 01/11/2026 vigente S/ 10.38 Nuevo precio')], [5, true])
+  comprobar('la lista muestra la fila nueva vigente y la vieja desaparece de las vigentes', [(await tabla()).split(' || ').length, (await tabla()).includes('MOQ001 → AQP001 Sin tarifa vigente: CARGA Agregar CARGA SOBRE 9.00 0.006 230.0 4 01/11/2026 vigente S/ 10.38 Nuevo precio')], [5, true])
   await pulsar('.casilla input'); await estable()
   comprobar('«Ver tarifas cerradas» conserva el historial: la fila vieja con su precio y su fecha de cierre', (await tabla()).includes('MOQ001 → AQP001 SOBRE 8.00 0.005 230.0 4 01/09/2026 31/10/2026 S/ 9.15'), true)
   await pulsar('button[aria-label="Nuevo precio MOQ001 a AQP001 SOBRE"]'); await estable()
@@ -248,7 +248,7 @@ try {
   await completar('MOQ001', 'AQP001', 'SOBRE'); await pulsar('form[aria-label="Nueva ruta"] button[type=submit]'); await estable()
   comprobar('una ruta con tarifa vigente repetida: el servidor la rechaza y sugiere «Nuevo precio»', await aviso(), 'Esa ruta ya tiene una tarifa vigente para ese tipo. Usa «Nuevo precio» sobre la fila actual.')
   await completar('ILO001', 'AQP001', 'PAQUETE'); await pulsar('form[aria-label="Nueva ruta"] button[type=submit]'); await estable()
-  comprobar('ruta nueva: aviso, formulario cerrado y fila vigente desde hoy', [await aviso(), await existe('form[aria-label="Nueva ruta"]'), (await tabla()).includes('ILO001 → AQP001 PAQUETE 12.50 0.025 330.5 5 01/11/2026 vigente S/ 20.76 Nuevo precio')],
+  comprobar('ruta nueva: aviso, formulario cerrado y fila vigente desde hoy', [await aviso(), await existe('form[aria-label="Nueva ruta"]'), (await tabla()).includes('ILO001 → AQP001 Sin tarifa vigente: SOBRE, CARGA Agregar SOBRE PAQUETE 12.50 0.025 330.5 5 01/11/2026 vigente S/ 20.76 Nuevo precio')],
     ['Ruta ILO001 → AQP001 (PAQUETE) creada, vigente desde hoy.', false, true])
 
   titulo('Catálogos: Sucursales')

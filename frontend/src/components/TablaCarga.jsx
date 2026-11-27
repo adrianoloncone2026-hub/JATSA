@@ -1,7 +1,6 @@
 import { fechaHoraBreve } from '../utils/formato.js'
 
 // Carga de un viaje: envío, bultos, peso, destino final y cuándo se cargó (diapositiva 25). Con `renderAccion` añade una columna
-// de acción por envío (p. ej. «Quitar» en Despacho). No tiene lógica de negocio.
 export default function TablaCarga({ carga, renderAccion }) {
   return (
     <div className="tabla-envoltorio">

@@ -6,10 +6,7 @@ namespace Jatsa\Modules\Auth;
 use Jatsa\Core\Database;
 use PDO;
 
-/**
- * Lee Usuario, Persona y Sucursal (solo SELECT, siempre con parámetros).
- * Usa los nombres de tabla y columna del script SQL definitivo.
- */
+/** Lee Usuario, Persona y Sucursal (solo SELECT, siempre con parámetros). */
 final class UsuarioRepository implements RepositorioUsuarios
 {
     private const CONSULTA = <<<'SQL'
@@ -30,9 +27,7 @@ final class UsuarioRepository implements RepositorioUsuarios
         return $this->uno(self::CONSULTA . ' WHERE u.idUsuario = :valor', $idUsuario, PDO::PARAM_INT);
     }
 
-    /**
-     * @return array<string, mixed>|null
-     */
+    /** @return array<string, mixed>|null */
     private function uno(string $sql, string|int $valor, int $tipo): ?array
     {
         $sentencia = Database::conexion()->prepare($sql);

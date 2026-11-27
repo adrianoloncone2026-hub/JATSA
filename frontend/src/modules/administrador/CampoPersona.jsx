@@ -4,14 +4,10 @@ import CampoTexto from '../../components/CampoTexto.jsx'
 import { errorDocumentoPersonal, sinSeparadores } from '../../utils/validaciones.js'
 
 // Documento de una persona (remitente o destinatario) con su nombre autocompletado. Si el documento no existe
-// pide nombre y teléfono para crearla. Los campos se llaman «<rol>TipoDocumento», «<rol>NumeroDocumento»,
-// «<rol>Nombre» y «<rol>Telefono», igual que en POST /api/ventanilla/reservas.
-//
-// Cada cambio de documento cancela la consulta anterior: un resultado lento nunca se muestra para otro documento.
 export default function CampoPersona({ rol, etiqueta, valores, errores, onCambio, onEstado }) {
   const tipo = valores[`${rol}TipoDocumento`]
   const numero = valores[`${rol}NumeroDocumento`]
-  const [busqueda, setBusqueda] = useState({ fase: 'inactivo' }) // inactivo | buscando | existe | nuevo | error
+  const [busqueda, setBusqueda] = useState({ fase: 'inactivo' })
 
   useEffect(() => {
     if (errorDocumentoPersonal(tipo, numero)) {
@@ -36,7 +32,6 @@ export default function CampoPersona({ rol, etiqueta, valores, errores, onCambio
     }
   }, [tipo, numero])
 
-  // La pantalla necesita saber si esta persona es nueva para validar sus datos.
   useEffect(() => {
     onEstado?.(rol, busqueda.fase)
   }, [busqueda.fase, rol, onEstado])

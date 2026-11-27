@@ -10,14 +10,12 @@ const ROLES_PERSONAL = ['ADMINISTRADOR', 'TRANSPORTISTA']
 const FILTROS = { q: '', rol: '', estado: '' }
 const NUEVA = { tipoDocumento: 'DNI', numeroDocumento: '', rol: 'TRANSPORTISTA', sucursal: '', usuario: '', contrasena: '' }
 
-// ¿El documento ya tiene el formato mínimo para consultar a la persona? (el servidor valida de verdad)
 const documentoListo = (tipo, numero) => (tipo === 'DNI' ? /^\d{8}$/.test(numero) : /^[A-Za-z0-9]{6,12}$/.test(numero))
 
 // Diapositiva 30 del prototipo: cuentas de usuario del gerente. La cuenta de personal se crea para una persona que YA existe y todavía
-// no tiene cuenta. Las cuentas no se borran: se desactivan. Nunca se muestran contraseñas, documentos ni teléfonos.
 export default function Cuentas() {
   const [filtros, setFiltros] = useState(FILTROS)
-  const [aplicados, setAplicados] = useState(FILTROS) // el texto espera un instante tras la última tecla
+  const [aplicados, setAplicados] = useState(FILTROS)
   const [lista, setLista] = useState({ fase: 'cargando', datos: null, mensaje: '', errores: {} })
   const [intento, setIntento] = useState(0)
   const [sucursales, setSucursales] = useState([])
@@ -25,18 +23,17 @@ export default function Cuentas() {
   const [aviso, setAviso] = useState(null)
   const [enviando, setEnviando] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
-  const [edicion, setEdicion] = useState(null) // { usuario, rol, sucursal }
+  const [edicion, setEdicion] = useState(null)
   const [erroresEdicion, setErroresEdicion] = useState({})
   const [nueva, setNueva] = useState(NUEVA)
   const [erroresNueva, setErroresNueva] = useState({})
-  const [persona, setPersona] = useState({ fase: 'inactivo', datos: null }) // inactivo | consultando | listo | error
+  const [persona, setPersona] = useState({ fase: 'inactivo', datos: null })
 
   useEffect(() => {
     const temporizador = setTimeout(() => setAplicados((actual) => (JSON.stringify(actual) === JSON.stringify(filtros) ? actual : filtros)), filtros.q === aplicados.q ? 0 : 350)
     return () => clearTimeout(temporizador)
   }, [filtros, aplicados.q])
 
-  // Cada cambio de filtro cancela la consulta anterior: una respuesta lenta no pisa a la del filtro actual.
   useEffect(() => {
     const control = new AbortController()
     setLista((anterior) => ({ ...anterior, fase: 'cargando', errores: {} }))
@@ -56,7 +53,6 @@ export default function Cuentas() {
     return () => control.abort()
   }, [])
 
-  // Al completar el documento se consulta a la persona; cada cambio cancela la consulta anterior.
   const numeroLimpio = sinSeparadores(nueva.numeroDocumento)
   useEffect(() => {
     if (!documentoListo(nueva.tipoDocumento, numeroLimpio)) {

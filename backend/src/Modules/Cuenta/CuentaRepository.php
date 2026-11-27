@@ -9,10 +9,7 @@ use PDO;
 use PDOException;
 use Throwable;
 
-/**
- * Lee y escribe Persona y Usuario con los nombres del script SQL definitivo. Siempre con parámetros.
- * Las escrituras son: alta de persona/usuario, actualización de contacto y cambio de hash.
- */
+/** Lee y escribe Persona y Usuario con los nombres del script SQL definitivo. Siempre con parámetros. */
 final class CuentaRepository implements RepositorioCuentas
 {
     private const ERROR_CLAVE_DUPLICADA = [2627, 2601];
@@ -68,7 +65,6 @@ final class CuentaRepository implements RepositorioCuentas
                 $idPersona = (int) $buscada->fetchColumn();
             }
 
-            // Cliente y empresario no pertenecen a una sucursal (CK_USUARIO_SUCURSAL): idSucursal = NULL.
             $usuario = $pdo->prepare(
                 'INSERT INTO Usuario (idPersona, idSucursal, nombreUsuario, hashContrasena, rol, activo)
                  VALUES (:persona, NULL, :nombre, :hash, :rol, 1)',
@@ -146,7 +142,6 @@ final class CuentaRepository implements RepositorioCuentas
     public function actualizarHash(int $idUsuario, string $hashAnterior, string $hashContrasena): bool
     {
         // Actualización condicional: la fila solo cambia si todavía tiene el hash que se verificó con la contraseña actual. La
-        // comparación es binaria (un bcrypt distingue mayúsculas de minúsculas y la intercalación de la base no). Una sola sentencia:
         // SQL Server bloquea la fila mientras la evalúa y escribe, así que de dos cambios simultáneos solo uno afecta una fila.
         $sentencia = Database::conexion()->prepare(
             'UPDATE Usuario SET hashContrasena = :nuevo WHERE idUsuario = :id AND hashContrasena COLLATE Latin1_General_BIN2 = :anterior',
@@ -158,9 +153,6 @@ final class CuentaRepository implements RepositorioCuentas
 
         return $sentencia->rowCount() === 1;
     }
-    /**
-     * Convierte la violación de una clave única en un 409 comprensible; cualquier otro error se relanza.
-     */
     private function traducir(Throwable $excepcion): Throwable
     {
         if ($excepcion instanceof PDOException) {

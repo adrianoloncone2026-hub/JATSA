@@ -17,19 +17,16 @@ final class EnvioController
         $this->envios = $envios ?? new EnvioService();
     }
 
-    /** POST /api/envios/cotizacion — cotiza los bultos de una reserva sin escribir nada. */
     public function cotizar(Request $peticion, array $parametros): Response
     {
         return Response::exito($this->envios->cotizar($this->usuario(), $peticion->json()));
     }
 
-    /** POST /api/envios — formaliza la reserva: crea el envío con sus bultos. */
     public function formalizar(Request $peticion, array $parametros): Response
     {
         return Response::exito(['envio' => $this->envios->formalizar($this->usuario(), $peticion->json())], 201);
     }
 
-    /** GET /api/envios/{codigo} — un envío (para la etiqueta) del personal de su sucursal de origen o destino. */
     public function ver(Request $peticion, array $parametros): Response
     {
         return Response::exito(['envio' => $this->envios->ver($this->usuario(), (string) ($parametros['codigo'] ?? ''))]);

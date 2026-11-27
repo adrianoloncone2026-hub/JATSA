@@ -1,5 +1,4 @@
 // Roles del sistema. Los valores coinciden con Usuario.rol (en mayúsculas);
-// VISITANTE es quien no tiene sesión. La autorización real se aplica en el backend.
 export const ROLES = {
   VISITANTE: 'VISITANTE',
   CLIENTE: 'CLIENTE',
@@ -9,7 +8,6 @@ export const ROLES = {
   GERENTE: 'GERENTE',
 }
 
-// Pantalla inicial de cada rol tras ingresar (CLIENTE y EMPRESARIO comparten área).
 const INICIO_POR_ROL = {
   [ROLES.CLIENTE]: '/cliente',
   [ROLES.EMPRESARIO]: '/cliente',

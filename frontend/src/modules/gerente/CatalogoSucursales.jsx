@@ -7,14 +7,13 @@ import { formatoTelefono } from '../../utils/formato.js'
 const VACIO = { codigoSucursal: '', nombre: '', departamento: '', provincia: '', distrito: '', direccion: '', telefonos: '' }
 
 // Pestaña «Sucursales» de Catálogos (diapositiva 29). Las sucursales no se borran: se desactivan (si no tienen personal activo,
-// viajes sin llegada ni envíos en curso; el servidor lo comprueba y explica).
 export default function CatalogoSucursales() {
-  const [estado, setEstado] = useState({ fase: 'cargando', sucursales: [], mensaje: '' }) // cargando | listo | error
+  const [estado, setEstado] = useState({ fase: 'cargando', sucursales: [], mensaje: '' })
   const [intento, setIntento] = useState(0)
-  const [formulario, setFormulario] = useState(null) // null = cerrado; { editando: codigo | null, campos }
+  const [formulario, setFormulario] = useState(null)
   const [errores, setErrores] = useState({})
   const [enviando, setEnviando] = useState(false)
-  const [aviso, setAviso] = useState(null) // { tipo: 'ok' | 'error', texto }
+  const [aviso, setAviso] = useState(null)
   const [confirmando, setConfirmando] = useState('')
 
   const recargar = useCallback(() => setIntento((n) => n + 1), [])

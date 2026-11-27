@@ -1,14 +1,12 @@
-// Cliente HTTP único. Toda comunicación con el backend pasa por aquí.
-// La URL base sale de VITE_API_URL (por defecto "/api", reenviada al backend por Vite en desarrollo).
 const BASE = (import.meta.env.VITE_API_URL ?? '/api').replace(/\/$/, '')
 
 export class ErrorApi extends Error {
   constructor(estado, codigo, mensaje, campos = {}) {
     super(mensaje)
     this.name = 'ErrorApi'
-    this.estado = estado // 0 = sin conexión con el servidor
+    this.estado = estado
     this.codigo = codigo
-    this.campos = campos // { nombreDelCampo: 'mensaje' } en los errores de validación de formularios
+    this.campos = campos
   }
 }
 
@@ -44,8 +42,6 @@ export async function solicitar(ruta, { metodo = 'GET', cuerpo, signal } = {}) {
   }
 
   if (!respuesta.ok) {
-    // 502/503/504 sin error JSON de la API: lo emite el proxy (o un servidor intermedio)
-    // porque el backend no responde. Un 503 propio de la API sí trae { error } y se respeta.
     if ([502, 503, 504].includes(respuesta.status) && !contenido?.error) {
       throw new ErrorApi(0, 'sin_conexion', 'No se pudo conectar con el servidor.')
     }
@@ -58,4 +54,31 @@ export async function solicitar(ruta, { metodo = 'GET', cuerpo, signal } = {}) {
   }
 
   return contenido?.data ?? null
+}
+
+// Descarga de un archivo (p. ej. .xlsx): devuelve { blob, nombre }. Los errores llegan como en `solicitar`.
+export async function descargar(ruta, { signal } = {}) {
+  let respuesta
+  try {
+    respuesta = await fetch(`${BASE}${ruta}`, { headers: { 'X-Requested-With': 'JATSA' }, credentials: 'include', signal })
+  } catch (error) {
+    if (error.name === 'AbortError') throw error
+    throw new ErrorApi(0, 'sin_conexion', 'No se pudo conectar con el servidor.')
+  }
+
+  if (!respuesta.ok) {
+    let contenido = null
+    try {
+      contenido = await respuesta.json()
+    } catch {
+      contenido = null
+    }
+    if ([502, 503, 504].includes(respuesta.status) && !contenido?.error) {
+      throw new ErrorApi(0, 'sin_conexion', 'No se pudo conectar con el servidor.')
+    }
+    throw new ErrorApi(respuesta.status, contenido?.error?.codigo ?? 'error', contenido?.error?.mensaje ?? 'No se pudo generar el archivo.', contenido?.error?.campos ?? {})
+  }
+
+  const nombre = /filename="([^"]+)"/.exec(respuesta.headers.get('Content-Disposition') ?? '')?.[1] ?? 'JATSA.xlsx'
+  return { blob: await respuesta.blob(), nombre }
 }

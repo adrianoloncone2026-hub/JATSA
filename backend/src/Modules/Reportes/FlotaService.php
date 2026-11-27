@@ -7,14 +7,7 @@ use Closure;
 use DateTimeImmutable;
 use Jatsa\Shared\HttpException;
 
-/**
- * «Viajes y flota» del GERENTE (diapositiva 28). Solo lectura.
- *
- * Periodo (año y mes opcional) sobre la salida de los viajes TERMINADOS. «En ruta ahora» y «Programados» son el estado actual
- * (no dependen del periodo) pero sí de los demás filtros. Estado de un viaje: sin salida = programado; con salida y sin llegada =
- * en ruta; con llegada = terminado. Uso de capacidad = promedio por viaje de peso cargado / capacidad del vehículo. Transbordo =
- * envío cargado en más de un viaje; el porcentaje es sobre los envíos distintos cargados en los viajes del periodo.
- */
+/** «Viajes y flota» del GERENTE (diapositiva 28). Solo lectura. */
 final class FlotaService
 {
     private readonly RepositorioFlota $flota;
@@ -29,7 +22,7 @@ final class FlotaService
 
     /**
      * @param array<string, mixed> $consulta anio (por defecto el actual), mes (1-12; vacío = todo el año), sucursal, vehiculo (placa),
-     *                                       transportista (nombreUsuario) y tipoEnvio (SOBRE|PAQUETE|CARGA)
+     * transportista (nombreUsuario) y tipoEnvio (SOBRE|PAQUETE|CARGA)
      * @return array<string, mixed>
      */
     public function viajesYFlota(array $consulta): array
@@ -75,8 +68,6 @@ final class FlotaService
     }
 
     /**
-     * Añade llegadaAprox (salida + horas estimadas de la ruta) y diasDespues (0 = el mismo día; 1 = «+1»); null si la ruta no tiene tiempo.
-     *
      * @param array<string, mixed> $viaje
      * @return array<string, mixed>
      */
@@ -102,7 +93,6 @@ final class FlotaService
             return (int) $ahora->format('Y');
         }
         if (preg_match('/^\d{4}$/', $texto) !== 1 || (int) $texto < 2000 || (int) $texto > 9998) {
-            // Tope 9998: el año siguiente debe seguir dentro del rango de datetime2 (hasta el año 9999); si no, SQL Server daría 500.
             $errores['anio'] = 'Indica un año entre 2000 y 9998.';
 
             return (int) $ahora->format('Y');

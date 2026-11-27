@@ -7,23 +7,16 @@ use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Roles;
 use Jatsa\Shared\Validacion;
 
-/**
- * Cuentas de usuario del GERENTE (diapositiva 30 del prototipo): lista, alta de personal, edición de puesto y desactivación.
- *
- * La cuenta de personal se crea para una PERSONA QUE YA EXISTE y todavía no tiene cuenta (la pantalla pide solo «Documento de la
- * persona»; Persona exige teléfono y la cuenta es 1:1 con la persona). Nunca se devuelve el hash ni documentos o teléfonos.
- * Las cuentas se desactivan, no se borran: la sesión de una cuenta desactivada deja de valer en la siguiente petición.
- */
+/** Cuentas de usuario del GERENTE (diapositiva 30 del prototipo): lista, alta de personal, edición de puesto y desactivación. */
 final class UsuariosService
 {
     public const ROLES = [Roles::GERENTE, Roles::ADMINISTRADOR, Roles::TRANSPORTISTA, Roles::CLIENTE, Roles::EMPRESARIO];
-    /** Roles de personal de agencia: tienen sucursal obligatoria (CK_USUARIO_SUCURSAL). */
     public const ROLES_PERSONAL = [Roles::ADMINISTRADOR, Roles::TRANSPORTISTA];
     public const TIPOS_DOCUMENTO = ['DNI', 'CE', 'PAS'];
     public const MAX_LISTA = 200;
     public const MAX_BUSQUEDA = 50;
     private const LARGO_MINIMO_CONTRASENA = 8;
-    private const BYTES_MAXIMOS_CONTRASENA = 72; // bcrypt ignora lo que pase de 72 bytes
+    private const BYTES_MAXIMOS_CONTRASENA = 72;
 
     private readonly RepositorioGestionUsuarios $usuarios;
 
@@ -62,8 +55,6 @@ final class UsuariosService
     }
 
     /**
-     * Para el formulario «Nueva cuenta de personal»: ¿la persona existe y puede recibir una cuenta?
-     *
      * @param array<string, mixed> $consulta tipoDocumento, numeroDocumento
      * @return array{persona: array<string, mixed>}
      */
@@ -116,7 +107,6 @@ final class UsuariosService
         }
 
         // Que la sucursal exista y esté ACTIVA se decide DENTRO de la transacción del repositorio, con la sucursal bloqueada: su
-        // desactivación (que cuenta el personal activo) no puede intercalarse entre esta validación y el alta de la cuenta.
         $this->usuarios->crearCuenta($persona['idPersona'], $sucursal, $usuario, password_hash($contrasena, PASSWORD_BCRYPT, ['cost' => 12]), $rol, static function (array $ctx): void {
             if (!$ctx['sucursalActiva']) {
                 throw self::datosInvalidos(['sucursal' => 'Elige una sucursal activa.']);
@@ -127,8 +117,6 @@ final class UsuariosService
     }
 
     /**
-     * «Editar»: el puesto del personal (rol y sucursal). Las demás cuentas solo se activan o desactivan.
-     *
      * @param array<string, mixed> $datos rol, sucursal
      * @return array<string, mixed>
      */
@@ -147,13 +135,12 @@ final class UsuariosService
         $this->exigirValidos($errores);
 
         // TODO lo que decide sale de la fila y de la sucursal BLOQUEADAS por el repositorio: si hay cambio de puesto se calcula aquí, con
-        // el rol y la sucursal que la cuenta tiene en ese momento (no con una lectura anterior que otro gerente pudo dejar obsoleta).
         $resultado = $this->usuarios->cambiarPuesto($nombreUsuario, $rol, $sucursal, static function (array $ctx) use ($rol, $sucursal): void {
             if (!in_array($ctx['rolActual'], self::ROLES_PERSONAL, true)) {
                 throw new HttpException(409, 'cuenta_no_editable', 'Solo se edita el puesto del personal (administradores y transportistas).');
             }
             if ($rol === $ctx['rolActual'] && $sucursal === $ctx['sucursalActual']) {
-                return; // sin cambios: guardar no es un error
+                return;
             }
             if (!$ctx['sucursalActiva']) {
                 throw self::datosInvalidos(['sucursal' => 'Elige una sucursal activa.']);
@@ -169,8 +156,6 @@ final class UsuariosService
         return $this->presentar($this->cuentaDe($nombreUsuario), strtolower((string) ($sesion['nombreUsuario'] ?? '')));
     }
     /**
-     * «Desactivar seleccionada» (y volver a activar). No puede desactivarse a sí mismo ni al último gerente activo.
-     *
      * @param array<string, mixed> $datos activo: bool
      * @return array<string, mixed>
      */
@@ -184,7 +169,6 @@ final class UsuariosService
         $resultado = $this->usuarios->cambiarEstado($actual['nombreUsuario'], $activo, static function (array $ctx) use ($activo, $esUsted): void {
             if ($activo) {
                 // Reactivar personal exige que su sucursal exista y esté ACTIVA (decidido con la sucursal bloqueada): crear cuenta y
-                // cambiar de puesto ya lo exigen, y esta vía no puede dejar personal activo en una agencia desactivada.
                 if (in_array($ctx['rol'], self::ROLES_PERSONAL, true) && !$ctx['activo'] && !$ctx['sucursalActiva']) {
                     throw new HttpException(409, 'sucursal_inactiva', sprintf(
                         'No se puede reactivar: su sucursal%s está desactivada. Reactiva la sucursal o muévela a una agencia activa con «Editar» y vuelve a intentarlo.',
@@ -192,7 +176,7 @@ final class UsuariosService
                     ));
                 }
 
-                return; // las demás reactivaciones (gerente, cliente, empresario) no dependen de una sucursal
+                return;
             }
             if ($esUsted) {
                 throw new HttpException(409, 'no_puede_desactivarse', 'No puedes desactivar tu propia cuenta.');
@@ -211,7 +195,6 @@ final class UsuariosService
         return $this->presentar($this->cuentaDe($nombreUsuario), $yo);
     }
 
-    // ── Utilidades ──────────────────────────────────────────────────────────
 
     /**
      * @param array<string, mixed>  $datos

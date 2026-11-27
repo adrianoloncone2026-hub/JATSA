@@ -6,9 +6,7 @@ namespace Jatsa\Modules\Publico;
 use Jatsa\Core\Database;
 use PDO;
 
-/**
- * Lee Ruta, Sucursal y Viaje para las salidas entre sucursales (solo SELECT, con parámetros). No toca Persona, Envio ni Pago.
- */
+/** Lee Ruta, Sucursal y Viaje para las salidas entre sucursales (solo SELECT, con parámetros). No toca Persona, Envio ni Pago. */
 final class SalidaRepository implements RepositorioSalidas
 {
     public function tarifasVigentes(string $hoy): array

@@ -1,34 +1,17 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import ilustracion from '../../assets/ilustracion-sur.png'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthProvider.jsx'
 import { ROLES, rutaInicioDeRol } from '../../auth/roles.js'
-import Moneda from '../../components/Moneda.jsx'
+import logo from '../../assets/logo-jatsa.png'
+import Mosaico, { ImagenAzul } from '../../components/Mosaico.jsx'
+import { fotoDeRegion } from '../../utils/regiones.js'
 
-// Código de seguimiento: «EN» + 10 letras o dígitos (restricción CK_ENVIO_CODIGO del script SQL).
-const FORMATO_CODIGO = /^EN[A-Z0-9]{10}$/
-
-// Lema de la portada (diapositiva 2 del prototipo). Es texto editorial fijo, no un catálogo:
-// no depende de la API ni de las agencias que haya registradas.
 const LEMA_LUGARES = 'Moquegua · Arequipa · Lima · Ilo'
 
-// Diapositiva 2 del prototipo: buscador de rastreo y accesos a salidas, cotizador, agencias y reserva.
-export default function Inicio() {
-  const navegar = useNavigate()
-  const { usuario } = useAuth()
-  const [codigo, setCodigo] = useState('')
-  const [error, setError] = useState('')
+const MOSAICO = ['Cusco', 'Arequipa', 'Puno', 'Moquegua', 'Lima', 'Tacna', 'Ica', 'La Libertad', 'Loreto', 'Amazonas', 'Cajamarca', 'Piura']
 
-  function rastrear(evento) {
-    evento.preventDefault()
-    const normalizado = codigo.trim().toUpperCase()
-    if (!FORMATO_CODIGO.test(normalizado)) {
-      setError('El código de seguimiento empieza con EN y tiene 12 caracteres. Por ejemplo: ENZ5H0D3V7NJ.')
-      return
-    }
-    setError('')
-    navegar(`/rastreo?codigo=${encodeURIComponent(normalizado)}`)
-  }
+// Diapositiva 2 del prototipo: portada con accesos a salidas, cotizador, agencias y reserva.
+export default function Inicio() {
+  const { usuario } = useAuth()
 
   const esCliente = usuario && (usuario.rol === ROLES.CLIENTE || usuario.rol === ROLES.EMPRESARIO)
   const reserva = esCliente
@@ -38,55 +21,51 @@ export default function Inicio() {
       : { to: '/ingresar', texto: 'Ingresar' }
 
   const tarjetas = [
-    { icono: 'casa', titulo: 'Próximas salidas', detalle: 'Horarios habituales entre sucursales', to: '/salidas', texto: 'Ver salidas' },
-    { icono: 'edificio', titulo: 'Cotiza tu envío', detalle: 'Precio por peso, tipo y ruta', to: '/cotizador', texto: 'Cotizar' },
-    { icono: 'iglesia', titulo: 'Encuentra una agencia', detalle: 'Dirección y teléfonos', to: '/agencias', texto: 'Ver agencias' },
-    { icono: 'casa', titulo: 'Reserva en línea', detalle: 'Ingresa y deja tu reserva lista', ...reserva },
+    { icono: 23, titulo: 'Próximas salidas', detalle: 'Horarios habituales entre sucursales', to: '/salidas', texto: 'Ver salidas' },
+    { icono: 13, titulo: 'Cotiza tu envío', detalle: 'Precio por peso, tipo y ruta', to: '/cotizador', texto: 'Cotizar' },
+    { icono: 12, titulo: 'Encuentra una agencia', detalle: 'Dirección y teléfonos', to: '/agencias', texto: 'Ver agencias' },
+    { icono: 1, titulo: 'Reserva en línea', detalle: 'Ingresa y deja tu reserva lista', ...reserva },
   ]
 
   return (
-    <div className="inicio">
-      <section className="hero" aria-labelledby="titulo-inicio">
+    <div className="inicio inicio-rejilla">
+      <div className="inicio-principal">
+      <section className="hero hero-mosaico" aria-labelledby="titulo-inicio">
         <div className="hero-texto">
+          <img className="hero-logo" src={logo} alt="Jatsa Cargo" />
           <h1 id="titulo-inicio">Envía, rastrea y mira cuándo sale tu encomienda</h1>
           <p className="hero-lugares">{LEMA_LUGARES}</p>
+          <div className="hero-acciones">
+            <Link to="/cotizador" className="boton boton-amarillo">
+              Cotizar
+            </Link>
+          </div>
         </div>
-        <img className="hero-ilustracion" src={ilustracion} alt="" />
+        <ul className="mosaico" aria-label="Regiones del Perú">
+          {MOSAICO.map((region, i) => {
+            const foto = fotoDeRegion(region)
+            return (
+              foto && (
+                <li key={region} className={`mosaico-celda m${i + 1}`}>
+                  <img src={foto.url} alt={`${foto.lugar}, ${region}`} loading={i < 4 ? 'eager' : 'lazy'} />
+                  <span>{region}</span>
+                </li>
+              )
+            )
+          })}
+        </ul>
       </section>
 
-      <form className="tarjeta-rastreo" onSubmit={rastrear} noValidate>
-        <h2>Rastrea tu envío</h2>
-        <div className="rastreo-fila">
-          <div className="campo">
-            <label htmlFor="codigo-seguimiento">Código de seguimiento</label>
-            <input
-              id="codigo-seguimiento"
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={12}
-              value={codigo}
-              onChange={(e) => setCodigo(e.target.value)}
-              aria-invalid={error !== ''}
-              aria-describedby={error ? 'error-codigo' : undefined}
-            />
-          </div>
-          <button type="submit" className="boton boton-marino">
-            Rastrear
-          </button>
-        </div>
-        {error && (
-          <p id="error-codigo" className="mensaje-error" role="alert">
-            {error}
-          </p>
-        )}
-      </form>
+      <Mosaico ids={[62, 63, 64, 66, 67, 68]} className="alto" />
+      </div>
 
       <section className="tarjetas-acceso" aria-label="Servicios">
         {tarjetas.map((tarjeta) => (
           <article key={tarjeta.titulo} className="tarjeta-acceso">
             <div className="tarjeta-acceso-cabecera">
-              <Moneda icono={tarjeta.icono} />
+              <span className="celda-azul tipo-icono icono-tarjeta">
+                <ImagenAzul id={tarjeta.icono} />
+              </span>
               <div>
                 <h3>{tarjeta.titulo}</h3>
                 <p>{tarjeta.detalle}</p>

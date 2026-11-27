@@ -1,6 +1,5 @@
 import { solicitar } from './cliente.js'
 
-// Viajes (módulo 7). «Mis viajes», salida y llegada son del TRANSPORTISTA; el detalle también lo ve el administrador de la agencia.
 
 // GET /api/viajes?estado= — { viajes, hayMas } del transportista de la sesión. estado: '' | PROGRAMADO | EN_RUTA | TERMINADO.
 export function listarMisViajes(estado, signal) {

@@ -6,9 +6,7 @@ namespace Jatsa\Modules\Publico;
 use Jatsa\Core\Database;
 use PDO;
 
-/**
- * Lee Sucursal y Telefono_Sucursal (solo SELECT, con parámetros). Solo sucursales activas.
- */
+/** Lee Sucursal y Telefono_Sucursal (solo SELECT, con parámetros). Solo sucursales activas. */
 final class AgenciaRepository implements RepositorioAgencias
 {
     private const CONSULTA = <<<'SQL'
@@ -37,8 +35,6 @@ final class AgenciaRepository implements RepositorioAgencias
     }
 
     /**
-     * Une las filas (una por teléfono) en una agencia con su lista de teléfonos.
-     *
      * @param list<array<string, mixed>> $filas
      * @return list<array<string, mixed>>
      */

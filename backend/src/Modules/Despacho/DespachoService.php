@@ -12,17 +12,9 @@ use Jatsa\Modules\Viajes\ViajeRepository;
 use Jatsa\Modules\Viajes\ViajeService;
 use Jatsa\Shared\HttpException;
 
-/**
- * Despacho del Administrador (diapositiva 21): viajes que salen de su agencia, programar un viaje y cargar en él los
- * envíos que esperan en la agencia. Todo se limita a la sucursal de la sesión: un viaje de otro origen es, para el
- * personal, como si no existiera.
- *
- * Las reglas de carga (viaje programado y de esta agencia, envío en espera aquí, destino no visitado, capacidad del
- * vehículo) se comprueban dentro de la transacción de DespachoRepository::cargar, con el viaje y el envío bloqueados.
- */
+/** Despacho del Administrador (diapositiva 21): viajes que salen de su agencia, programar un viaje y cargar en él los */
 final class DespachoService
 {
-    /** Terminados que se muestran en la lista de salidas (los programados y en ruta se muestran todos). */
     public const MAX_TERMINADOS = 20;
     public const MAX_EN_ESPERA = 200;
 
@@ -41,8 +33,6 @@ final class DespachoService
     }
 
     /**
-     * «Despacho · salen de la agencia»: programados y en ruta, y los últimos terminados.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -67,8 +57,6 @@ final class DespachoService
     }
 
     /**
-     * «Envíos en espera en esta agencia», cada uno con el viaje programado hacia su destino final (si hay).
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -104,8 +92,6 @@ final class DespachoService
     }
 
     /**
-     * Lo que ofrece el formulario «Programar viaje»: vehículos, transportistas y destinos (las demás agencias activas).
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -130,8 +116,6 @@ final class DespachoService
     }
 
     /**
-     * Programa un viaje que sale de la agencia de la sesión: queda sin salida ni llegada (PROGRAMADO).
-     *
      * @param array<string, mixed> $usuario
      * @param array<string, mixed> $datos placa, transportista (nombre de usuario), destino (código de sucursal)
      * @return array<string, mixed>
@@ -184,8 +168,6 @@ final class DespachoService
         return $this->detalle($codigo);
     }
     /**
-     * Carga un envío en un viaje programado de la agencia.
-     *
      * @param array<string, mixed> $usuario
      * @param array<string, mixed> $datos codigoSeguimiento
      * @return array<string, mixed> El viaje con su carga.
@@ -218,7 +200,6 @@ final class DespachoService
                 : ($ultimo['fechaHoraLlegada'] !== null && $ultimo['idSucursalDestino'] === $sucursal['id']
                     && $envio['idSucursalDestino'] !== $sucursal['id'] && $envio['estado'] === 'EN_TRANSITO');
             if (!$enEspera) {
-                // Si ya está cargado en un viaje de ESTA agencia que no llegó, se dice; de lo contrario, igual que si no existiera.
                 if ($ultimo !== null && $ultimo['fechaHoraLlegada'] === null && $ultimo['idSucursalOrigen'] === $sucursal['id']) {
                     throw new HttpException(409, 'envio_ya_cargado', 'El envío ya está cargado en un viaje que todavía no llegó.');
                 }
@@ -244,8 +225,6 @@ final class DespachoService
     }
 
     /**
-     * Quita un envío de un viaje programado de la agencia (el envío vuelve a esperar).
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed> El viaje con su carga.
      */
@@ -278,7 +257,6 @@ final class DespachoService
         return $this->detalle($codigoViaje);
     }
 
-    // ── Utilidades ──────────────────────────────────────────────────────────
 
     /** @return array<string, mixed> */
     private function detalle(string $codigo): array
@@ -308,7 +286,6 @@ final class DespachoService
         return new HttpException(404, 'envio_no_encontrado', 'No se encontró el envío en espera en esta agencia.');
     }
 
-    /** "18.50" → 1850 */
     private static function centesimas(string $decimal): int
     {
         return (int) round(((float) $decimal) * 100);

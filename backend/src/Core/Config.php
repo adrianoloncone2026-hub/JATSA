@@ -3,9 +3,7 @@ declare(strict_types=1);
 
 namespace Jatsa\Core;
 
-/**
- * Acceso a la configuración con notación de puntos: Config::obtener('db.host').
- */
+/** Acceso a la configuración con notación de puntos: Config::obtener('db.host'). */
 final class Config
 {
     private static string $raiz = '';
@@ -20,10 +18,6 @@ final class Config
         self::$datos = require $raiz . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'app.php';
     }
 
-    /**
-     * Solo para pruebas: reemplaza un valor de configuración (notación de puntos). Las pruebas del
-     * backend vacían db.nombre para que cualquier acceso accidental a la base falle con 503 en vez de conectarse.
-     */
     public static function fijar(string $clave, mixed $valor): void
     {
         $partes = explode('.', $clave);

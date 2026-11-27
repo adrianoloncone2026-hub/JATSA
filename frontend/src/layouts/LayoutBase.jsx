@@ -1,4 +1,5 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
+import BotonTema from '../components/BotonTema.jsx'
 import logo from '../assets/logo-jatsa.png'
 import { useAuth } from '../auth/AuthProvider.jsx'
 import { ROLES, rutaInicioDeRol } from '../auth/roles.js'
@@ -9,20 +10,20 @@ import { iniciales } from '../utils/formato.js'
 const RUTAS_DE_ACCESO = ['/ingresar', '/crear-cuenta']
 
 // Marco común de todos los layouts: cabecera con logo, menú y acciones, y el contenido de la pantalla.
-// En el área pública, «Crear cuenta» e «Ingresar» van como botones a la derecha (como en el prototipo);
-// con sesión abierta se muestran el usuario y «Salir». Cliente y empresario entran a «Mi cuenta» desde su nombre.
 export default function LayoutBase({ idSeccion }) {
   const seccion = seccionPorId(idSeccion)
   const { usuario } = useAuth()
   const { cerrarSesion, saliendo, errorSalida } = useCerrarSesion()
 
-  const todos = enlacesMenu(idSeccion)
+  const esPersonal = usuario && ![ROLES.CLIENTE, ROLES.EMPRESARIO].includes(usuario.rol)
+  const todos = [...enlacesMenu(idSeccion), ...(idSeccion === 'cliente' && esPersonal ? [{ to: rutaInicioDeRol(usuario.rol), texto: 'Volver a mi trabajo' }] : [])]
   const enlaces = idSeccion === 'publico' ? todos.filter((e) => !RUTAS_DE_ACCESO.includes(e.to)) : todos
   const accesos = idSeccion === 'publico' && !usuario ? todos.filter((e) => RUTAS_DE_ACCESO.includes(e.to)) : []
   const tieneMiCuenta = usuario && (usuario.rol === ROLES.CLIENTE || usuario.rol === ROLES.EMPRESARIO)
-  // El personal (gerente, administrador y transportista) entra desde su nombre a «Cambiar contraseña»: solo la contraseña propia,
-  // sin datos personales ni funciones de cliente.
-  const rutaContrasena = usuario && !tieneMiCuenta && idSeccion !== 'publico' ? `${seccion.base}/contrasena` : null
+  // A dónde lleva el nombre del usuario: su cuenta (cliente y empresario) o solo cambiar su contraseña (personal).
+  let destinoIdentidad = null
+  if (tieneMiCuenta) destinoIdentidad = { to: '/cliente/cuenta', etiqueta: 'Mi cuenta' }
+  else if (usuario && idSeccion !== 'publico') destinoIdentidad = { to: `${rutaInicioDeRol(usuario.rol)}/contrasena`, etiqueta: 'Cambiar contraseña' }
 
   const identidad = usuario && (
     <>
@@ -46,15 +47,23 @@ export default function LayoutBase({ idSeccion }) {
           <Link to="/" className="logo" aria-label="JATSA Cargo, ir al inicio">
             <img src={logo} alt="" width={56} height={56} />
           </Link>
-          {idSeccion !== 'publico' && <span className="area">{seccion.etiqueta}</span>}
+          {idSeccion !== 'publico' && <span className="area">{idSeccion === 'cliente' && esPersonal ? 'Mis encomiendas' : seccion.etiqueta}</span>}
           <nav className="menu" aria-label={`Menú de ${seccion.etiqueta}`}>
-            {enlaces.map((enlace) => (
-              <NavLink key={enlace.to} to={enlace.to} end>
+            {enlaces.map((enlace, i) => (
+              <NavLink
+                key={enlace.to}
+                to={enlace.to}
+                end
+                className={[enlace.extra ? 'enlace-extra' : '', enlace.extra && !enlaces[i - 1]?.extra ? 'inicio-extras' : '', enlace.texto === 'Mi panel' ? 'enlace-panel' : '']
+                  .filter(Boolean)
+                  .join(' ') || undefined}
+              >
                 {enlace.texto}
               </NavLink>
             ))}
           </nav>
           <div className="acciones-cabecera">
+            <BotonTema />
             {accesos.map((enlace) => (
               <Link
                 key={enlace.to}
@@ -66,19 +75,15 @@ export default function LayoutBase({ idSeccion }) {
             ))}
             {usuario && (
               <div className="usuario-sesion">
-                {tieneMiCuenta ? (
-                  <Link to="/cliente/cuenta" className="identidad" aria-label={`Mi cuenta, ${usuario.nombreCompleto}`}>
-                    {identidad}
-                  </Link>
-                ) : rutaContrasena ? (
-                  <Link to={rutaContrasena} className="identidad" aria-label={`Cambiar contraseña, ${usuario.nombreCompleto}`}>
+                {destinoIdentidad ? (
+                  <Link to={destinoIdentidad.to} className="identidad" aria-label={`${destinoIdentidad.etiqueta}, ${usuario.nombreCompleto}`}>
                     {identidad}
                   </Link>
                 ) : (
                   <span className="identidad">{identidad}</span>
                 )}
                 {idSeccion === 'publico' && (
-                  <Link to={rutaInicioDeRol(usuario.rol)} className="boton boton-claro">
+                  <Link to={rutaInicioDeRol(usuario.rol)} className="boton boton-amarillo boton-panel">
                     Mi panel
                   </Link>
                 )}

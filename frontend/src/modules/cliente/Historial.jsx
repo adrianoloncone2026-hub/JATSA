@@ -12,18 +12,16 @@ const ROLES = [
 const ESTADOS = ['REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO', 'ENTREGADO', 'DEVUELTO', 'ANULADO']
 const FILTROS_INICIALES = { q: '', rol: '', estado: '', desde: '', hasta: '' }
 
-// "EN_DESTINO" → "EN DESTINO"
 const etiqueta = (estado) => estado.replace('_', ' ')
 
 // Diapositiva 14 del prototipo: los envíos que la persona envió o recibió, con filtros y el detalle de cada uno.
-// El envío abierto va en la dirección (?envio=) para poder enlazarlo desde «Mi panel». De la otra parte solo se ve el nombre.
 export default function Historial() {
   const [parametros, setParametros] = useSearchParams()
   const abierto = (parametros.get('envio') ?? '').toUpperCase()
   const [filtros, setFiltros] = useState(FILTROS_INICIALES)
-  const [aplicados, setAplicados] = useState(FILTROS_INICIALES) // la búsqueda por texto espera un instante tras la última tecla
-  const [lista, setLista] = useState({ fase: 'cargando', datos: null, mensaje: '', errores: {} }) // cargando | listo | error
-  const [detalle, setDetalle] = useState({ fase: 'inactivo', envio: null, mensaje: '' }) // cargando | listo | no_encontrado | error
+  const [aplicados, setAplicados] = useState(FILTROS_INICIALES)
+  const [lista, setLista] = useState({ fase: 'cargando', datos: null, mensaje: '', errores: {} })
+  const [detalle, setDetalle] = useState({ fase: 'inactivo', envio: null, mensaje: '' })
   const [intento, setIntento] = useState(0)
 
   useEffect(() => {
@@ -31,7 +29,6 @@ export default function Historial() {
     return () => clearTimeout(temporizador)
   }, [filtros, aplicados.q])
 
-  // Cada cambio de filtro cancela la consulta anterior: una respuesta lenta no pisa a la del filtro actual.
   useEffect(() => {
     const control = new AbortController()
     setLista((anterior) => ({ ...anterior, fase: 'cargando', errores: {} }))

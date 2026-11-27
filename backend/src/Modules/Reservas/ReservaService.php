@@ -8,25 +8,17 @@ use Jatsa\Modules\Publico\CotizadorService;
 use Jatsa\Modules\Publico\RepositorioAgencias;
 use Jatsa\Shared\HttpException;
 
-/**
- * Reglas de las reservas del cliente (RF06, RF08 y proceso P1): crear, consultar, listar y cancelar.
- * Siempre actúa sobre la persona de la cuenta de la sesión como remitente. No toca HTTP ni sesiones.
- */
+/** Reglas de las reservas del cliente (RF06, RF08 y proceso P1): crear, consultar, listar y cancelar. */
 final class ReservaService
 {
     public const ESTADOS = ['PENDIENTE', 'FORMALIZADA', 'CANCELADA', 'VENCIDA'];
 
-    /** Documentos con los que se puede designar a un destinatario desde la web. */
     private const TIPOS_DOCUMENTO = ['DNI', 'RUC'];
 
     private readonly RepositorioReservas $reservas;
     private readonly RepositorioAgencias $agencias;
     private readonly CotizadorService $cotizador;
 
-    /**
-     * El cotizador se usa para comprobar que la ruta tenga alguna tarifa vigente: es el mismo que atiende
-     * /api/tarifas y /api/cotizacion, así la vigencia y la direccionalidad coinciden en los tres sitios.
-     */
     public function __construct(?RepositorioReservas $reservas = null, ?RepositorioAgencias $agencias = null, ?CotizadorService $cotizador = null)
     {
         $this->reservas = $reservas ?? new ReservaRepository();
@@ -35,11 +27,8 @@ final class ReservaService
     }
 
     /**
-     * Crea una reserva PENDIENTE (canal WEB). Valida todo y devuelve todos los errores a la vez, por campo.
-     * Si el destinatario no existe se crea su persona, para lo que se piden nombre y teléfono; si existe, se usa tal cual.
-     *
      * @param array<string, mixed> $datos tipoDocumento, numeroDocumento, nombreDestinatario?, telefonoDestinatario?,
-     *                                    sucursalOrigen, sucursalDestino, contenido
+     * sucursalOrigen, sucursalDestino, contenido
      * @return array<string, mixed> La reserva creada.
      */
     public function crear(int $idUsuario, array $datos): array
@@ -60,7 +49,6 @@ final class ReservaService
             }
         }
 
-        // Destinatario nuevo: la tabla Persona exige nombre y teléfono.
         $nuevo = null;
         if ($errorDocumento === null && $destinatario === null) {
             $nombre = self::normalizarEspacios(self::texto($datos, 'nombreDestinatario'));
@@ -90,8 +78,6 @@ final class ReservaService
         } elseif ($origen === $destino) {
             $errores['sucursalDestino'] = 'El origen y el destino deben ser distintos.';
         } elseif (!isset($errores['sucursalOrigen']) && !$this->rutaTieneTarifaVigente($origen, $destino)) {
-            // Sin ninguna tarifa vigente (de ningún tipo, hoy y en este sentido) el envío no se podría cobrar:
-            // no se promete una reserva que no se puede atender. El tipo concreto se decide al pesar, en la formalización.
             $errores['sucursalDestino'] = 'No hay tarifas vigentes entre estas sucursales. Elige otra ruta.';
         }
 
@@ -111,11 +97,7 @@ final class ReservaService
         return $this->presentar($this->reservaPropia($idRemitente, $codigo));
     }
 
-    /**
-     * Reservas del cliente, opcionalmente de un estado.
-     *
-     * @return list<array<string, mixed>>
-     */
+    /** @return list<array<string, mixed>> */
     public function listar(int $idUsuario, string $estado = ''): array
     {
         $estado = strtoupper(trim($estado));
@@ -134,17 +116,12 @@ final class ReservaService
         return $this->presentar($this->reservaPropia($this->personaDe($idUsuario), $codigo));
     }
 
-    /**
-     * Cancela una reserva PENDIENTE del propio cliente.
-     *
-     * @return array<string, mixed> La reserva ya cancelada.
-     */
+    /** @return array<string, mixed> La reserva ya cancelada. */
     public function cancelar(int $idUsuario, string $codigo): array
     {
         $idPersona = $this->personaDe($idUsuario);
         $reserva = $this->reservaPropia($idPersona, $codigo);
 
-        // Una reserva que ya cumplió el plazo no se cancela como pendiente (aunque aún no se haya marcado VENCIDA).
         if ($reserva['estado'] === 'PENDIENTE' && $reserva['plazoCumplido']) {
             throw self::reservaVencida();
         }
@@ -153,7 +130,6 @@ final class ReservaService
         }
 
         if (!$this->reservas->cancelar($idPersona, $reserva['codigo'])) {
-            // Otra operación se adelantó entre la lectura y el UPDATE: se vuelve a leer para decir por qué.
             $actual = $this->reservaPropia($idPersona, $codigo);
             throw $actual['estado'] === 'VENCIDA' || ($actual['estado'] === 'PENDIENTE' && $actual['plazoCumplido'])
                 ? self::reservaVencida()
@@ -185,8 +161,6 @@ final class ReservaService
 
     /**
      * Busca a un posible destinatario por documento para autocompletar el formulario. Devuelve solo el nombre
-     * (nunca teléfono, correo ni otros datos).
-     *
      * @return array{existe: bool, nombreCompleto?: string, esUsted?: bool}
      */
     public function consultarDestinatario(int $idUsuario, string $tipoDocumento, string $numeroDocumento): array
@@ -206,7 +180,6 @@ final class ReservaService
         return ['existe' => true, 'nombreCompleto' => $persona['nombreCompleto'], 'esUsted' => $persona['idPersona'] === $this->personaDe($idUsuario)];
     }
 
-    // ── Utilidades ──────────────────────────────────────────────────────────
 
     private function personaDe(int $idUsuario): int
     {
@@ -219,12 +192,7 @@ final class ReservaService
         return $id;
     }
 
-    /**
-     * Una reserva solo se ve si es del propio remitente; si no existe o es de otra persona, el mismo 404,
-     * para no revelar que el código existe.
-     *
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     private function reservaPropia(int $idPersona, string $codigo): array
     {
         $codigo = strtoupper(trim($codigo));
@@ -254,7 +222,6 @@ final class ReservaService
             'origen' => $reserva['origen'],
             'destino' => $reserva['destino'],
             'codigoSeguimiento' => $reserva['codigoSeguimiento'],
-            // Solo una reserva PENDIENTE tiene fecha límite; si ya la cumplió y aún no se marcó VENCIDA, lo indica.
             'venceEl' => $reserva['estado'] === 'PENDIENTE' ? Vigencia::fechaLimite((string) $reserva['fechaHora']) : null,
             'plazoCumplido' => $reserva['estado'] === 'PENDIENTE' && $reserva['plazoCumplido'],
         ];
@@ -288,7 +255,6 @@ final class ReservaService
         return is_string($valor) ? trim($valor) : '';
     }
 
-    /** Quita espacios y guiones: «702 345-61» → «70234561». */
     private static function sinSeparadores(string $valor): string
     {
         return preg_replace('/[\s-]+/', '', $valor) ?? $valor;

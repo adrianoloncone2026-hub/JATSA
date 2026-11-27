@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
+import Mosaico from '../../components/Mosaico.jsx'
 import { Link } from 'react-router-dom'
 import { listarMisViajes } from '../../api/viajes.js'
 import InsigniaEstado from '../../components/InsigniaEstado.jsx'
+import RutaMonedas from '../../components/RutaMonedas.jsx'
+import { useAgencias } from '../../hooks/useAgencias.js'
 import { fechaHoraBreve } from '../../utils/formato.js'
 
 const FILTROS = [
@@ -11,7 +14,6 @@ const FILTROS = [
   { valor: 'TERMINADO', texto: 'Terminados', vacio: 'No tienes viajes terminados.' },
 ]
 
-// "Salió 14/10 15:00" · "Sin salida aún" · "Llegó 13/10 09:15" (diapositiva 24)
 function momento(viaje) {
   if (viaje.estado === 'TERMINADO') return `Llegó ${fechaHoraBreve(viaje.fechaHoraLlegada)}`
   if (viaje.estado === 'EN_RUTA') return `Salió ${fechaHoraBreve(viaje.fechaHoraSalida)}`
@@ -21,10 +23,10 @@ function momento(viaje) {
 // Diapositiva 24 del prototipo: los viajes del transportista, con filtro por estado.
 export default function MisViajes() {
   const [filtro, setFiltro] = useState('')
-  const [estado, setEstado] = useState({ fase: 'cargando', datos: null, mensaje: '' }) // cargando | listo | error
+  const [estado, setEstado] = useState({ fase: 'cargando', datos: null, mensaje: '' })
   const [intento, setIntento] = useState(0)
+  const { porCodigo } = useAgencias()
 
-  // Cada cambio de filtro cancela la consulta anterior: una respuesta lenta no pisa a la del filtro actual.
   useEffect(() => {
     const control = new AbortController()
     setEstado((anterior) => ({ ...anterior, fase: 'cargando' }))
@@ -41,7 +43,10 @@ export default function MisViajes() {
 
   return (
     <section className="mis-viajes">
-      <h1>Mis viajes</h1>
+      <div className="cabecera-ilustrada">
+        <h1>Mis viajes</h1>
+        <Mosaico ids={[61, 57, 2, 23]} />
+      </div>
 
       <div className="barra-filtros">
         <div className="filtros" role="group" aria-label="Filtrar por estado">
@@ -90,18 +95,27 @@ export default function MisViajes() {
               </thead>
               <tbody>
                 {estado.datos.viajes.map((v) => (
-                  <tr key={v.codigo}>
+                  <tr key={v.codigo} className={`fila-viaje estado-${v.estado.toLowerCase()}`}>
                     <th scope="row">{v.codigo}</th>
                     <td data-etiqueta="Ruta">
-                      {v.origen.nombre} → {v.destino.nombre}
+                      <RutaMonedas
+                        origen={porCodigo.get(v.origen.codigo)?.departamento ?? ''}
+                        destino={porCodigo.get(v.destino.codigo)?.departamento ?? ''}
+                        nombreOrigen={v.origen.nombre}
+                        nombreDestino={v.destino.nombre}
+                        tamano={36}
+                      />
+                      <span className="solo-lectores">
+                        {v.origen.nombre} a {v.destino.nombre}
+                      </span>
                     </td>
                     <td data-etiqueta="Momento">{momento(v)}</td>
                     <td data-etiqueta="Estado">
                       <InsigniaEstado estado={v.estado} />
                     </td>
                     <td className="celda-accion" data-etiqueta="Acción">
-                      <Link to={`/transportista/viajes/${v.codigo}`} className="boton boton-azul">
-                        Abrir
+                      <Link to={`/transportista/viajes/${v.codigo}`} className={v.estado === 'TERMINADO' ? 'boton boton-claro' : 'boton boton-azul'}>
+                        {v.estado === 'PROGRAMADO' ? 'Abrir · marcar salida' : v.estado === 'EN_RUTA' ? 'Abrir · marcar llegada' : 'Ver detalle'}
                       </Link>
                     </td>
                   </tr>

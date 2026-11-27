@@ -4,9 +4,13 @@ export function formatoTelefono(numero) {
   return /^\d{9}$/.test(texto) ? `${texto.slice(0, 3)} ${texto.slice(3, 6)} ${texto.slice(6)}` : texto
 }
 
-// "María Elena Rojas Ccori" → "MR" (nombre y primer apellido). Con un nombre de dos palabras usa ambas.
+function palabrasDe(texto) {
+  return texto.trim().split(/\s+/).filter(Boolean)
+}
+
+// "María Elena Rojas Ccori" → "MR" (primer nombre y primer apellido). Con dos palabras usa las dos.
 export function iniciales(nombreCompleto) {
-  const palabras = nombreCompleto.trim().split(/\s+/).filter(Boolean)
+  const palabras = palabrasDe(nombreCompleto)
   if (palabras.length === 0) return '?'
   const segunda = palabras.length >= 3 ? palabras[palabras.length - 2] : palabras[1]
   return (palabras[0][0] + (segunda?.[0] ?? '')).toUpperCase()
@@ -14,7 +18,7 @@ export function iniciales(nombreCompleto) {
 
 // "María Elena Rojas Ccori" → "María Elena" (saludo de «Mi panel»). Una empresa conserva su razón social.
 export function saludoDe(nombreCompleto, esEmpresa = false) {
-  const palabras = nombreCompleto.trim().split(/\s+/).filter(Boolean)
+  const palabras = palabrasDe(nombreCompleto)
   if (esEmpresa || palabras.length <= 1) return nombreCompleto.trim()
   return palabras.slice(0, palabras.length >= 4 ? 2 : 1).join(' ')
 }

@@ -7,13 +7,7 @@ use Closure;
 use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Tarifas;
 
-/**
- * Salidas entre sucursales (diapositivas 4 y 5): horario habitual de cada ruta calculado con las salidas REALES de los
- * últimos viajes, tiempo estimado y precio «desde». Es público (sin sesión) y no expone personas, envíos ni pagos.
- *
- * Horario habitual: la hora (HH:00, sin minutos) de las salidas reales de los últimos 10 viajes de la ruta; se muestran las
- * hasta 3 horas más frecuentes, de menor a mayor. Sin salidas reales pero con viajes programados se dice «programado».
- */
+/** Salidas entre sucursales (diapositivas 4 y 5): horario habitual de cada ruta calculado con las salidas REALES de los */
 final class SalidaService
 {
     public const TIPOS = ['SOBRE', 'PAQUETE', 'CARGA'];
@@ -31,11 +25,7 @@ final class SalidaService
         $this->hoy = Closure::fromCallable($hoy ?? static fn (): string => date('Y-m-d'));
     }
 
-    /**
-     * Las rutas con su horario habitual, filtradas por origen, destino y tipo (todos opcionales).
-     *
-     * @return array{salidas: list<array<string, mixed>>}
-     */
+    /** @return array{salidas: list<array<string, mixed>>} */
     public function listar(string $origen = '', string $destino = '', string $tipo = ''): array
     {
         $origen = strtoupper(trim($origen));
@@ -64,7 +54,7 @@ final class SalidaService
             }
             $desde = self::precioDesde($ruta['tarifas'], $tipo);
             if ($desde === null) {
-                continue; // con un tipo elegido, solo las rutas que lo tienen
+                continue;
             }
             $horas = $horarios[$id] ?? [];
             $salidas[] = [
@@ -77,11 +67,7 @@ final class SalidaService
         return ['salidas' => $salidas];
     }
 
-    /**
-     * Una ruta con sus precios, su horario habitual, la llegada aproximada y las salidas recientes (diapositiva 5).
-     *
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     public function detalle(string $id): array
     {
         $id = strtoupper(trim($id));
@@ -115,13 +101,8 @@ final class SalidaService
         ];
     }
 
-    // ── Cálculos ────────────────────────────────────────────────────────────
 
-    /**
-     * Las rutas vigentes por «ORIGEN-DESTINO», con una tarifa por tipo (la de vigenteDesde más reciente).
-     *
-     * @return array<string, array<string, mixed>>
-     */
+    /** @return array<string, array<string, mixed>> */
     private function rutas(): array
     {
         $rutas = [];
@@ -133,7 +114,7 @@ final class SalidaService
             ];
             if (!isset($rutas[$id]['tarifas'][$f['tipoEnvio']])) {
                 $rutas[$id]['tarifas'][$f['tipoEnvio']] = ['tipoEnvio' => $f['tipoEnvio'], 'centimos' => Tarifas::costoBultoCentimos($f['precioBase'], $f['precioPorKm'], $f['distanciaKm'])];
-                $rutas[$id]['horas'] = max($rutas[$id]['horas'], $f['tiempoHoras']); // el mayor tiempo de las tarifas vigentes
+                $rutas[$id]['horas'] = max($rutas[$id]['horas'], $f['tiempoHoras']);
             }
         }
         foreach ($rutas as $id => $ruta) {
@@ -145,9 +126,7 @@ final class SalidaService
         return $rutas;
     }
 
-    /**
-     * @param list<array<string, mixed>> $tarifas
-     */
+    /** @param list<array<string, mixed>> $tarifas */
     private static function precioDesde(array $tarifas, string $tipo): ?int
     {
         $precios = [];
@@ -160,11 +139,7 @@ final class SalidaService
         return $precios === [] ? null : min($precios);
     }
 
-    /**
-     * Las horas más frecuentes de las salidas reales de los últimos viajes de cada ruta.
-     *
-     * @return array<string, list<string>>
-     */
+    /** @return array<string, list<string>> */
     private function horariosPorRuta(): array
     {
         $cuenta = [];
@@ -176,7 +151,6 @@ final class SalidaService
 
         $horarios = [];
         foreach ($cuenta as $id => $horas) {
-            // Las más frecuentes (con la misma frecuencia, la más temprana) y luego en orden de reloj.
             uksort($horas, static fn (string $a, string $b): int => [$horas[$b], $a] <=> [$horas[$a], $b]);
             $elegidas = array_slice(array_keys($horas), 0, self::MAX_HORARIOS);
             sort($elegidas);
@@ -186,7 +160,6 @@ final class SalidaService
         return $horarios;
     }
 
-    /** "230.0" → "230"; "1010.5" → "1010.5" */
     private static function distancia(string $km): string
     {
         $texto = number_format((float) $km, 1, '.', '');

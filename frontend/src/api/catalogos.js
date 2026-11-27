@@ -1,7 +1,5 @@
 import { solicitar } from './cliente.js'
 
-// Catálogos del GERENTE (módulo 10): sucursales, rutas con precios y vigencia, y vehículos. Solo el gerente puede usarlos
-// (el backend lo exige). Nada se borra: se desactiva, y una tarifa se cierra y se reemplaza por otra.
 
 // GET /api/catalogos/sucursales — { sucursales } (activas e inactivas, con teléfonos).
 export function listarSucursales(signal) {

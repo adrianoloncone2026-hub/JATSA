@@ -6,7 +6,6 @@ use Jatsa\Middleware\RequiereRol;
 use Jatsa\Modules\Usuarios\UsuariosController;
 use Jatsa\Shared\Roles;
 
-// Cuentas de usuario (módulo 10). Solo el GERENTE; la autorización se aplica aquí, en el backend. /persona va antes que /{usuario}.
 return static function (Router $router): void {
     $gerentes = [new RequiereRol([Roles::GERENTE])];
 

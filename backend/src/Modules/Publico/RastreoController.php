@@ -15,7 +15,6 @@ final class RastreoController
         $this->rastreo = $rastreo ?? new RastreoService();
     }
 
-    /** GET /api/rastreo/{codigo} — público, sin sesión. */
     public function rastrear(Request $peticion, array $parametros): Response
     {
         return Response::exito(['envio' => $this->rastreo->rastrear((string) ($parametros['codigo'] ?? ''))]);

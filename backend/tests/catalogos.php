@@ -871,7 +871,7 @@ prueba('cuentas: carrera reactivar / desactivar la sucursal — se decide con la
 
 prueba('cuentas: cambiarEstado bloquea sucursal → gerentes → cuenta, reintenta si la cuenta se movió y decide antes del UPDATE (revisión estática)', function () {
     $f = (string) file_get_contents(dirname(__DIR__) . '/src/Modules/Usuarios/UsuariosRepository.php');
-    $c = substr($f, (int) strpos($f, 'function cambiarEstado'), (int) strpos($f, '// ── Utilidades') - (int) strpos($f, 'function cambiarEstado'));
+    $c = substr($f, (int) strpos($f, 'function cambiarEstado'), (int) strpos($f, 'function viajesAbiertos') - (int) strpos($f, 'function cambiarEstado'));
     $s = strpos($c, 'FROM Sucursal WITH (UPDLOCK, HOLDLOCK)');
     $g = strpos($c, "rol = 'GERENTE' AND activo = 1");
     $u = strpos($c, 'FROM Usuario WITH (UPDLOCK, HOLDLOCK) WHERE nombreUsuario');

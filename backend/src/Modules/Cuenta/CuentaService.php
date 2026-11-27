@@ -6,19 +6,15 @@ namespace Jatsa\Modules\Cuenta;
 use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Roles;
 
-/**
- * Reglas de la cuenta de cliente/empresario (RF03, RF04, RF05): registro, consulta, edición de contacto
- * y cambio de contraseña. No toca HTTP ni sesiones.
- */
+/** Reglas de la cuenta de cliente/empresario (RF03, RF04, RF05): registro, consulta, edición de contacto */
 final class CuentaService
 {
     public const MENSAJE_CUENTA_EXISTENTE = 'Ya existe una cuenta con ese documento. Si no recuerdas tu usuario o tu contraseña, acércate a tu agencia.';
 
-    /** Tipo de documento con el que se registra → rol de la cuenta (diapositiva 10 del prototipo). */
     private const ROL_POR_DOCUMENTO = ['DNI' => Roles::CLIENTE, 'RUC' => Roles::EMPRESARIO];
 
     private const LARGO_MINIMO_CONTRASENA = 8;
-    private const BYTES_MAXIMOS_CONTRASENA = 72; // bcrypt ignora lo que pase de 72 bytes
+    private const BYTES_MAXIMOS_CONTRASENA = 72;
 
     private readonly RepositorioCuentas $cuentas;
 
@@ -28,9 +24,6 @@ final class CuentaService
     }
 
     /**
-     * Crea una cuenta. Si ya hay una persona con ese documento y aún no tiene cuenta, se reutiliza con
-     * sus datos guardados (RF04: «usamos tus datos guardados»); no se sobrescribe nada de ella.
-     *
      * @param array<string, mixed> $datos
      * @return array{usuario: string, rol: string}
      */
@@ -101,19 +94,13 @@ final class CuentaService
         return ['usuario' => $usuario, 'rol' => $rol];
     }
 
-    /**
-     * Datos de la cuenta y de su persona (el documento es solo de lectura).
-     *
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     public function obtener(int $idUsuario): array
     {
         return self::presentar($this->cuenta($idUsuario));
     }
 
     /**
-     * Cambia teléfono, teléfono auxiliar y correo de la persona de la cuenta.
-     *
      * @param array<string, mixed> $datos
      * @return array<string, mixed>
      */
@@ -132,9 +119,7 @@ final class CuentaService
         return self::presentar($this->cuenta($idUsuario));
     }
 
-    /**
-     * Cambia la contraseña tras comprobar la actual. Devuelve el hash nuevo para renovar la huella de la sesión.
-     */
+    /** Cambia la contraseña tras comprobar la actual. Devuelve el hash nuevo para renovar la huella de la sesión. */
     public function cambiarContrasena(int $idUsuario, string $contrasenaActual, string $contrasenaNueva): string
     {
         $cuenta = $this->cuenta($idUsuario);
@@ -153,8 +138,6 @@ final class CuentaService
         }
 
         $hashNuevo = password_hash($contrasenaNueva, PASSWORD_BCRYPT, ['cost' => 12]);
-        // Compare-and-swap: solo cambia si la contraseña sigue siendo la que se acaba de verificar. Si otra petición ganó, no se
-        // escribe nada (y el controlador no renueva la huella): el cliente recibe un conflicto y debe repetir con la contraseña vigente.
         if (!$this->cuentas->actualizarHash($idUsuario, $hashActual, $hashNuevo)) {
             throw new HttpException(409, 'contrasena_modificada', 'Tu contraseña cambió mientras se procesaba esta solicitud. Vuelve a intentarlo con tu contraseña actual.');
         }
@@ -162,11 +145,8 @@ final class CuentaService
         return $hashNuevo;
     }
 
-    // ── Validaciones compartidas ────────────────────────────────────────────
 
     /**
-     * Teléfono (9 dígitos), teléfono auxiliar opcional (9 dígitos y distinto) y correo opcional.
-     *
      * @param array<string, mixed>  $datos
      * @param array<string, string> $errores Se completa por referencia.
      * @return array{telefono: string, telefonoAuxiliar: ?string, correo: ?string}
@@ -213,7 +193,6 @@ final class CuentaService
         return null;
     }
 
-    // ── Utilidades ──────────────────────────────────────────────────────────
 
     /** @return array<string, mixed> */
     private function cuenta(int $idUsuario): array
@@ -268,13 +247,11 @@ final class CuentaService
         return $recortar ? trim($valor) : $valor;
     }
 
-    /** Quita espacios y guiones: «987 654 323» → «987654323». */
     private static function sinSeparadores(string $valor): string
     {
         return preg_replace('/[\s-]+/', '', $valor) ?? $valor;
     }
 
-    /** «María   Elena» → «María Elena». */
     private static function normalizarEspacios(string $valor): string
     {
         return trim(preg_replace('/\s+/u', ' ', $valor) ?? $valor);

@@ -271,7 +271,7 @@ try {
   titulo('Mis reservas')
   sim.reservas = reservasIniciales()
   await irA('/cliente/reservas')
-  comprobar('lista las reservas con código, fecha, canal, destinatario y estado', await evaluar(`[...document.querySelectorAll('.tabla-reservas tbody tr')][0].innerText.replace(/\\s+/g,' ').trim()`), 'R000000006 31/10/2026 WEB Luis Alberto Flores Condori → Agencia Moquegua a Agencia Arequipa Centro PENDIENTE Cancelar reserva')
+  comprobar('lista las reservas con código, fecha, canal, destinatario y estado', await evaluar(`[...document.querySelectorAll('.tabla-reservas tbody tr')][0].innerText.replace(/\\s+/g,' ').trim()`), 'R000000006 31/10/2026 WEB Luis Alberto Flores Condori Agencia Moquegua → a Agencia Arequipa Centro Moquegua → Arequipa PENDIENTE Cancelar reserva')
   comprobar('de la más reciente a la más antigua', await codigosEnLista(), 'R000000006,R000000005,R000000003,R000000001')
   comprobar('formalizada: «Ver envío» lleva al rastreo de su envío', await evaluar(`[...document.querySelectorAll('.tabla-reservas tbody tr')][3].querySelector('a.boton').getAttribute('href')`), '/rastreo?codigo=EN7K4Q2M9X1B')
   comprobar('cancelada y vencida ofrecen «Ver reserva»', await evaluar(`[1,2].map(i => [...document.querySelectorAll('.tabla-reservas tbody tr')][i].querySelector('a.boton').innerText).join(' | ')`), 'Ver reserva | Ver reserva')
@@ -339,7 +339,7 @@ try {
   await irA('/cliente')
   const indicadores = () => evaluar(`[...document.querySelectorAll('.indicador')].map(i => i.innerText.replace(/\\s+/g, ' ').trim()).join(' | ')`)
   comprobar('saludo, indicadores (envíos en curso, reservas pendientes y saldo por pagar) y accesos', [await texto('h1'), await indicadores(), await evaluar(`[...document.querySelectorAll('.acciones-panel a')].map(a => a.innerText + '→' + a.getAttribute('href')).join(' | ')`)],
-    ['Hola, María Elena', '1 Envíos en curso | 1 Reservas pendientes | S/ 0.00 Saldo pendiente de tus envíos', 'Nueva reserva→/cliente/nueva-reserva | Rastrear un envío→/rastreo | Ver salidas→/salidas'])
+    ['Hola, María Elena', '1 Envíos en curso | 1 Reservas pendientes | S/ 0.00 Saldo pendiente de tus envíos', 'Nueva reserva→/cliente/nueva-reserva | Mis envíos→/cliente/historial | Mi cuenta→/cliente/cuenta'])
   comprobar('«Por recoger»: el envío en destino, de quién es, dónde recogerlo y «Ver detalle» (diapositiva 11)', [await texto('.tarjeta-recoger h3'), await texto('.tarjeta-recoger .insignia'), await texto('.tarjeta-recoger p'), await evaluar(`document.querySelector('.tarjeta-recoger a').getAttribute('href')`)],
     ['ENM2P6T8R1WQ', 'EN DESTINO', 'De Pedro Mamani Huanca · Listo para recoger en Agencia Moquegua, Jr. Ancash 325. Lleva tu documento de identidad.', '/cliente/historial?envio=ENM2P6T8R1WQ'])
   comprobar('tarjeta de la reserva pendiente, con el horario habitual de su ruta (diapositiva 11)', [await texto('.tarjeta-reserva h3'), await texto('.tarjeta-reserva .insignia'), await texto('.tarjeta-reserva p')], ['R000000006', 'PENDIENTE', 'Para Luis Alberto Flores Condori · Lleva el paquete a Agencia Moquegua. Salió con más frecuencia a las 14:00 y 15:00 (referencia histórica).'])
@@ -378,7 +378,9 @@ try {
   comprobar('sin sesión, Mis reservas lleva a Ingresar', await ruta(), '/ingresar')
   sim.sesion = usuario('GERENTE', 'Rosa María Quispe Mamani')
   await irA('/cliente/nueva-reserva')
-  comprobar('un gerente no entra a Nueva reserva: va a su área', await ruta(), '/gerente')
+  comprobar('un gerente entra a Nueva reserva desde Mis encomiendas', await ruta(), '/cliente/nueva-reserva')
+  await irA('/cliente')
+  comprobar('el panel del personal no ofrece «Mi cuenta» (no es para su rol)', await evaluar(`[...document.querySelectorAll('.acciones-panel a')].map(a => a.innerText).join(' | ')`), 'Nueva reserva | Mis envíos')
 } finally {
   await navegador.cerrar()
 }

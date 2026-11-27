@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
+import Mosaico from '../../components/Mosaico.jsx'
 import { Link } from 'react-router-dom'
 import { cancelarReserva, listarReservas } from '../../api/reservas.js'
 import InsigniaEstado from '../../components/InsigniaEstado.jsx'
-import RutaMonedas from '../../components/RutaMonedas.jsx'
 import { fechaCorta } from '../../utils/formato.js'
 
 const FILTROS = [
@@ -18,11 +18,10 @@ export default function MisReservas() {
   const [filtro, setFiltro] = useState('')
   const [estado, setEstado] = useState({ fase: 'cargando', reservas: [], mensaje: '' })
   const [intento, setIntento] = useState(0)
-  const [confirmando, setConfirmando] = useState(null) // código de la reserva a la que se pide confirmar la cancelación
+  const [confirmando, setConfirmando] = useState(null)
   const [cancelando, setCancelando] = useState(null)
   const [aviso, setAviso] = useState({ tipo: '', texto: '' })
 
-  // Cada cambio de filtro cancela la consulta anterior: una respuesta lenta no pisa a la del filtro actual.
   useEffect(() => {
     const control = new AbortController()
     setEstado((anterior) => ({ ...anterior, fase: 'cargando' }))
@@ -46,7 +45,6 @@ export default function MisReservas() {
     setAviso({ tipo: '', texto: '' })
     try {
       const cancelada = await cancelarReserva(codigo)
-      // La reserva cambia de estado: en «Pendientes» sale de la lista; en «Todas» queda como CANCELADA.
       setEstado((anterior) => ({
         ...anterior,
         reservas: anterior.reservas.flatMap((r) => (r.codigo !== codigo ? [r] : filtro === 'PENDIENTE' ? [] : [cancelada])),
@@ -54,7 +52,7 @@ export default function MisReservas() {
       setAviso({ tipo: 'ok', texto: `Reserva ${codigo} cancelada.` })
     } catch (fallo) {
       setAviso({ tipo: 'error', texto: fallo.message })
-      if (fallo.estado === 409 || fallo.estado === 404) setIntento((n) => n + 1) // el estado cambió: se recarga la lista
+      if (fallo.estado === 409 || fallo.estado === 404) setIntento((n) => n + 1)
     } finally {
       setCancelando(null)
       setConfirmando(null)
@@ -65,7 +63,10 @@ export default function MisReservas() {
 
   return (
     <section className="mis-reservas">
-      <h1>Mis reservas</h1>
+      <div className="cabecera-ilustrada">
+        <h1>Mis reservas</h1>
+        <Mosaico ids={[24, 1, 10, 62]} />
+      </div>
 
       <div className="barra-filtros">
         <div className="filtros" role="group" aria-label="Filtrar por estado">
@@ -135,9 +136,14 @@ export default function MisReservas() {
                   <td data-etiqueta="Canal">{reserva.canal}</td>
                   <td data-etiqueta="Destinatario">{reserva.destinatario}</td>
                   <td data-etiqueta="Ruta">
-                    <RutaMonedas origen={reserva.origen.departamento} destino={reserva.destino.departamento} tamano={44} />
-                    <span className="solo-lectores">
-                      {reserva.origen.nombre} a {reserva.destino.nombre}
+                    <span className="ruta-nombres">
+                      <strong>{reserva.origen.nombre}</strong>
+                      <span aria-hidden="true"> → </span>
+                      <span className="solo-lectores"> a </span>
+                      <strong>{reserva.destino.nombre}</strong>
+                    </span>
+                    <span className="ruta-regiones">
+                      {reserva.origen.departamento} → {reserva.destino.departamento}
                     </span>
                   </td>
                   <td data-etiqueta="Estado">

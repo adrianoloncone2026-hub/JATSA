@@ -6,10 +6,7 @@ namespace Jatsa\Modules\Publico;
 use Jatsa\Core\Database;
 use PDO;
 
-/**
- * Lee Ruta (solo SELECT, con parámetros). Una ruta es vigente si ya empezó (vigenteDesde <= fecha)
- * y no terminó (vigenteHasta es NULL o >= fecha).
- */
+/** Lee Ruta (solo SELECT, con parámetros). Una ruta es vigente si ya empezó (vigenteDesde <= fecha) */
 final class RutaRepository implements RepositorioRutas
 {
     private const CONSULTA = <<<'SQL'
@@ -33,7 +30,6 @@ final class RutaRepository implements RepositorioRutas
         $sentencia->bindValue(':fecha2', $fechaIso, PDO::PARAM_STR);
         $sentencia->execute();
 
-        // La consulta ya viene con la vigente más reciente primero: se conserva una por tipo.
         $porTipo = [];
         foreach ($sentencia->fetchAll(PDO::FETCH_ASSOC) as $fila) {
             $tipo = (string) $fila['tipoEnvio'];

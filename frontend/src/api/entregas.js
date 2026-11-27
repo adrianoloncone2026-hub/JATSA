@@ -1,7 +1,6 @@
 import { solicitar } from './cliente.js'
 
 // Llegadas y entregas del ADMINISTRADOR (módulo 8). Todo se limita a la agencia de destino de la sesión: el servidor la toma
-// de la sesión, nunca de lo que se envíe aquí.
 
 // GET /api/entregas/pendientes — { sucursal, enCamino, listos, hayMas }.
 export function listarPendientes(signal) {

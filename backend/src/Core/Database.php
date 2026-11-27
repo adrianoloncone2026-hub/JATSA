@@ -8,10 +8,7 @@ use Jatsa\Shared\Registro;
 use PDO;
 use PDOException;
 
-/**
- * Conexión perezosa a SQL Server con PDO_SQLSRV. No se conecta hasta que alguien la pide.
- * Los datos de conexión vienen de backend/.env. Sin DB_USER se usa autenticación de Windows.
- */
+/** Conexión perezosa a SQL Server con PDO_SQLSRV. No se conecta hasta que alguien la pide. */
 final class Database
 {
     private static ?PDO $conexion = null;

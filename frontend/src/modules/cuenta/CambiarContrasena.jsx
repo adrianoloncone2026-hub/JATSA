@@ -5,12 +5,10 @@ import { rutaInicioDeRol } from '../../auth/roles.js'
 import FormularioContrasena from './FormularioContrasena.jsx'
 
 // «Cambiar contraseña» del personal (gerente, administrador y transportista). Solo permite cambiar la PROPIA contraseña: no muestra
-// ni edita datos personales (eso sigue siendo de «Mi cuenta» de cliente y empresario) ni ninguna función de cliente. El servidor
-// actúa siempre sobre la cuenta de la sesión, pide la contraseña actual y cierra las demás sesiones de esta cuenta.
 export default function CambiarContrasena() {
   const { usuario } = useAuth()
   const [aviso, setAviso] = useState('')
-  const [intento, setIntento] = useState(0) // al guardar, el formulario se vacía volviendo a montarlo
+  const [intento, setIntento] = useState(0)
 
   return (
     <section className="cambiar-contrasena">

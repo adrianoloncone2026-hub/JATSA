@@ -18,7 +18,6 @@ function kg(valor) {
 }
 
 // Diapositiva 28: Viajes y flota del GERENTE. Solo lectura. El periodo (año y mes) cuenta los viajes terminados; «En ruta ahora»
-// y «Programados» son el estado actual.
 export default function ViajesFlota() {
   const anioActual = new Date().getFullYear()
   const [filtros, setFiltros] = useState({ anio: String(anioActual), mes: String(new Date().getMonth() + 1), sucursal: '', vehiculo: '', transportista: '', tipoEnvio: '' })
@@ -31,7 +30,7 @@ export default function ViajesFlota() {
     const { signal } = control
     Promise.all([listarSucursales(signal), listarVehiculos(signal), listarCuentas({ rol: 'TRANSPORTISTA' }, signal)])
       .then(([s, v, t]) => setOpciones({ sucursales: s.sucursales, vehiculos: v.vehiculos, transportistas: t.cuentas }))
-      .catch(() => {}) // sin las listas, los filtros quedan en «Todos»
+      .catch(() => {})
     return () => control.abort()
   }, [])
 

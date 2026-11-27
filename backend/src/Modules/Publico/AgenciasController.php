@@ -15,7 +15,6 @@ final class AgenciasController
         $this->agencias = $agencias ?? new AgenciaRepository();
     }
 
-    /** GET /api/agencias — sucursales activas con sus teléfonos (público, sin sesión). */
     public function listar(Request $peticion, array $parametros): Response
     {
         return Response::exito(['agencias' => $this->agencias->listarActivas()]);

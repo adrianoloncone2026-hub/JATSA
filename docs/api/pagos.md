@@ -6,11 +6,11 @@ Tabla `Pago` (script SQL): `idPago`, `idEnvio`, `idSucursal` (donde se cobra), `
 
 El **importe** de un envío es la suma de sus bultos (no se guarda aparte). **Pagado** = suma de sus pagos `REGISTRADO`. **Saldo** = importe − pagado.
 
-Un pago se devuelve así (`monto` con 2 decimales; `id` es el `idPago`):
+Un pago se devuelve así (`monto` con 2 decimales; `id` es el `idPago`; `saldoPendiente` es `true` si el **envío** de ese pago aún tiene saldo por cobrar —importe de bultos mayor que lo pagado en pagos REGISTRADOS—; un envío anulado nunca lo tiene):
 ```json
 { "id": 7, "fechaHora": "2026-10-10 10:04:00", "codigoSeguimiento": "EN7K4Q2M9X1B", "monto": "23.75",
   "metodoPago": "EFECTIVO", "pagadoPor": "REMITENTE", "estado": "REGISTRADO",
-  "sucursal": { "codigo": "MOQ001", "nombre": "Agencia Moquegua" } }
+  "sucursal": { "codigo": "MOQ001", "nombre": "Agencia Moquegua" }, "saldoPendiente": false }
 ```
 
 ## Caja (ADMINISTRADOR)

@@ -3,10 +3,7 @@ declare(strict_types=1);
 
 namespace Jatsa\Modules\Publico;
 
-/**
- * Lectura de las sucursales activas. Cada agencia es un arreglo con las claves:
- * codigo, nombre, departamento, provincia, distrito, direccion y telefonos (lista de cadenas).
- */
+/** Lectura de las sucursales activas. Cada agencia es un arreglo con las claves: */
 interface RepositorioAgencias
 {
     /** @return list<array<string, mixed>> Solo sucursales activas, ordenadas por nombre. */

@@ -8,22 +8,18 @@ use Jatsa\Shared\HttpException;
 use PDO;
 use Throwable;
 
-/**
- * Lee y escribe lo del despacho con los nombres del script SQL definitivo. Siempre con parámetros.
- * Escrituras: alta de Viaje y alta/baja de Envio_Viaje, cada una en una transacción.
- */
+/** Lee y escribe lo del despacho con los nombres del script SQL definitivo. Siempre con parámetros. */
 final class DespachoRepository implements RepositorioDespacho
 {
     public function enEsperaDeSucursal(int $idSucursal, int $limite): array
     {
-        // Espera en la sucursal: (a) registrado en su origen y sin ningún viaje, o (b) su último viaje llegó aquí y su destino final es otro.
         $sentencia = Database::conexion()->prepare(
             'SELECT TOP ' . max(1, $limite) . " e.codigoSeguimiento, e.estadoEnvio, r.idSucursalDestino, sd.codigoSucursal AS destinoCodigo, sd.nombre AS destinoNombre,
-                    (SELECT COUNT(*) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS bultos,
-                    (SELECT COALESCE(SUM(b.pesoKg), 0) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS pesoKg
+                    t.cantidadBultos AS bultos, t.pesoKg
              FROM Envio AS e
              INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
              INNER JOIN Sucursal AS sd ON sd.idSucursal = r.idSucursalDestino
+             INNER JOIN vw_EnvioTotales AS t ON t.idEnvio = e.idEnvio
              WHERE e.estadoEnvio IN ('REGISTRADO', 'EN_TRANSITO')
                AND (
                     (e.estadoEnvio = 'REGISTRADO' AND r.idSucursalOrigen = :origen
@@ -96,7 +92,6 @@ final class DespachoRepository implements RepositorioDespacho
         try {
             // Orden de bloqueos constante en todo el sistema: sucursales (por id ascendente) → vehículo → usuario. Todo se lee ya
             // bloqueado (UPDLOCK, HOLDLOCK): una desactivación concurrente espera a que este viaje confirme (y entonces ve que el
-            // recurso tiene un viaje abierto y se niega) o llega antes (y entonces $decidir ve el recurso inactivo y se niega).
             $idDestino = $this->unId('SELECT idSucursal FROM Sucursal WHERE codigoSucursal = :valor', $codigoDestino); // el id no cambia; su estado se lee abajo, bloqueado
             $ids = array_values(array_unique(array_filter([$idSucursalOrigen, $idDestino])));
             sort($ids);
@@ -248,10 +243,8 @@ final class DespachoRepository implements RepositorioDespacho
                 }
             }
 
-            // 3) Reglas de negocio: las aplica el servicio y puede abortar.
             $decidir($contexto);
 
-            // 4) Alta de la carga. La fecha y hora de carga las pone la base.
             $alta = $pdo->prepare('INSERT INTO Envio_Viaje (idEnvio, idViaje) VALUES (:envio, :viaje)');
             $alta->bindValue(':envio', $contexto['envio']['idEnvio'], PDO::PARAM_INT);
             $alta->bindValue(':viaje', $idViaje, PDO::PARAM_INT);

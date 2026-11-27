@@ -5,11 +5,7 @@ namespace Jatsa\Core;
 
 use Jatsa\Shared\HttpException;
 
-/**
- * Enrutador mínimo. Patrones con parámetros: /api/envios/{id}.
- * Un manejador es un callable o un arreglo [Clase::class, 'metodo'] (se instancia la clase sin argumentos).
- * Recibe (Request $peticion, array $parametros) y devuelve una Response.
- */
+/** Enrutador mínimo. Patrones con parámetros: /api/envios/{id}. */
 final class Router
 {
     /** @var list<array{metodo: string, regex: string, manejador: callable|array, middleware: list<callable>}> */
@@ -17,7 +13,7 @@ final class Router
 
     /**
      * @param list<callable> $middleware Se ejecutan en orden antes del manejador, reciben la Request
-     *                                   y lanzan HttpException para cortar la petición.
+     * y lanzan HttpException para cortar la petición.
      */
     public function agregar(string $metodo, string $patron, callable|array $manejador, array $middleware = []): void
     {

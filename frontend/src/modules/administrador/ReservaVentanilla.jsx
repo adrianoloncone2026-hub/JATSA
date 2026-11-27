@@ -32,7 +32,6 @@ const ORDEN_CAMPOS = [
 ]
 
 // «Cliente sin reserva» (diapositiva 18): el cliente llega sin reserva y el personal la crea con canal VENTANILLA.
-// El origen es siempre la agencia del personal; después se pasa a «Formalizar envío».
 export default function ReservaVentanilla() {
   const navegar = useNavigate()
   const { usuario } = useAuth()
@@ -45,7 +44,7 @@ export default function ReservaVentanilla() {
   const [enviando, setEnviando] = useState(false)
   const [agencias, setAgencias] = useState({ fase: 'cargando', lista: [], mensaje: '' })
   const [intentoAgencias, setIntentoAgencias] = useState(0)
-  const [tarifas, setTarifas] = useState({ fase: 'inactivo' }) // inactivo | cargando | listo | error
+  const [tarifas, setTarifas] = useState({ fase: 'inactivo' })
   const [esNueva, setEsNueva] = useState({ remitente: false, destinatario: false })
 
   useEffect(() => {
@@ -60,7 +59,6 @@ export default function ReservaVentanilla() {
     return () => control.abort()
   }, [intentoAgencias])
 
-  // Tarifas de la ruta (agencia de la sesión → destino): sin ninguna tarifa vigente no se puede reservar.
   useEffect(() => {
     if (!origen || !campos.sucursalDestino || campos.sucursalDestino === origen.codigo) {
       setTarifas({ fase: 'inactivo' })

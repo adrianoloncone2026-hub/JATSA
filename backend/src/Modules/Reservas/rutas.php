@@ -7,10 +7,8 @@ use Jatsa\Modules\Reservas\ReservaController;
 use Jatsa\Modules\Reservas\VentanillaController;
 use Jatsa\Shared\Roles;
 
-// Reservas del cliente y del empresario (módulo 4) y ventanilla del administrador (módulo 5).
-// Las rutas fijas (/destinatario, /personas) van antes que /{codigo}.
 return static function (Router $router): void {
-    $clientes = [new RequiereRol([Roles::CLIENTE, Roles::EMPRESARIO])];
+    $clientes = [new RequiereRol([Roles::CLIENTE, Roles::EMPRESARIO, Roles::GERENTE, Roles::ADMINISTRADOR, Roles::TRANSPORTISTA])];
     $administradores = [new RequiereRol([Roles::ADMINISTRADOR])];
 
     $router->get('/api/reservas/destinatario', [ReservaController::class, 'consultarDestinatario'], $clientes);

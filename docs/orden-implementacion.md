@@ -18,7 +18,7 @@ Criterio: primero la base técnica y el acceso, luego los catálogos de los que 
 | 9 | Rastreo, salidas e historial | Visitante / Cliente / Empresario | Rastreo (3), Salidas entre sucursales (4), Detalle de salida (5), Historial de envíos (14), Mi panel completo (11) | 6, 7, 8 |
 | 10 | Catálogos y cuentas | Gerente | Catálogos: Sucursales, Rutas y precios, Vehículos (29); Cuentas (30) | 1 |
 | 11 | Resumen y viajes y flota | Gerente | Resumen (26), Viajes y flota (28) | 6, 7, 8 |
-| 12 | Reportes y plantillas | Administrador / Gerente | Reportes y plantillas (23, 27) | 11 — **bloqueado** |
+| 12 | Reportes y plantillas | Administrador / Gerente | Reportes y plantillas (23, 27) | 11 — exportaciones Excel (2 libros) implementadas; resto pendiente, ver `docs/api/reportes-exportaciones.md` |
 
 ## Notas
 

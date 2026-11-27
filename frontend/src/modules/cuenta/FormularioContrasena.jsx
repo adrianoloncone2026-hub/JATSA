@@ -4,7 +4,6 @@ import CampoTexto from '../../components/CampoTexto.jsx'
 import { errorContrasena, soloConError } from '../../utils/validaciones.js'
 
 // Formulario para cambiar la PROPIA contraseña (contraseña actual, nueva y confirmación). Lo usan «Mi cuenta» (cliente y empresario)
-// y la pantalla «Cambiar contraseña» del personal. El servidor actúa siempre sobre la cuenta de la sesión y cierra las demás sesiones.
 export default function FormularioContrasena({ usuario, alCancelar, alGuardar }) {
   const [campos, setCampos] = useState({ contrasenaActual: '', contrasenaNueva: '', confirmacion: '' })
   const [errores, setErrores] = useState({})

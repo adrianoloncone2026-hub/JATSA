@@ -6,22 +6,19 @@ namespace Jatsa\Modules\Envios;
 use Jatsa\Core\Database;
 use PDO;
 
-/**
- * Lee Envio, Reserva, Persona (solo el nombre), Sucursal, Bulto, Ruta, Pago, Envio_Viaje y Viaje para el historial de UNA persona
- * (solo SELECT, con parámetros). Los fragmentos opcionales de la consulta salen de listas cerradas; los valores, siempre enlazados.
- */
+/** Lee Envio, Reserva, Persona (solo el nombre), Sucursal, Bulto, Ruta, Pago, Envio_Viaje y Viaje para el historial de UNA persona */
 final class HistorialRepository implements RepositorioHistorial
 {
     private const COLUMNAS = "e.codigoSeguimiento, e.estadoEnvio, e.fechaHoraRegistro,
         CASE WHEN r.idPersonaRemitente = :rol1 THEN 'ENVIE' ELSE 'RECIBI' END AS rol,
         CASE WHEN r.idPersonaRemitente = :rol2 THEN pd.nombreCompleto ELSE pr.nombreCompleto END AS otraParte,
-        (SELECT COALESCE(SUM(b.costo), 0) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS importe,
-        (SELECT COALESCE(SUM(p.monto), 0) FROM Pago AS p WHERE p.idEnvio = e.idEnvio AND p.estadoPago = 'REGISTRADO') AS pagado";
+        t.importe, t.pagado";
 
     private const ORIGEN = 'FROM Envio AS e
         INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
         INNER JOIN Persona AS pr ON pr.idPersona = r.idPersonaRemitente
-        INNER JOIN Persona AS pd ON pd.idPersona = r.idPersonaDestinatario';
+        INNER JOIN Persona AS pd ON pd.idPersona = r.idPersonaDestinatario
+        INNER JOIN vw_EnvioTotales AS t ON t.idEnvio = e.idEnvio';
 
     public function listar(int $idPersona, array $filtros, int $limite): array
     {
@@ -76,15 +73,14 @@ final class HistorialRepository implements RepositorioHistorial
     {
         $pdo = Database::conexion();
 
-        // Totales sobre TODOS los envíos en curso de la persona (sin tope): agregación en SQL, solo sus envíos y solo esos estados.
         $totales = $pdo->prepare(
             "SELECT COUNT(*) AS enCurso,
                     COALESCE(SUM(CASE WHEN t.importe > t.pagado THEN t.importe - t.pagado ELSE 0 END), 0) AS saldo
-             FROM (SELECT (SELECT COALESCE(SUM(b.costo), 0) FROM Bulto AS b WHERE b.idEnvio = e.idEnvio) AS importe,
-                          (SELECT COALESCE(SUM(p.monto), 0) FROM Pago AS p WHERE p.idEnvio = e.idEnvio AND p.estadoPago = 'REGISTRADO') AS pagado
-                   FROM Envio AS e INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
-                   WHERE (r.idPersonaRemitente = :p1 OR r.idPersonaDestinatario = :p2)
-                     AND e.estadoEnvio IN ('REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO')) AS t",
+             FROM vw_EnvioTotales AS t
+             INNER JOIN Envio AS e ON e.idEnvio = t.idEnvio
+             INNER JOIN Reserva AS r ON r.idReserva = e.idReserva
+             WHERE (r.idPersonaRemitente = :p1 OR r.idPersonaDestinatario = :p2)
+               AND e.estadoEnvio IN ('REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO')",
         );
         $totales->bindValue(':p1', $idPersona, PDO::PARAM_INT);
         $totales->bindValue(':p2', $idPersona, PDO::PARAM_INT);
@@ -92,7 +88,6 @@ final class HistorialRepository implements RepositorioHistorial
         $fila = $totales->fetch(PDO::FETCH_ASSOC);
         $totales->closeCursor();
 
-        // Solo la lista «Por recoger» lleva tope: lo que recibe la persona y ya está en la agencia de destino.
         $lista = $pdo->prepare(
             'SELECT TOP ' . max(1, $limitePorRecoger) . ' ' . self::COLUMNAS . ', sd.nombre AS destinoNombre, sd.direccion AS destinoDireccion ' . self::ORIGEN . '
              INNER JOIN Sucursal AS sd ON sd.idSucursal = r.idSucursalDestino

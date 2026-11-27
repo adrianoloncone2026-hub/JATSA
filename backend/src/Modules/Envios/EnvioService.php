@@ -10,29 +10,18 @@ use Jatsa\Modules\Reservas\VentanillaService;
 use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Tarifas;
 
-/**
- * Formalización de envíos en ventanilla (diapositiva 19 y proceso P2): pesa cada bulto, define su tipo por el peso,
- * calcula su costo con la tarifa vigente de la ruta, guarda el envío con su código de seguimiento y marca la reserva
- * como FORMALIZADA. Solo el ADMINISTRADOR de la sucursal de ORIGEN de la reserva.
- *
- * Las reglas (estado, plazo de 72 h, sucursal, tarifa por tipo y peso) se comprueban aquí para dar mensajes claros y
- * VUELVEN A COMPROBARSE dentro de la transacción de EnvioRepository::formalizar, que es la autoridad: nunca se confía
- * en lo que el frontend haya mostrado.
- */
+/** Formalización de envíos en ventanilla (diapositiva 19 y proceso P2): pesa cada bulto, define su tipo por el peso, */
 final class EnvioService
 {
     public const TIPOS_ENTREGA = ['AGENCIA', 'DOMICILIO'];
 
-    /** Tope razonable de bultos por envío (el modelo no fija uno; evita cuerpos desmesurados). */
     public const MAX_BULTOS = 50;
 
     private readonly RepositorioEnvios $envios;
     private readonly RepositorioReservas $reservas;
     private readonly Closure $hoy;
 
-    /**
-     * @param (callable(): string)|null $hoy Fecha de hoy (AAAA-MM-DD); la misma fuente que el cotizador. Se inyecta para probar.
-     */
+    /** @param (callable(): string)|null $hoy Fecha de hoy (AAAA-MM-DD); la misma fuente que el cotizador. Se inyecta para probar. */
     public function __construct(?RepositorioEnvios $envios = null, ?RepositorioReservas $reservas = null, ?callable $hoy = null)
     {
         $this->envios = $envios ?? new EnvioRepository();
@@ -41,9 +30,6 @@ final class EnvioService
     }
 
     /**
-     * Cotiza los bultos de una reserva SIN escribir nada: tipo, costo y error de cada bulto, e importe total.
-     * Es lo que ve la pantalla mientras se llena la tabla de bultos.
-     *
      * @param array<string, mixed> $usuario
      * @param array<string, mixed> $datos codigoReserva, bultos
      * @return array<string, mixed>
@@ -70,7 +56,6 @@ final class EnvioService
             if ($evaluado['error'] !== null || $evaluado['errorDescripcion'] !== null) {
                 $valido = false;
             }
-            // Importe y peso total cuentan solo los bultos que se podrían guardar (como en la diapositiva 19).
             if ($evaluado['error'] === null) {
                 $centimos += $evaluado['centimos'];
                 $centesimas += $evaluado['centesimas'] ?? 0;
@@ -89,8 +74,6 @@ final class EnvioService
     }
 
     /**
-     * Formaliza la reserva: crea el envío con sus bultos y devuelve el envío completo.
-     *
      * @param array<string, mixed> $usuario
      * @param array<string, mixed> $datos codigoReserva, tipoEntrega, direccionEntrega?, bultos
      * @return array<string, mixed>
@@ -156,7 +139,6 @@ final class EnvioService
         $codigoSeguimiento = $this->envios->formalizar($reserva['codigo'], $sucursal['id'], ($this->hoy)(), $planificar);
 
         if ($codigoSeguimiento === null) {
-            // Otra operación se adelantó entre la lectura y la reclamación: se vuelve a leer para explicar por qué.
             $this->reservaFormalizable($usuario, $reserva['codigo']);
             throw new HttpException(409, 'reserva_no_formalizable', 'La reserva ya no se puede formalizar. Actualiza la pantalla.');
         }
@@ -165,8 +147,6 @@ final class EnvioService
     }
 
     /**
-     * Un envío, visible para el personal de su sucursal de origen o de destino. Otro personal: el mismo 404.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -183,12 +163,8 @@ final class EnvioService
         return $this->presentar($envio);
     }
 
-    // ── Reglas ──────────────────────────────────────────────────────────────
 
     /**
-     * La reserva debe ser de la sucursal del personal y estar PENDIENTE y dentro de plazo. Si no existe o es de otro
-     * origen: 404 (el mismo). Si no se puede formalizar por su estado: 409 con el motivo.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -228,8 +204,6 @@ final class EnvioService
     }
 
     /**
-     * Errores por campo de todos los bultos (clave «bultos.N.descripcion» / «bultos.N.pesoKg»; N desde 1).
-     *
      * @param list<mixed> $entrada
      * @param list<array<string, mixed>> $tarifas
      * @return array<string, string>
@@ -251,8 +225,6 @@ final class EnvioService
     }
 
     /**
-     * Evalúa un bulto: descripción, peso, tipo que le corresponde por el peso y costo con la tarifa vigente de ese tipo.
-     *
      * @param array<string, mixed> $bulto
      * @param list<array<string, mixed>> $tarifas
      * @return array{fila: array<string, mixed>, error: ?string, errorDescripcion: ?string, campo: string, centimos: int, centesimas: ?int, idRuta: ?int}
@@ -268,7 +240,6 @@ final class EnvioService
             $errorDescripcion = 'Puede tener hasta 150 caracteres.';
         }
 
-        // «fila» es lo que ve la pantalla; el resto, lo que usa el servicio para validar y guardar.
         $fila = ['numero' => $numero, 'descripcion' => $descripcion, 'pesoKg' => null, 'tipo' => null, 'costo' => null, 'error' => null, 'errorDescripcion' => $errorDescripcion];
         $estado = ['centimos' => 0, 'centesimas' => null, 'idRuta' => null];
         $terminar = static function (?string $error) use (&$fila, &$estado, $campo, $errorDescripcion): array {
@@ -361,7 +332,6 @@ final class EnvioService
         ];
     }
 
-    /** 880 → "8.80" */
     private static function kilos(int $centesimas): string
     {
         return sprintf('%d.%02d', intdiv($centesimas, 100), $centesimas % 100);

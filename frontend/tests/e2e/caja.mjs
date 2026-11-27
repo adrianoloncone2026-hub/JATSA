@@ -118,9 +118,9 @@ try {
   comprobar('título con el nombre de la agencia', await texto('h1'), 'Caja · Agencia Moquegua')
   comprobar('«Registrar pago» con el campo Envío y sin formulario hasta cargar un envío', [await texto('.registrar-pago h2'), await existe('#codigoEnvio'), await existe('.formulario-pago')], ['Registrar pago', true, false])
   comprobar('pagos cobrados aquí: más reciente primero, con «Anular» en los registrados', await filas(FILAS),
-    '14/10 14:05 ENZ5H0D3V7NJ 14.60 TARJETA REGISTRADO Anular || 13/10 12:10 ENM2P6T8R1WQ 8.50 EFECTIVO REGISTRADO Anular || 10/10 10:04 EN7K4Q2M9X1B 23.75 EFECTIVO REGISTRADO Anular')
+    '14/10 14:05 ENZ5H0D3V7NJ 14.60 TARJETA REGISTRADO No Anular || 13/10 12:10 ENM2P6T8R1WQ 8.50 EFECTIVO REGISTRADO No Anular || 10/10 10:04 EN7K4Q2M9X1B 23.75 EFECTIVO REGISTRADO No Anular')
   comprobar('totales por método (solo los que tienen cobros) y total', await filas(TOTALES), 'S/ 32.25 Efectivo || S/ 14.60 Tarjeta || S/ 46.85 Total')
-  comprobar('el menú marca la Caja y los accesos del administrador siguen', await enlaces('nav.menu a'), 'Ventanilla→/administrador | Caja→/administrador/caja | Despacho→/administrador/despacho | Llegadas y entregas→/administrador/llegadas-entregas | Reportes→/administrador/reportes')
+  comprobar('el menú marca la Caja y los accesos del administrador siguen', await enlaces('nav.menu a'), 'Ventanilla→/administrador | Caja→/administrador/caja | Despacho→/administrador/despacho | Llegadas y entregas→/administrador/llegadas-entregas | Reportes→/administrador/reportes | Mis encomiendas→/cliente')
   await captura('20_caja')
 
   titulo('Caja: buscar el envío')
@@ -146,7 +146,7 @@ try {
   comprobar('pago parcial: se envía lo elegido (coma decimal incluida)', llamadasA('POST', '/api/caja/pagos').at(-1)?.cuerpo, { codigoSeguimiento: 'EN4T7Q0P2LKX', monto: '10,00', pagadoPor: 'DESTINATARIO', metodoPago: 'TARJETA' })
   comprobar('aviso de éxito con el saldo restante', await texto('.resultado.ok'), 'Pago de S/ 10.00 registrado (tarjeta). Saldo: S/ 13.75.')
   comprobar('el resumen se actualiza y el monto vuelve a ser el saldo', [await texto('.resumen-cobro'), await valor('#monto')], ['Importe S/ 23.75 Pagado S/ 10.00 Saldo S/ 13.75', '13.75'])
-  comprobar('la lista de cobrados se recarga con el pago nuevo arriba', (await filas(FILAS)).split(' || ')[0], '31/10 10:00 EN4T7Q0P2LKX 10.00 TARJETA REGISTRADO Anular')
+  comprobar('la lista de cobrados se recarga con el pago nuevo arriba', (await filas(FILAS)).split(' || ')[0], '31/10 10:00 EN4T7Q0P2LKX 10.00 TARJETA REGISTRADO No Anular')
   comprobar('los totales incluyen el pago nuevo', await filas(TOTALES), 'S/ 32.25 Efectivo || S/ 24.60 Tarjeta || S/ 56.85 Total')
   await pulsar(BTN_REGISTRAR); await esperar(700)
   comprobar('el resto del saldo se cobra con el método elegido', llamadasA('POST', '/api/caja/pagos').at(-1)?.cuerpo.monto, '13.75')
@@ -159,7 +159,7 @@ try {
   await pulsar(`${FILAS}:first-child .confirmar-cancelacion .boton-claro`); await esperar(200)
   comprobar('«No» cancela la anulación', [await existe('.confirmar-cancelacion'), llamadasA('POST', '/api/caja/pagos/7/anular').length], [false, 0])
   await pulsar(`${FILAS}:first-child .celda-accion button`); await pulsar(`${FILAS}:first-child .confirmar-cancelacion .boton-marino`); await esperar(800)
-  comprobar('anulado: la fila sigue, con estado ANULADO y sin botón', (await filas(FILAS)).split(' || ')[0], '31/10 10:00 EN4T7Q0P2LKX 13.75 TARJETA ANULADO')
+  comprobar('anulado: la fila sigue, con estado ANULADO y sin botón', (await filas(FILAS)).split(' || ')[0], '31/10 10:00 EN4T7Q0P2LKX 13.75 TARJETA ANULADO No')
   comprobar('aviso de anulación', await texto('.resultado.ok'), 'Pago de S/ 13.75 del envío EN4T7Q0P2LKX anulado.')
   comprobar('el envío abierto recupera su saldo y vuelve el formulario', [await texto('.resumen-cobro'), await existe('.formulario-pago')], ['Importe S/ 23.75 Pagado S/ 10.00 Saldo S/ 13.75', true])
   comprobar('el pago anulado ya no suma en los totales', await filas(TOTALES), 'S/ 32.25 Efectivo || S/ 24.60 Tarjeta || S/ 56.85 Total')
@@ -247,7 +247,7 @@ try {
   comprobar('un cliente no entra a Caja (lo manda a su panel)', await ruta(), '/cliente')
   sim.sesion = ADMIN
   await irA('/cliente/pagos')
-  comprobar('un administrador no entra a Mis pagos (lo manda a Ventanilla)', await ruta(), '/administrador')
+  comprobar('un administrador entra a Mis pagos desde Mis encomiendas', await ruta(), '/cliente/pagos')
   sim.sesion = null
   await irA('/administrador/caja')
   comprobar('sin sesión: a Ingresar', (await ruta()).startsWith('/ingresar'), true)

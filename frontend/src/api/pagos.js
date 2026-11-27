@@ -1,7 +1,6 @@
 import { solicitar } from './cliente.js'
 
 // Pagos y Caja (módulo 6). Caja se limita a la agencia de la sesión: el servidor la toma de la sesión, nunca de lo que
-// se envíe aquí. Un pago no se borra: se anula.
 
 // GET /api/caja/envios/{codigo} — el envío a cobrar: importe, pagado, saldo y sus pagos. 404 si no es de esta agencia.
 export async function obtenerEnvioParaCobro(codigo, signal) {

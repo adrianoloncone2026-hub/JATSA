@@ -8,12 +8,7 @@ use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Tarifas;
 use Jatsa\Shared\Validacion;
 
-/**
- * Catálogos del GERENTE (diapositiva 29 del prototipo): sucursales, rutas con precios y vigencia, y vehículos.
- *
- * Nada se borra: las sucursales y los vehículos se desactivan, y las tarifas se cierran y se reemplazan por una fila nueva («Nuevo
- * precio: se cierra la vigencia de la fila actual y se crea otra. Los bultos ya cobrados conservan su tarifa»).
- */
+/** Catálogos del GERENTE (diapositiva 29 del prototipo): sucursales, rutas con precios y vigencia, y vehículos. */
 final class CatalogoService
 {
     public const TIPOS_ENVIO = ['SOBRE', 'PAQUETE', 'CARGA'];
@@ -30,7 +25,6 @@ final class CatalogoService
         $this->hoy = Closure::fromCallable($hoy ?? static fn (): string => date('Y-m-d'));
     }
 
-    // ── Sucursales ──────────────────────────────────────────────────────────
 
     /** @return array{sucursales: list<array<string, mixed>>} */
     public function sucursales(): array
@@ -105,7 +99,6 @@ final class CatalogoService
         return self::presentarSucursal($this->sucursalDe($codigo));
     }
 
-    // ── Rutas y precios ─────────────────────────────────────────────────────
 
     /** @return array{rutas: list<array<string, mixed>>} */
     public function rutas(): array
@@ -114,8 +107,6 @@ final class CatalogoService
     }
 
     /**
-     * «Nueva ruta»: origen, destino y tipo que todavía no tienen una tarifa vigente.
-     *
      * @param array<string, mixed> $datos origen, destino, tipoEnvio, precioBase, precioPorKm, distanciaKm, tiempoHoras
      * @return array<string, mixed>
      */
@@ -160,8 +151,6 @@ final class CatalogoService
     }
 
     /**
-     * «Nuevo precio»: cierra la vigencia de la fila actual y crea otra desde hoy. Origen, destino y tipo no cambian.
-     *
      * @param array<string, mixed> $datos precioBase, precioPorKm, distanciaKm, tiempoHoras
      * @return array<string, mixed> la fila nueva
      */
@@ -191,7 +180,6 @@ final class CatalogoService
         return self::presentarRuta($nueva);
     }
 
-    // ── Vehículos ───────────────────────────────────────────────────────────
 
     /** @return array{vehiculos: list<array<string, mixed>>} */
     public function vehiculos(): array
@@ -219,8 +207,6 @@ final class CatalogoService
     }
 
     /**
-     * La placa no cambia. No se baja la capacidad por debajo de lo ya cargado en sus viajes sin llegada.
-     *
      * @param array<string, mixed> $datos tipoVehiculo, capacidadKg
      * @return array<string, mixed>
      */
@@ -264,7 +250,6 @@ final class CatalogoService
         return self::presentarVehiculo($this->vehiculoDe($placa));
     }
 
-    // ── Validación ──────────────────────────────────────────────────────────
 
     /**
      * @param array<string, mixed>  $datos
@@ -353,7 +338,6 @@ final class CatalogoService
         return [$tipo, $capacidad];
     }
 
-    // ── Utilidades ──────────────────────────────────────────────────────────
 
     /** @param array<string, string> $errores */
     private function exigirValidos(array $errores): void
@@ -420,7 +404,6 @@ final class CatalogoService
         return new HttpException(404, 'vehiculo_no_encontrado', 'No se encontró el vehículo.');
     }
 
-    // ── Presentación ────────────────────────────────────────────────────────
 
     /**
      * @param array<string, mixed> $s

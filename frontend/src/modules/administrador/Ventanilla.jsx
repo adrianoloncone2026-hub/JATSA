@@ -17,12 +17,11 @@ const MOTIVO_NO_FORMALIZABLE = {
 export default function Ventanilla() {
   const { usuario } = useAuth()
   const [codigo, setCodigo] = useState('')
-  const [busqueda, setBusqueda] = useState({ fase: 'inactivo', reserva: null, mensaje: '' }) // inactivo | buscando | listo | no_encontrada | error
+  const [busqueda, setBusqueda] = useState({ fase: 'inactivo', reserva: null, mensaje: '' })
   const [pendientes, setPendientes] = useState({ fase: 'cargando', reservas: [], mensaje: '' })
   const [intento, setIntento] = useState(0)
   const controlBusqueda = useRef(null)
 
-  // Pendientes de la agencia: se cargan al entrar y al reintentar.
   useEffect(() => {
     const control = new AbortController()
     setPendientes((anterior) => ({ ...anterior, fase: 'cargando' }))
@@ -35,7 +34,6 @@ export default function Ventanilla() {
     return () => control.abort()
   }, [intento])
 
-  // Una búsqueda nueva cancela la anterior: una respuesta lenta no pisa a la de la búsqueda actual.
   useEffect(() => () => controlBusqueda.current?.abort(), [])
 
   function buscar(evento) {
@@ -69,7 +67,6 @@ export default function Ventanilla() {
           <label htmlFor="codigoReserva">Código de reserva</label>
           <input id="codigoReserva" type="text" autoComplete="off" maxLength={10} placeholder="R000000006" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
         </div>
-        {/* No se deshabilita mientras busca: una búsqueda nueva cancela la anterior. */}
         <button type="submit" className="boton boton-azul">
           {busqueda.fase === 'buscando' ? 'Buscando…' : 'Buscar'}
         </button>

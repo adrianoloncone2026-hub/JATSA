@@ -8,14 +8,9 @@ use Jatsa\Modules\Publico\CotizadorService;
 use Jatsa\Modules\Publico\RepositorioAgencias;
 use Jatsa\Shared\HttpException;
 
-/**
- * Ventanilla del Administrador (diapositiva 18): reservas pendientes de su agencia, búsqueda por código y
- * «Cliente sin reserva» (reserva con canal VENTANILLA). Todo se limita a la sucursal de la sesión: una reserva
- * de otro origen es, para el personal, como si no existiera.
- */
+/** Ventanilla del Administrador (diapositiva 18): reservas pendientes de su agencia, búsqueda por código y */
 final class VentanillaService
 {
-    /** Documentos que el personal puede registrar (Persona admite estos cuatro). */
     private const TIPOS_DOCUMENTO = ['DNI', 'RUC', 'CE', 'PAS'];
 
     private readonly RepositorioReservas $reservas;
@@ -30,8 +25,6 @@ final class VentanillaService
     }
 
     /**
-     * Reservas pendientes de la agencia que todavía se pueden formalizar (las que ya cumplieron el plazo se excluyen).
-     *
      * @param array<string, mixed> $usuario Usuario de la sesión.
      * @return list<array<string, mixed>>
      */
@@ -43,8 +36,6 @@ final class VentanillaService
     }
 
     /**
-     * Una reserva de la agencia por su código, en cualquier estado.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -55,7 +46,6 @@ final class VentanillaService
         $reserva = preg_match('/^R\d{9}$/', $codigo) === 1 ? $this->reservas->buscarDeSucursal($sucursal['id'], $codigo) : null;
 
         if ($reserva === null) {
-            // Inexistente y de otra agencia se responden igual: no se revela que el código existe.
             throw new HttpException(404, 'reserva_no_encontrada', 'No se encontró la reserva en esta agencia.');
         }
 
@@ -64,7 +54,6 @@ final class VentanillaService
 
     /**
      * Busca a una persona por documento para autocompletar. Devuelve solo el nombre (nunca teléfono ni correo).
-     *
      * @return array{existe: bool, nombreCompleto?: string}
      */
     public function consultarPersona(string $tipoDocumento, string $numeroDocumento): array
@@ -82,14 +71,10 @@ final class VentanillaService
     }
 
     /**
-     * «Cliente sin reserva»: crea la reserva PENDIENTE con canal VENTANILLA, con origen en la agencia de la sesión.
-     * Remitente y destinatario que ya existen se usan tal cual (no se les cambia ningún dato); los nuevos se crean y
-     * necesitan nombre y teléfono. Devuelve todos los errores por campo a la vez.
-     *
      * @param array<string, mixed> $usuario
      * @param array<string, mixed> $datos remitenteTipoDocumento, remitenteNumeroDocumento, remitenteNombre?, remitenteTelefono?,
-     *                                    destinatarioTipoDocumento, destinatarioNumeroDocumento, destinatarioNombre?,
-     *                                    destinatarioTelefono?, sucursalDestino, contenido
+     * destinatarioTipoDocumento, destinatarioNumeroDocumento, destinatarioNombre?,
+     * destinatarioTelefono?, sucursalDestino, contenido
      * @return array<string, mixed>
      */
     public function crear(array $usuario, array $datos): array
@@ -136,8 +121,6 @@ final class VentanillaService
     }
 
     /**
-     * Valida los campos de una persona (remitente o destinatario) y decide si ya existe o se crea.
-     *
      * @param array<string, mixed> $datos
      * @param array<string, string> $errores Se completa por referencia.
      * @return array{0: ?int, 1: ?array<string, string>} [id de la persona existente, datos de la persona nueva]
@@ -160,7 +143,6 @@ final class VentanillaService
             return [$existente['idPersona'], null];
         }
 
-        // Persona nueva: la tabla Persona exige nombre y teléfono.
         $nombre = self::normalizarEspacios(self::texto($datos, $rol . 'Nombre'));
         $telefono = preg_replace('/[\s-]+/', '', self::texto($datos, $rol . 'Telefono')) ?? '';
         if ($nombre === '') {
@@ -186,11 +168,8 @@ final class VentanillaService
         return false;
     }
 
-    // ── Utilidades ──────────────────────────────────────────────────────────
 
     /**
-     * Sucursal del personal: el rol ADMINISTRADOR siempre la tiene (CK_USUARIO_SUCURSAL), pero se comprueba.
-     *
      * @param array<string, mixed> $usuario
      * @return array{id: int, codigo: string, nombre: string}
      */
@@ -245,7 +224,6 @@ final class VentanillaService
         return null;
     }
 
-    /** Quita espacios y guiones; CE y PAS se guardan en mayúsculas. */
     public static function normalizarNumero(string $tipo, string $numero): string
     {
         $limpio = preg_replace('/[\s-]+/', '', $numero) ?? $numero;

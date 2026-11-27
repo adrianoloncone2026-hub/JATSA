@@ -86,7 +86,7 @@ try {
   titulo('Llegadas y entregas: pantalla de la diapositiva 22')
   await irA('/administrador/llegadas-entregas')
   comprobar('título con el nombre de la agencia', await texto('h1'), 'Llegadas y entregas · Agencia Moquegua')
-  comprobar('«en camino hacia aquí»: viaje, ruta y llegada aproximada', await filas('.viajes-en-camino li'), 'VJ2026103104 Agencia Ilo → Agencia Moquegua · llega aprox. 09:15 · 2 envíos')
+  comprobar('«en camino hacia aquí»: viaje, ruta y llegada aproximada', await filas('.viajes-en-camino li'), 'VJ2026103104 Agencia Ilo → Agencia Moquegua · llegada estimada 09:15 (la llegada real la confirma el transportista) · 2 envíos')
   comprobar('«listos para entregar»: envío, destinatario y saldo', await filas(LISTOS),
     'ENM2P6T8R1WQ María Elena Rojas Ccori S/ 0.00 Atender || ENR5T6Y7U8I9 Comercial Sur S.A.C. S/ 14.60 Atender || ENDOMICILIO1 Carlos Pérez Díaz · a domicilio S/ 0.00 Atender')
   comprobar('el menú marca Llegadas y entregas y no hay panel hasta atender un envío', [(await enlaces('nav.menu a')).includes('Llegadas y entregas→/administrador/llegadas-entregas'), await existe('.entrega')], [true, false])

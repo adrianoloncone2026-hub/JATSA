@@ -6,10 +6,15 @@ use Jatsa\Middleware\RequiereRol;
 use Jatsa\Modules\Reportes\ReportesController;
 use Jatsa\Shared\Roles;
 
-// Resumen y Viajes y flota (módulo 11). Solo el GERENTE y solo lectura; la autorización se aplica aquí, en el backend.
 return static function (Router $router): void {
     $gerentes = [new RequiereRol([Roles::GERENTE])];
 
     $router->get('/api/reportes/resumen', [ReportesController::class, 'resumen'], $gerentes);
     $router->get('/api/reportes/viajes-flota', [ReportesController::class, 'viajesFlota'], $gerentes);
+
+    $exportadores = [new RequiereRol([Roles::GERENTE, Roles::ADMINISTRADOR])];
+    $router->get('/api/reportes/exportar/gerencia', [ReportesController::class, 'exportarGerencia'], $exportadores);
+    $router->get('/api/reportes/exportar/logistica', [ReportesController::class, 'exportarLogistica'], $exportadores);
+    $router->get('/api/reportes/exportar/gerencia-powerbi', [ReportesController::class, 'powerBiGerencia'], $exportadores);
+    $router->get('/api/reportes/exportar/logistica-powerbi', [ReportesController::class, 'powerBiLogistica'], $exportadores);
 };

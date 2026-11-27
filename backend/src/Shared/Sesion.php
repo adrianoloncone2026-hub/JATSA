@@ -5,20 +5,10 @@ namespace Jatsa\Shared;
 
 use Jatsa\Core\Config;
 
-/**
- * Sesión del usuario con las sesiones nativas de PHP (cookie HttpOnly, SameSite=Lax).
- * Los archivos de sesión se guardan en backend/storage/sessions.
- *
- * La sesión solo se inicia cuando la petición trae la cookie o cuando se abre una sesión nueva,
- * así las peticiones anónimas no generan archivos.
- */
+/** Sesión del usuario con las sesiones nativas de PHP (cookie HttpOnly, SameSite=Lax). */
 final class Sesion
 {
-    /**
-     * Abre una sesión nueva para el usuario autenticado (regenera el identificador).
-     *
-     * @param array<string, mixed> $usuario Datos públicos del usuario (sin hash de contraseña).
-     */
+    /** @param array<string, mixed> $usuario Datos públicos del usuario (sin hash de contraseña). */
     public static function abrir(array $usuario, bool $recordar, string $huella = ''): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
@@ -37,16 +27,11 @@ final class Sesion
         $_SESSION['expira'] = time() + self::duracionInactividad($recordar);
     }
 
-    /** Huella de la contraseña con la que se abrió la sesión (cadena vacía si no hay). */
     public static function huella(): string
     {
         return self::iniciarSiExiste() ? (string) ($_SESSION['huella'] ?? '') : '';
     }
 
-    /**
-     * Tras cambiar la contraseña: la sesión actual adopta la huella nueva (sigue válida) y se rota su
-     * identificador. Las demás sesiones de la cuenta conservan la huella vieja y dejan de valer.
-     */
     public static function renovarHuella(string $huella): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
@@ -55,12 +40,7 @@ final class Sesion
         }
     }
 
-    /**
-     * Datos del usuario de la sesión actual, o null si no hay sesión válida.
-     * Cada consulta renueva el plazo de inactividad.
-     *
-     * @return array<string, mixed>|null
-     */
+    /** @return array<string, mixed>|null */
     public static function usuario(): ?array
     {
         if (!self::iniciarSiExiste()) {
@@ -80,11 +60,7 @@ final class Sesion
         return $usuario;
     }
 
-    /**
-     * Sustituye los datos del usuario guardados (por ejemplo, si cambió su rol).
-     *
-     * @param array<string, mixed> $usuario
-     */
+    /** @param array<string, mixed> $usuario */
     public static function actualizar(array $usuario): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
@@ -102,7 +78,6 @@ final class Sesion
         $nombre = session_name();
         session_destroy();
 
-        // Borra la cookie en el navegador.
         setcookie($nombre, '', [
             'expires' => time() - 3600,
             'path' => '/',
@@ -140,7 +115,6 @@ final class Sesion
         ini_set('session.use_strict_mode', '1');
         ini_set('session.use_only_cookies', '1');
         ini_set('session.use_trans_sid', '0');
-        // Los archivos de una sesión "recordada" no deben borrarse antes de tiempo.
         ini_set('session.gc_maxlifetime', (string) ((int) Config::obtener('sesion.dias_recordar', 14) * 86400));
 
         session_set_cookie_params([

@@ -3,9 +3,7 @@ declare(strict_types=1);
 
 namespace Jatsa\Core;
 
-/**
- * Lector mínimo de archivos .env (CLAVE=valor). Sin dependencias externas.
- */
+/** Lector mínimo de archivos .env (CLAVE=valor). Sin dependencias externas. */
 final class Env
 {
     /** @var array<string, string> */

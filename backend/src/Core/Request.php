@@ -44,11 +44,7 @@ final class Request
         return $this->cabeceras[strtolower($nombre)] ?? null;
     }
 
-    /**
-     * Cuerpo de la petición decodificado como JSON (arreglo vacío si no hay cuerpo).
-     *
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     public function json(): array
     {
         if (trim($this->cuerpoCrudo) === '') {

@@ -9,11 +9,7 @@ use Jatsa\Modules\Reservas\ReservaRepository;
 use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Tarifas;
 
-/**
- * Historial de envíos del CLIENTE y del EMPRESARIO (diapositivas 14 y 11): los envíos que la persona de la sesión envió o recibió,
- * su detalle y el resumen de «Mi panel». Un envío ajeno o inexistente es el mismo 404. De la otra parte solo se devuelve el nombre:
- * nunca documentos ni teléfonos (regla 6 de CLAUDE.md).
- */
+/** Historial de envíos del CLIENTE y del EMPRESARIO (diapositivas 14 y 11): los envíos que la persona de la sesión envió o recibió, */
 final class HistorialService
 {
     public const ESTADOS = ['REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO', 'ENTREGADO', 'DEVUELTO', 'ANULADO'];
@@ -76,8 +72,6 @@ final class HistorialService
     }
 
     /**
-     * Un envío de la persona con su detalle (diapositiva 14).
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -121,14 +115,6 @@ final class HistorialService
     }
 
     /**
-     * Resumen de «Mi panel»: envíos en curso, saldo pendiente de esos envíos y los envíos listos para recoger.
-     *
-     * `enCurso` y `saldoPendiente` cubren TODOS los envíos en curso de la persona (como remitente o como destinataria), calculados en
-     * la base de datos sin tope. Solo la lista `porRecoger` se acota (`MAX_POR_RECOGER`) y avisa con `hayMasPorRecoger`.
-     *
-     * Es el saldo pendiente de los ENVÍOS, no una deuda personal: el sistema no sabe quién pagará un envío hasta que se cobra
-     * (`Pago.pagadoPor`), así que no lo reparte entre remitente y destinatario.
-     *
      * @param array<string, mixed> $usuario
      * @return array<string, mixed>
      */
@@ -149,7 +135,6 @@ final class HistorialService
             'hayMasPorRecoger' => count($r['porRecoger']) > self::MAX_POR_RECOGER,
         ];
     }
-    // ── Utilidades ──────────────────────────────────────────────────────────
 
     /** @param array<string, mixed> $usuario */
     private function personaDe(array $usuario): int

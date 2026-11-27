@@ -8,19 +8,9 @@ use DateTimeImmutable;
 use Jatsa\Shared\HttpException;
 use Jatsa\Shared\Tarifas;
 
-/**
- * Rastreo público (diapositiva 3): estado, recorrido y llegada estimada de un envío a partir de su código de seguimiento.
- *
- * Regla 6 de CLAUDE.md: no se exponen documentos de identidad ni teléfonos (tampoco nombres de personas): solo el código, la
- * ruta, la cantidad y el peso, el saldo, los hitos del recorrido (con la llegada estimada) y el viaje en curso (código, tipo y placa).
- * El saldo y la placa los muestra expresamente la diapositiva 3; no se añade nada más (sin horas de ruta, estado del viaje duplicado ni ids).
- *
- * Un código inexistente o mal formado responde igual (404): no se revela nada sobre códigos que no existen. El límite de
- * consultas por visitante sigue pendiente (ver docs/api/reservas.md).
- */
+/** Rastreo público (diapositiva 3): estado, recorrido y llegada estimada de un envío a partir de su código de seguimiento. */
 final class RastreoService
 {
-    /** Las cuatro etapas de la barra de la diapositiva 3 (los estados DEVUELTO y ANULADO no son una etapa de ese camino). */
     public const ETAPAS = ['REGISTRADO', 'EN_TRANSITO', 'EN_DESTINO', 'ENTREGADO'];
 
     private readonly RepositorioRastreo $envios;
@@ -55,7 +45,6 @@ final class RastreoService
             if ($tramo['fechaHoraLlegada'] !== null) {
                 $recorrido[] = ['fechaHora' => $tramo['fechaHoraLlegada'], 'tipo' => 'llegada', 'texto' => 'Llegó a ' . $tramo['destino']['nombre']];
             }
-            // El tramo en curso: salió y todavía no llegó.
             if ($tramo['fechaHoraSalida'] !== null && $tramo['fechaHoraLlegada'] === null && !in_array($estado, ['ENTREGADO', 'DEVUELTO', 'ANULADO'], true)) {
                 $viajeActual = ['codigo' => $tramo['codigoViaje'], 'vehiculo' => $tramo['vehiculo'], 'fechaHoraSalida' => $tramo['fechaHoraSalida'],
                     'origen' => $tramo['origen'], 'destino' => $tramo['destino']];
@@ -69,7 +58,6 @@ final class RastreoService
         if ($envio['fechaHoraEntrega'] !== null) {
             $recorrido[] = ['fechaHora' => $envio['fechaHoraEntrega'], 'tipo' => 'entrega', 'texto' => 'Entregado en ' . $envio['destino']['nombre']];
         }
-        // Por fecha; con la misma fecha se conserva el orden en que ocurrieron (usort de PHP es estable).
         usort($recorrido, static fn (array $a, array $b): int => strcmp($a['fechaHora'], $b['fechaHora']));
 
         $importe = self::centimos($envio['importe']);
